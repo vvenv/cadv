@@ -20,8 +20,20 @@ bool timeSynced     = false;
 uint32_t lastResync = 0;
 int lastDrawnSecond = -1;
 String lastNtpError;
+M5Canvas clockCanvas(&M5Cardputer.Display);
+bool clockCanvasReady = false;
 
 const char* const kWeekday[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+void ensureClockCanvas() {
+    if (clockCanvasReady) {
+        return;
+    }
+    auto& d = M5Cardputer.Display;
+    clockCanvas.setColorDepth(16);
+    clockCanvas.createSprite(d.width(), d.height());
+    clockCanvasReady = true;
+}
 
 void drawStatus(const String& line1, const String& line2 = "") {
     auto& d = M5Cardputer.Display;
@@ -233,39 +245,42 @@ bool syncNtp() {
 }
 
 void drawClock(const tm& ti) {
-    auto& d = M5Cardputer.Display;
+    ensureClockCanvas();
+    auto& c = clockCanvas;
     char timeBuf[16];
     char dateBuf[32];
     snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
     snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d  %s", ti.tm_year + 1900, ti.tm_mon + 1,
              ti.tm_mday, kWeekday[ti.tm_wday]);
 
-    d.fillScreen(TFT_BLACK);
+    // Compose off-screen, then one blit — avoids fillScreen black flash each second.
+    c.fillSprite(TFT_BLACK);
 
-    d.setTextDatum(middle_center);
-    d.setTextColor(TFT_WHITE, TFT_BLACK);
-    // 240x135: 24pt fills most of the width for HH:MM:SS
-    d.setFont(&fonts::FreeSansBold24pt7b);
-    d.setTextSize(1.0f);
-    d.drawString(timeBuf, d.width() / 2, d.height() / 2 - 6);
+    c.setTextDatum(middle_center);
+    c.setTextColor(TFT_WHITE, TFT_BLACK);
+    c.setFont(&fonts::FreeSansBold24pt7b);
+    c.setTextSize(1.0f);
+    c.drawString(timeBuf, c.width() / 2, c.height() / 2 - 6);
 
-    d.setFont(&fonts::FreeSansBold9pt7b);
-    d.setTextColor(TFT_CYAN, TFT_BLACK);
-    d.drawString(dateBuf, d.width() / 2, d.height() / 2 + 38);
+    c.setFont(&fonts::FreeSansBold9pt7b);
+    c.setTextColor(TFT_CYAN, TFT_BLACK);
+    c.drawString(dateBuf, c.width() / 2, c.height() / 2 + 38);
 
-    d.setTextDatum(bottom_left);
-    d.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    d.setFont(&fonts::Font0);
-    d.drawString(timeSynced ? "NTP" : "NO NTP", 4, d.height() - 2);
+    c.setTextDatum(bottom_left);
+    c.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    c.setFont(&fonts::Font0);
+    c.drawString(timeSynced ? "NTP" : "NO NTP", 4, c.height() - 2);
 
-    d.setTextDatum(bottom_right);
+    c.setTextDatum(bottom_right);
     if (WiFi.status() == WL_CONNECTED) {
-        d.setTextColor(TFT_DARKGREEN, TFT_BLACK);
-        d.drawString("WiFi", d.width() - 4, d.height() - 2);
+        c.setTextColor(TFT_DARKGREEN, TFT_BLACK);
+        c.drawString("WiFi", c.width() - 4, c.height() - 2);
     } else {
-        d.setTextColor(TFT_MAROON, TFT_BLACK);
-        d.drawString("WiFi?", d.width() - 4, d.height() - 2);
+        c.setTextColor(TFT_MAROON, TFT_BLACK);
+        c.drawString("WiFi?", c.width() - 4, c.height() - 2);
     }
+
+    c.pushSprite(0, 0);
 }
 
 void bootstrapNetwork() {
