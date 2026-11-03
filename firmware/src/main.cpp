@@ -28,11 +28,13 @@ void drawStatus(const String& line1, const String& line2 = "") {
     d.fillScreen(TFT_BLACK);
     d.setTextDatum(middle_center);
     d.setTextColor(TFT_YELLOW, TFT_BLACK);
-    d.setFont(&fonts::Font2);
-    d.drawString(line1, d.width() / 2, d.height() / 2 - (line2.isEmpty() ? 0 : 12));
+    d.setFont(&fonts::FreeSansBold12pt7b);
+    d.setTextSize(1.0f);
+    d.drawString(line1, d.width() / 2, d.height() / 2 - (line2.isEmpty() ? 0 : 16));
     if (!line2.isEmpty()) {
         d.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        d.drawString(line2, d.width() / 2, d.height() / 2 + 12);
+        d.setFont(&fonts::FreeSansBold9pt7b);
+        d.drawString(line2, d.width() / 2, d.height() / 2 + 18);
     }
 }
 
@@ -43,16 +45,18 @@ String promptLine(const String& title, const String& initial = "", bool mask = f
     auto redraw = [&]() {
         d.fillScreen(TFT_BLACK);
         d.setTextDatum(top_left);
-        d.setFont(&fonts::Font2);
+        d.setFont(&fonts::FreeSansBold9pt7b);
+        d.setTextSize(1.0f);
         d.setTextColor(TFT_CYAN, TFT_BLACK);
         d.setCursor(4, 4);
         d.print(title);
         d.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        d.setCursor(4, 22);
-        d.print("Enter confirm  Del erase");
-        d.drawRect(2, 44, d.width() - 4, 28, TFT_DARKGREY);
+        d.setCursor(4, 24);
+        d.print("Enter=OK  Del=BS");
+        d.drawRect(2, 48, d.width() - 4, 36, TFT_DARKGREY);
         d.setTextColor(TFT_WHITE, TFT_BLACK);
-        d.setCursor(8, 52);
+        d.setFont(&fonts::FreeSansBold12pt7b);
+        d.setCursor(8, 58);
         if (mask && value.length() > 0) {
             String dots;
             dots.reserve(value.length());
@@ -240,15 +244,18 @@ void drawClock(const tm& ti) {
 
     d.setTextDatum(middle_center);
     d.setTextColor(TFT_WHITE, TFT_BLACK);
-    d.setFont(&fonts::FreeSansBold18pt7b);
-    d.drawString(timeBuf, d.width() / 2, d.height() / 2 - 10);
+    // 240x135: 24pt fills most of the width for HH:MM:SS
+    d.setFont(&fonts::FreeSansBold24pt7b);
+    d.setTextSize(1.0f);
+    d.drawString(timeBuf, d.width() / 2, d.height() / 2 - 6);
 
-    d.setFont(&fonts::Font2);
+    d.setFont(&fonts::FreeSansBold9pt7b);
     d.setTextColor(TFT_CYAN, TFT_BLACK);
-    d.drawString(dateBuf, d.width() / 2, d.height() / 2 + 28);
+    d.drawString(dateBuf, d.width() / 2, d.height() / 2 + 38);
 
     d.setTextDatum(bottom_left);
     d.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    d.setFont(&fonts::Font0);
     d.drawString(timeSynced ? "NTP" : "NO NTP", 4, d.height() - 2);
 
     d.setTextDatum(bottom_right);
