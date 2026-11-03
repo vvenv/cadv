@@ -20,9 +20,9 @@
 #define NTP_SERVER2 "ntp.tencent.com"
 #endif
 #ifndef NTP_SERVER3
-#define NTP_SERVER3 "pool.ntp.org"
+#define NTP_SERVER3 "time.apple.com"
 #endif
 
 static constexpr uint32_t kWifiConnectTimeoutMs = 20000;
-static constexpr uint32_t kNtpWaitTimeoutMs     = 15000;
+static constexpr uint32_t kNtpWaitTimeoutMs     = 30000;
 static constexpr uint32_t kNtpResyncIntervalMs  = 60UL * 60UL * 1000UL;

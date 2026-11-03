@@ -7,12 +7,8 @@
 
 #if __has_include(<esp_sntp.h>)
 #include <esp_sntp.h>
-#define SNTP_ENABLED 1
 #elif __has_include(<sntp.h>)
 #include <sntp.h>
-#define SNTP_ENABLED 1
-#else
-#define SNTP_ENABLED 0
 #endif
 
 namespace {
@@ -23,6 +19,7 @@ String wifiPass;
 bool timeSynced     = false;
 uint32_t lastResync = 0;
 int lastDrawnSecond = -1;
+String lastNtpError;
 
 const char* const kWeekday[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
@@ -122,6 +119,8 @@ bool connectWifi() {
 
     drawStatus("Connecting Wi-Fi", wifiSsid);
     WiFi.mode(WIFI_STA);
+    WiFi.disconnect(true, true);
+    delay(200);
     WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
 
     const uint32_t start = millis();
@@ -130,13 +129,13 @@ bool connectWifi() {
         M5Cardputer.update();
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP()) {
         drawStatus("Wi-Fi OK", WiFi.localIP().toString());
         delay(800);
         return true;
     }
 
-    drawStatus("Wi-Fi failed", "press Enter retry");
+    drawStatus("Wi-Fi failed", "Enter retry / C reconfig");
     while (true) {
         M5Cardputer.update();
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
@@ -154,33 +153,77 @@ bool connectWifi() {
     return false;
 }
 
+bool dnsOk(const char* host) {
+    IPAddress ip;
+    drawStatus("DNS lookup", host);
+    const bool ok = WiFi.hostByName(host, ip);
+    if (ok) {
+        Serial.printf("DNS %s -> %s\n", host, ip.toString().c_str());
+    } else {
+        Serial.printf("DNS %s failed\n", host);
+    }
+    return ok;
+}
+
+bool waitForValidLocalTime(uint32_t timeoutMs) {
+    struct tm ti {};
+    const uint32_t start = millis();
+    while (millis() - start < timeoutMs) {
+        // IMPORTANT: do NOT use sntp_get_sync_status() as success gate.
+        // Reading COMPLETED clears it; a second read always looks like failure.
+        if (getLocalTime(&ti, 200) && ti.tm_year >= (2020 - 1900)) {
+            return true;
+        }
+        M5Cardputer.update();
+        delay(50);
+    }
+    return false;
+}
+
 bool syncNtp() {
+    lastNtpError = "";
+    if (WiFi.status() != WL_CONNECTED) {
+        lastNtpError = "WiFi down";
+        drawStatus("NTP failed", lastNtpError);
+        delay(1000);
+        timeSynced = false;
+        return false;
+    }
+
     drawStatus("Syncing NTP", NTP_TIMEZONE);
+    Serial.printf("NTP start tz=%s wifi=%s\n", NTP_TIMEZONE, WiFi.localIP().toString().c_str());
+
+    // Verify DNS before SNTP; many "NTP failed" cases are DNS/network.
+    if (!dnsOk(NTP_SERVER1) && !dnsOk(NTP_SERVER2) && !dnsOk(NTP_SERVER3)) {
+        lastNtpError = "DNS fail";
+        drawStatus("NTP failed", lastNtpError);
+        delay(1200);
+        timeSynced = false;
+        return false;
+    }
+
+    // Give lwIP a beat after association before UDP NTP.
+    delay(300);
+
     configTzTime(NTP_TIMEZONE, NTP_SERVER1, NTP_SERVER2, NTP_SERVER3);
 
-    const uint32_t start = millis();
-#if SNTP_ENABLED
-    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED &&
-           millis() - start < kNtpWaitTimeoutMs) {
-        delay(200);
-        M5Cardputer.update();
-    }
-    timeSynced = (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED);
-#else
-    struct tm ti {};
-    while (!getLocalTime(&ti, 1000) && millis() - start < kNtpWaitTimeoutMs) {
-        M5Cardputer.update();
-    }
-    timeSynced = getLocalTime(&ti, 100);
-#endif
+    drawStatus("Waiting NTP", "up to 30s");
+    timeSynced = waitForValidLocalTime(kNtpWaitTimeoutMs);
 
     if (timeSynced) {
         lastResync = millis();
-        drawStatus("Time synced", NTP_TIMEZONE);
-        delay(500);
+        struct tm ti {};
+        getLocalTime(&ti, 0);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
+        drawStatus("Time synced", buf);
+        Serial.printf("NTP ok %04d-%02d-%02d %s\n", ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, buf);
+        delay(600);
     } else {
-        drawStatus("NTP failed", "will retry");
-        delay(1000);
+        lastNtpError = "timeout";
+        drawStatus("NTP failed", lastNtpError + "  R=retry");
+        Serial.println("NTP timeout waiting for valid local time");
+        delay(1200);
     }
     return timeSynced;
 }
@@ -233,12 +276,18 @@ void bootstrapNetwork() {
         configureWifiInteractive();
     }
 
-    syncNtp();
+    // Retry NTP a few times at boot; UDP/DNS can flake once.
+    for (int i = 0; i < 3 && !syncNtp(); ++i) {
+        delay(500);
+    }
 }
 
 }  // namespace
 
 void setup() {
+    Serial.begin(115200);
+    delay(50);
+
     auto cfg = M5.config();
     M5Cardputer.begin(cfg, true);
     M5Cardputer.Display.setRotation(1);
@@ -255,7 +304,6 @@ void loop() {
     M5Cardputer.update();
 
     if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
-        auto st = M5Cardputer.Keyboard.keysState();
         if (M5Cardputer.Keyboard.isKeyPressed('r') || M5Cardputer.Keyboard.isKeyPressed('R')) {
             syncNtp();
             lastDrawnSecond = -1;
@@ -266,7 +314,6 @@ void loop() {
             syncNtp();
             lastDrawnSecond = -1;
         }
-        (void)st;
     }
 
     if (timeSynced && millis() - lastResync > kNtpResyncIntervalMs) {
@@ -278,13 +325,14 @@ void loop() {
     }
 
     struct tm ti {};
-    if (getLocalTime(&ti, 0)) {
+    if (getLocalTime(&ti, 0) && ti.tm_year >= (2020 - 1900)) {
+        timeSynced = true;
         if (ti.tm_sec != lastDrawnSecond) {
             lastDrawnSecond = ti.tm_sec;
             drawClock(ti);
         }
     } else {
-        drawStatus("Waiting for time", "press R to sync");
+        drawStatus("Waiting for time", lastNtpError.length() ? lastNtpError : "press R");
         delay(500);
     }
 
