@@ -15,12 +15,13 @@ Cardputer-Adv **没有独立 RTC 芯片**，断电后时间会丢失，需要联
 ## 快捷命令
 
 ```bash
-./do.sh            # 交互菜单
+./do.sh            # 交互菜单（↑↓ / j k 选择，回车确认）
 ./do.sh flash      # 编译并烧录（自动找串口）
 ./do.sh sim        # 启动 SDL 模拟器
 ./do.sh monitor    # 串口监视
 ./do.sh help       # 全部子命令
 ```
+
 
 烧录前：电源 **OFF** → 按住 **G0** → 插 USB → 松开。
 

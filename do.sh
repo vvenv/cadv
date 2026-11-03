@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cadv 常用命令入口。无参数进入交互菜单。
+# cadv 常用命令入口。无参数进入交互菜单；具体做法仍在本脚本命令函数里，这里做转发。
 #
 # 固件（Arduino CLI → Cardputer / Cardputer-Adv）:
 #   ./do.sh build                   # 编译固件
@@ -21,27 +21,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
+LOG_TAG=cadv
+# shellcheck source=scripts/lib/log.sh
+source "$ROOT/scripts/lib/log.sh"
+# shellcheck source=scripts/lib/prompt-menu.sh
+source "$ROOT/scripts/lib/prompt-menu.sh"
+
 FQBN='m5stack:esp32:m5stack_cardputer'
 SKETCH="$ROOT/firmware_arduino/CardputerClock"
 LIBS="${HOME}/Documents/Arduino/libraries"
 SIM_ENV='native_cardputer_adv'
 SIM_PROG="$ROOT/sim/.pio/build/${SIM_ENV}/program"
 
-# PATH：Homebrew arduino-cli + user pio
 export PATH="/opt/homebrew/bin:${HOME}/Library/Python/3.9/bin:${PATH}"
 export HOMEBREW_PREFIX="${HOMEBREW_PREFIX:-/opt/homebrew}"
-
-# ---------- log ----------
-if [ -t 1 ] || [ -t 2 ]; then
-  _R=$'\033[0m' _D=$'\033[2m' _I=$'\033[36m' _O=$'\033[32m' _W=$'\033[33m' _E=$'\033[31m'
-else
-  _R='' _D='' _I='' _O='' _W='' _E=''
-fi
-log_info()    { printf '%sℹ%s %scadv%s  %s\n' "$_I" "$_R" "$_D" "$_R" "$*"; }
-log_success() { printf '%s✓%s %scadv%s  %s\n' "$_O" "$_R" "$_D" "$_R" "$*"; }
-log_warn()    { printf '%s⚠%s %scadv%s  %s\n' "$_W" "$_R" "$_D" "$_R" "$*" >&2; }
-log_error()   { printf '%s✗%s %scadv%s  %s\n' "$_E" "$_R" "$_D" "$_R" "$*" >&2; }
-log_die()     { log_error "$*"; exit 1; }
 
 usage() {
   sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
@@ -61,9 +54,7 @@ need_cmd() {
 }
 
 detect_port() {
-  local ports=()
-  # bash 3.2-safe：不依赖 mapfile
-  local p
+  local ports=() p
   for p in /dev/cu.usbmodem* /dev/cu.wchusbserial* /dev/cu.usbserial*; do
     [ -e "$p" ] || continue
     ports+=("$p")
@@ -195,40 +186,33 @@ run() {
 main_menu() {
   local choice
   while true; do
-    echo ""
-    echo "cadv"
-    echo "  1) flash      编译并烧录"
-    echo "  2) build      只编译"
-    echo "  3) upload     只烧录"
-    echo "  4) monitor    串口监视"
-    echo "  5) sim        启动 SDL 模拟器"
-    echo "  6) sim-build  构建模拟器"
-    echo "  7) port       列出串口"
-    echo "  8) clean      清理构建"
-    echo "  9) help       说明"
-    echo "  0) quit       退出"
-    echo ""
-    read -r -p "选择 [1]: " choice </dev/tty || true
-    choice="${choice:-1}"
+    choice="$(prompt_menu "cadv" --default=1 \
+      "flash:编译并烧录" \
+      "build:编译" \
+      "upload:烧录" \
+      "monitor:监视串口" \
+      "sim:启动模拟器" \
+      "more:更多…" \
+      "quit:退出")"
     case "$choice" in
-      0 | q | quit) return 0 ;;
-      1) choice=flash ;;
-      2) choice=build ;;
-      3) choice=upload ;;
-      4) choice=monitor ;;
-      5) choice=sim ;;
-      6) choice=sim-build ;;
-      7) choice=port ;;
-      8) choice=clean ;;
-      9 | h | help) choice=help ;;
-      *)
-        log_error "无效选项：$choice"
-        pause_menu
-        continue
+      quit) return 0 ;;
+      more)
+        choice="$(prompt_menu "更多" --default=1 \
+          "back:返回" \
+          "sim-build:只构建模拟器" \
+          "sim-stop:停止模拟器" \
+          "port:列出串口" \
+          "clean:清理 .pio / 临时日志" \
+          "help:命令说明")"
+        case "$choice" in
+          back) continue ;;
+        esac
         ;;
     esac
-    (run "$choice") || log_error "执行失败（${choice}）"
-    [ "$choice" = help ] || pause_menu
+    # 子命令失败不退出菜单
+    # shellcheck disable=SC2086
+    (run $choice) || log_error "执行失败（${choice}）"
+    pause_menu
   done
 }
 
