@@ -141,7 +141,8 @@ cmd_sim_stop() {
 
 cmd_sim() {
   need_cmd pio
-  if [ ! -x "$SIM_PROG" ]; then
+  # build_flags（如 M5GFX_SCALE）改 ini 不会自动触发编译，这里按时间戳强制重建
+  if [ ! -x "$SIM_PROG" ] || [ "$ROOT/sim/platformio.ini" -nt "$SIM_PROG" ]; then
     cmd_sim_build
   fi
   cmd_sim_stop >/dev/null 2>&1 || true
