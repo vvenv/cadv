@@ -8,43 +8,34 @@ Cardputer-Adv **没有独立 RTC 芯片**，断电后时间会丢失，需要联
 
 | 路径 | 用途 |
 |------|------|
+| `do.sh` | 常用命令入口（编译 / 烧录 / 模拟） |
 | `firmware_arduino/CardputerClock/` | 设备固件（Arduino CLI 烧录） |
 | `sim/` | 本机 SDL 模拟器（调 UI / 字号，不烧录） |
 
+## 快捷命令
+
+```bash
+./do.sh            # 交互菜单
+./do.sh flash      # 编译并烧录（自动找串口）
+./do.sh sim        # 启动 SDL 模拟器
+./do.sh monitor    # 串口监视
+./do.sh help       # 全部子命令
+```
+
+烧录前：电源 **OFF** → 按住 **G0** → 插 USB → 松开。
+
 ## 本机模拟（不用烧录）
 
-用 M5GFX 的 SDL 后端在 Mac 上开一个 Cardputer-Adv 尺寸窗口，跑主机本地时间。
+用 M5GFX 的 SDL 后端开 Cardputer-Adv 尺寸窗口（240×135），跑主机本地时间。
 
 **能测：** 布局、字号、颜色、刷新节奏  
 **不能测：** Wi-Fi / NTP / Cardputer 物理键盘矩阵
 
 ```bash
-# 依赖（已装可跳过）
-brew install sdl2
-export PATH="$HOME/Library/Python/3.9/bin:$PATH"
-export HOMEBREW_PREFIX=/opt/homebrew
-
-cd sim
-pio run -e native_cardputer_adv
-.pio/build/native_cardputer_adv/program
+./do.sh sim
 ```
 
 窗口被挡住时看 Dock。键盘 `L` / `R` 可旋转预览画面。
-
-## 烧录到设备
-
-```bash
-# 电源 OFF → 按住 G0 → 插 USB → 松 G0
-arduino-cli compile --fqbn m5stack:esp32:m5stack_cardputer \
-  --libraries "$HOME/Documents/Arduino/libraries" \
-  firmware_arduino/CardputerClock
-
-arduino-cli upload -p /dev/cu.usbmodem3101 \
-  --fqbn m5stack:esp32:m5stack_cardputer \
-  firmware_arduino/CardputerClock
-```
-
-端口：`ls /dev/cu.usbmodem*`。
 
 ## 首次使用
 
