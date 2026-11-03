@@ -97,9 +97,9 @@ cmd_port() {
 cmd_build() {
   need_cmd arduino-cli
   [ -d "$SKETCH" ] || log_die "找不到 sketch：$SKETCH"
-  log_info "编译 $SKETCH"
+  log_info "编译固件（不含 SDL 模拟器）$SKETCH"
   arduino-cli compile --fqbn "$FQBN" --libraries "$LIBS" "$SKETCH"
-  log_success "编译完成"
+  log_success "固件编译完成"
 }
 
 cmd_upload() {
@@ -188,11 +188,11 @@ main_menu() {
   local choice
   while true; do
     choice="$(prompt_menu "cadv" --default=1 \
-      "flash:编译并烧录" \
-      "build:编译" \
-      "upload:烧录" \
+      "flash:编译并烧录固件" \
+      "build:只编译固件（不含模拟器）" \
+      "upload:只烧录固件" \
       "monitor:监视串口" \
-      "sim:启动模拟器" \
+      "sim:启动模拟器（ini 变更会自动重建）" \
       "more:更多…" \
       "quit:退出")"
     case "$choice" in
@@ -200,7 +200,7 @@ main_menu() {
       more)
         choice="$(prompt_menu "更多" --default=1 \
           "back:返回" \
-          "sim-build:只构建模拟器" \
+          "sim-build:只构建模拟器（pio）" \
           "sim-stop:停止模拟器" \
           "port:列出串口" \
           "clean:清理 .pio / 临时日志" \
