@@ -55,6 +55,18 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 2. 写入 Preference（掉电保留），自动连网并对时
 3. 时钟界面按 **`W`** 重新配置
 
+### 声音 / 整点报时
+
+时钟界面（Preference 持久化，默认开）：
+
+| 键 | 作用 |
+|----|------|
+| **`S`** | 总声音开关（关则静音；开则每秒滴答） |
+| **`H`** | 整点报时开关（需声音开；`:00` 三声和弦，替代该秒滴答） |
+| **`-` / `=`** | 音量 0–10（默认 6；掉电保存） |
+
+屏上会短暂显示 `Snd:… Hour:… Vol:N`。
+
 也可预置（可选，烧录时写入 config；设备上仍可改）：
 
 ```bash
@@ -77,6 +89,7 @@ mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer Adv
 | PIU + **7 段数码管时钟**（上：公历/星期，下：农历；Zpix 像素字） | |
 | Cardputer **Adv** 键盘配网（TCA8418）+ Preference | |
 | Wi-Fi + SNTP（`ntp.aliyun.com`） | |
+| ES8311 扬声器：`S` 声音 / `H` 整点报时 | |
 | ESP32-S3 USB 下载 + ST7789 | |
 
 完整 Cardputer-Adv UI 仍以 `firmware_arduino/`（C++）为主；本目录只验证「板端 TS」链路。

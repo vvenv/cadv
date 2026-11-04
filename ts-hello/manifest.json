@@ -9,12 +9,15 @@
 	"modules": {
 		"*": [
 			"./main",
-			"./netboot"
+			"./netboot",
+			"./settings"
 		]
 	},
 	"preload": [
 		"keyboard",
-		"netboot"
+		"netboot",
+		"settings",
+		"sound"
 	],
 	"resources": {
 		"*-mask": [
@@ -28,10 +31,12 @@
 		"esp32": {
 			"include": [
 				"$(MODULES)/drivers/st7789",
-				"$(MODULES)/io/i2c"
+				"$(MODULES)/io/i2c",
+				"$(MODULES)/pins/i2s"
 			],
 			"modules": {
-				"keyboard": "./keyboard"
+				"keyboard": "./keyboard",
+				"sound": "./sound"
 			},
 			"config": {
 				"screen": "st7789",
@@ -78,6 +83,21 @@
 						"0x2A, 4, 0x00, 0x28, 0x01, 0x17,",
 						"0xff, 0,"
 					]
+				},
+				"audioOut": {
+					"bitsPerSample": 16,
+					"numChannels": 1,
+					"sampleRate": 16000,
+					"streams": 1,
+					"i2s": {
+						"num": 1,
+						"bitsPerSample": 16,
+						"bck_pin": 41,
+						"lr_pin": 43,
+						"dataout_pin": 42,
+						"slot": "I2S_STD_SLOT_LEFT",
+						"format_i2s": 1
+					}
 				}
 			},
 			"build": {
@@ -87,7 +107,8 @@
 		},
 		"...": {
 			"modules": {
-				"keyboard": "./keyboard_stub"
+				"keyboard": "./keyboard_stub",
+				"sound": "./sound_stub"
 			}
 		}
 	}

@@ -1,8 +1,8 @@
 /*
 	Cardputer-Adv Moddable + TypeScript clock.
 	7-seg Beijing time; top solar date/weekday; bottom lunar YMD.
-	On-device Wi-Fi: keyboard SSID/password → Preference → SNTP.
-	Press W on clock screen to reconfigure.
+	On-device Wi-Fi: W → SSID/password.
+	Sound: S toggle master; H toggle hourly chime.
 */
 
 import {} from "piu/MC";
@@ -10,6 +10,8 @@ import type { Port as PortContent } from "piu/MC";
 import Timer from "timer";
 import { CardputerKeyboard } from "keyboard";
 import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
+import { ClockSound } from "sound";
+import { formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_MIN, type ClockSettings } from "settings";
 
 type AppHost = {
 	content: (name: string) => unknown;
@@ -259,6 +261,8 @@ class SevenSegBehavior extends Behavior {
 class AppBehavior extends Behavior {
 	mode: Mode = "clock";
 	kb: CardputerKeyboard | null = null;
+	sound: ClockSound | null = null;
+	settings: ClockSettings = { sound: true, hourly: true, volume: 6 };
 	kbTimer: unknown = null;
 	labelTimer: unknown = null;
 	prompt = "";
@@ -266,15 +270,20 @@ class AppBehavior extends Behavior {
 	maskPass = false;
 	dateKey = "";
 	busy = false;
+	lastChimeKey = "";
+	lastTickSec = -1;
+	statusUntil = 0;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
+		this.settings = loadSettings();
 		this.kb = new CardputerKeyboard();
+		this.sound = new ClockSound();
+		this.sound.setVolume(this.settings.volume);
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
-		this.labelTimer = Timer.repeat(() => this.refreshClockLabels(app), 500);
+		this.labelTimer = Timer.repeat(() => this.onClockTick(app), 250);
 
-		// Always show probe result briefly so a dead KB is obvious.
-		this.setLabels(app, this.kb.status, "W=WiFi");
+		this.flashStatus(app, `${this.kb.status} ${this.sound.status}`, formatSettings(this.settings));
 
 		const creds = loadWifiCreds();
 		if (creds)
@@ -285,6 +294,16 @@ class AppBehavior extends Behavior {
 			this.setLabels(app, this.kb.status, "no WiFi cfg");
 			this.showClock(app, true);
 		}
+	}
+
+	maybeBeep() {
+		if (this.settings.sound)
+			this.sound?.click();
+	}
+
+	flashStatus(app: AppHost, top: string, bottom: string) {
+		this.setLabels(app, top, bottom);
+		this.statusUntil = Date.now() + 1500;
 	}
 
 	onKeyboardTick(app: AppHost) {
@@ -298,25 +317,52 @@ class AppBehavior extends Behavior {
 		if (!stroke)
 			return;
 
-		// W opens editor from clock OR busy/fail states.
-		const wantWifi = stroke.chars.some(ch => ch === "w" || ch === "W");
+		const chars = stroke.chars;
+		const wantWifi = chars.some(ch => ch === "w" || ch === "W");
 		if (wantWifi && this.mode !== "ssid" && this.mode !== "pass") {
 			this.busy = false;
 			this.enterPrompt(app, "ssid");
 			return;
 		}
 
-		if (this.mode === "clock") {
-			// Debug: show raw chars so remap bugs are visible.
-			if (stroke.chars.length)
-				this.setLabels(app, formatDate(), `key:${stroke.chars.join("")}`);
+		if (this.mode === "clock" || this.mode === "busy") {
+			if (chars.some(ch => ch === "s" || ch === "S")) {
+				this.settings.sound = !this.settings.sound;
+				saveSettings(this.settings);
+				this.flashStatus(app, "Sound", formatSettings(this.settings));
+				this.maybeBeep();
+				return;
+			}
+			if (chars.some(ch => ch === "h" || ch === "H")) {
+				this.settings.hourly = !this.settings.hourly;
+				saveSettings(this.settings);
+				this.flashStatus(app, "Hourly", formatSettings(this.settings));
+				this.maybeBeep();
+				return;
+			}
+			// - / = (and +) adjust volume 0..10
+			const volDown = chars.some(ch => ch === "-");
+			const volUp = chars.some(ch => ch === "=" || ch === "+");
+			if (volDown || volUp) {
+				let v = this.settings.volume + (volUp ? 1 : -1);
+				if (v < VOL_MIN)
+					v = VOL_MIN;
+				if (v > VOL_MAX)
+					v = VOL_MAX;
+				this.settings.volume = v;
+				saveSettings(this.settings);
+				this.sound?.setVolume(v);
+				this.flashStatus(app, `Vol ${v}`, formatSettings(this.settings));
+				this.maybeBeep();
+				return;
+			}
 			return;
 		}
 
 		if (this.mode !== "ssid" && this.mode !== "pass")
 			return;
 
-		for (const ch of stroke.chars)
+		for (const ch of chars)
 			this.prompt += ch;
 		if (stroke.del && this.prompt.length > 0)
 			this.prompt = this.prompt.slice(0, -1);
@@ -369,7 +415,7 @@ class AppBehavior extends Behavior {
 			if (!ok)
 				this.setLabels(app, detail, "W=WiFi");
 			else
-				this.refreshClockLabels(app);
+				this.onClockTick(app);
 		});
 	}
 
@@ -383,10 +429,31 @@ class AppBehavior extends Behavior {
 		setStringProp(contentByName(app, "lunarLabel"), bottom);
 	}
 
-	refreshClockLabels(app: AppHost) {
+	onClockTick(app: AppHost) {
 		if (this.mode !== "clock")
 			return;
+
 		const p = beijingParts();
+
+		// Second tick whenever sound is on (even while status flash shows).
+		if (this.settings.sound && p.ss !== this.lastTickSec) {
+			this.lastTickSec = p.ss;
+			if (timeSynced() && this.settings.hourly && p.mm === 0 && p.ss === 0) {
+				const chimeKey = `${p.y}-${p.m}-${p.d}-${p.hh}`;
+				if (chimeKey !== this.lastChimeKey) {
+					this.lastChimeKey = chimeKey;
+					this.sound?.hourlyChime();
+					this.flashStatus(app, `${pad2(p.hh)}:00`, "Hourly");
+				}
+			}
+			else {
+				this.sound?.tick();
+			}
+		}
+
+		if (Date.now() < this.statusUntil)
+			return;
+
 		const key = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
 		if (key === this.dateKey)
 			return;
