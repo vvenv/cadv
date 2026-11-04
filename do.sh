@@ -98,7 +98,7 @@ need_moddable() {
     local cand="$MODDABLE/build/bin/mac/release"
     [ -d "$cand" ] && export PATH="$cand:$PATH"
   fi
-  command -v mcconfig >/dev/null 2>&1 || log_die "找不到 mcconfig（MODDABLE=$MODDABLE）"
+  command -v mcconfig >/dev/null 2>&1 || log_die "找不到 mcconfig（MODDABLE=${MODDABLE}）"
 }
 
 # Prints ssid=… / password=… lines for mcconfig from env or wifi.local.json.
@@ -176,7 +176,7 @@ cmd_ts_flash() {
   if [ -z "${IDF_PATH:-}" ] || [ ! -f "${IDF_PATH}/export.sh" ]; then
     export IDF_PATH="${HOME}/esp32/esp-idf-v6.1"
   fi
-  [ -f "$IDF_PATH/export.sh" ] || log_die "缺少 ESP-IDF：$IDF_PATH（安装未完成）"
+  [ -f "$IDF_PATH/export.sh" ] || log_die "缺少 ESP-IDF：${IDF_PATH}（安装未完成）"
   [ -d "$HOME/.espressif/tools/xtensa-esp-elf" ] || log_die "Espressif 工具未装完（缺 xtensa-esp-elf）。等 install 结束后再试"
   [ -d "$HOME/.espressif/tools/riscv32-esp-elf" ] || log_die "Espressif 工具未装完（缺 riscv32-esp-elf）。等 install 结束后再试"
   ls -d "$HOME/.espressif/python_env"/idf* >/dev/null 2>&1 || log_die "IDF python_env 未就绪。等 install-python-env 结束后再试"
@@ -195,12 +195,18 @@ cmd_ts_flash() {
 
   log_info "Moddable 烧录 esp32/esp32s3_cdc（USB Serial/JTAG，适合 Cardputer）"
   # Flash itself may succeed while xsbug connect fails with -dn; don't treat that as fatal.
+  # bash 3.2 + set -u: empty "${arr[@]}" is "unbound variable" — branch instead.
   set +e
-  (cd "$APP_DIR" && mcconfig -d -m -dn -p esp32/esp32s3_cdc "${wifi_args[@]}")
+  if [ "${#wifi_args[@]}" -gt 0 ]; then
+    (cd "$APP_DIR" && mcconfig -d -m -dn -p esp32/esp32s3_cdc "${wifi_args[@]}")
+  else
+    (cd "$APP_DIR" && mcconfig -d -m -dn -p esp32/esp32s3_cdc)
+  fi
   local rc=$?
   set -e
   if [ "$rc" -ne 0 ]; then
-    log_warn "mcconfig 退出码 $rc（若已 Hash verified / Done，多半是 xsbug 未连上，可忽略）"
+    # ${rc}: bash 3.2 treats $rc（ as a multi-byte var name
+    log_warn "mcconfig 退出码 ${rc}（若已 Hash verified / Done，多半是 xsbug 未连上，可忽略）"
   fi
   log_success "烧录流程结束；板子按 RESET。要对时需 wifi.local.json 或 WIFI_SSID/WIFI_PASSWORD"
 }
