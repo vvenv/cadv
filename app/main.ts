@@ -34,8 +34,6 @@ const OFF = "#143214";
 
 /** Top-line weekday codes (Sun→Sat), matching `YYYY-MM-DD MO …`. */
 const WEEKDAYS_EN = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-const GAN = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
-const ZHI = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
 const LM = ["正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"];
 const LD1 = ["日", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
 const LD2 = ["初", "十", "廿", "卅"];
@@ -210,9 +208,8 @@ function formatLunar(): string {
 			isLeap = false;
 	}
 	const ld = offset + 1;
-	const ganZhi = GAN[(ly - 4) % 10] + ZHI[(ly - 4) % 12];
 	const monthStr = (isLeap ? "闰" : "") + LM[lm - 1] + "月";
-	return `${ganZhi}年${monthStr}${lunarDayName(ld)}`;
+	return `${monthStr}${lunarDayName(ld)}`;
 }
 
 function hbar(port: PortContent, x: number, y: number, w: number, t: number, on: boolean) {
