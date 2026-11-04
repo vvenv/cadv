@@ -1,17 +1,25 @@
 /*
-	Cardputer-Adv Moddable + TypeScript hello.
-	Clock: classic 7-segment, Beijing time (UTC+8 / CST).
-	Top: solar date + weekday; bottom: lunar YMD.
+	Cardputer-Adv Moddable + TypeScript clock.
+	7-seg Beijing time; top solar date/weekday; bottom lunar YMD.
+	On-device Wi-Fi: keyboard SSID/password → Preference → SNTP.
+	Press W on clock screen to reconfigure.
 */
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
+import Timer from "timer";
+import { CardputerKeyboard } from "keyboard";
+import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
 
-// Beijing = UTC+8, no DST (format via UTC getters so host TZ cannot skew)
+type AppHost = {
+	content: (name: string) => unknown;
+};
+
 const BEIJING_OFFSET_SEC = 8 * 3600;
 
 const backgroundSkin = new Skin({ fill: "black" });
 const titleStyle = new Style({ font: "12px Zpix", color: "white", horizontal: "center", vertical: "middle" });
+const valueStyle = new Style({ font: "12px Zpix", color: "#39FF14", horizontal: "center", vertical: "middle" });
 const subStyle = new Style({ font: "12px Zpix", color: "#888888", horizontal: "center", vertical: "middle" });
 
 const ON = "#39FF14";
@@ -24,7 +32,6 @@ const LM = ["正", "二", "三", "四", "五", "六", "七", "八", "九", "十"
 const LD1 = ["日", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
 const LD2 = ["初", "十", "廿", "卅"];
 
-// bit-packed lunar year info, 1900–2100 (index 0 = 1900)
 const LUNAR_INFO: number[] = [
 	0x04bd8, 0x04ae0, 0x0a570, 0x054d5, 0x0d260, 0x0d950, 0x16554, 0x056a0, 0x09ad0, 0x055d2,
 	0x04ae0, 0x0a5b6, 0x0a4d0, 0x0d250, 0x1d255, 0x0b540, 0x0d6a0, 0x0ada2, 0x095b0, 0x14977,
@@ -49,19 +56,12 @@ const LUNAR_INFO: number[] = [
 	0x0b27a, 0x06a50, 0x06d40, 0x0af46, 0x0ab60, 0x09570, 0x04af5, 0x04970, 0x064b0, 0x074a3,
 ];
 
-// bit7=a,6=b,5=c,4=d,3=e,2=f,1=g  (classic 7-seg)
 const SEG: number[] = [
-	0b1111110, // 0
-	0b0110000, // 1
-	0b1101101, // 2
-	0b1111001, // 3
-	0b0110011, // 4
-	0b1011011, // 5
-	0b1011111, // 6
-	0b1110000, // 7
-	0b1111111, // 8
-	0b1111011, // 9
+	0b1111110, 0b0110000, 0b1101101, 0b1111001, 0b0110011,
+	0b1011011, 0b1011111, 0b1110000, 0b1111111, 0b1111011,
 ];
+
+type Mode = "clock" | "ssid" | "pass" | "busy";
 
 function pad2(n: number): string {
 	return n < 10 ? `0${n}` : `${n}`;
@@ -85,7 +85,6 @@ function timeSynced(): boolean {
 	return beijingParts().y >= 2020;
 }
 
-/** Wall clock in Beijing time (UTC+8), independent of host TZ quirks. */
 function formatNow(): string {
 	const p = beijingParts();
 	return `${pad2(p.hh)}:${pad2(p.mm)}:${pad2(p.ss)}`;
@@ -101,25 +100,20 @@ function formatDate(): string {
 function leapMonth(y: number): number {
 	return LUNAR_INFO[y - 1900] & 0xf;
 }
-
 function leapDays(y: number): number {
 	if (leapMonth(y))
 		return (LUNAR_INFO[y - 1900] & 0x10000) ? 30 : 29;
 	return 0;
 }
-
 function monthDays(y: number, m: number): number {
 	return (LUNAR_INFO[y - 1900] & (0x10000 >> m)) ? 30 : 29;
 }
-
 function yearDays(y: number): number {
 	let sum = 348;
 	for (let i = 0x8000; i > 0x8; i >>= 1)
 		sum += (LUNAR_INFO[y - 1900] & i) ? 1 : 0;
 	return sum + leapDays(y);
 }
-
-/** Days from 1900-01-31 to y-m-d (Gregorian). */
 function solarOffset(y: number, m: number, d: number): number {
 	const monthDaysGreg = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 	let n = 0;
@@ -130,9 +124,8 @@ function solarOffset(y: number, m: number, d: number): number {
 		if (i === 2 && ((y % 4 === 0 && y % 100 !== 0) || (y % 400 === 0)))
 			n += 1;
 	}
-	return n + d - 31; // 1900-01-31 → 0
+	return n + d - 31;
 }
-
 function lunarDayName(day: number): string {
 	switch (day) {
 		case 10: return "初十";
@@ -141,14 +134,12 @@ function lunarDayName(day: number): string {
 		default: return LD2[Math.floor(day / 10)] + LD1[day % 10];
 	}
 }
-
 function formatLunar(): string {
 	const p = beijingParts();
 	if (!timeSynced())
-		return "无网络配置";
+		return "W=WiFi";
 	if (p.y < 1900 || p.y > 2100 || LUNAR_INFO.length <= p.y - 1900)
 		return "农历—";
-
 	let offset = solarOffset(p.y, p.m, p.d);
 	let ly = 1900;
 	for (; ly < 2101 && offset >= 0; ly++) {
@@ -157,7 +148,6 @@ function formatLunar(): string {
 			break;
 		offset -= yd;
 	}
-
 	const leap = leapMonth(ly);
 	let isLeap = false;
 	let lm = 1;
@@ -186,24 +176,21 @@ function formatLunar(): string {
 function hbar(port: PortContent, x: number, y: number, w: number, t: number, on: boolean) {
 	port.fillColor(on ? ON : OFF, x + t, y, w - 2 * t, t);
 }
-
 function vbar(port: PortContent, x: number, y: number, h: number, t: number, on: boolean) {
 	port.fillColor(on ? ON : OFF, x, y + t, t, h - 2 * t);
 }
-
 function drawDigit(port: PortContent, x: number, y: number, w: number, h: number, digit: number) {
 	const t = Math.max(3, Math.floor(Math.min(w, h) / 8));
 	const mid = y + Math.floor((h - t) / 2);
 	const mask = SEG[digit] | 0;
-	hbar(port, x, y, w, t, !!(mask & 0b1000000));                 // a
-	vbar(port, x + w - t, y, mid - y + t, t, !!(mask & 0b0100000)); // b
-	vbar(port, x + w - t, mid, y + h - mid, t, !!(mask & 0b0010000)); // c
-	hbar(port, x, y + h - t, w, t, !!(mask & 0b0001000));           // d
-	vbar(port, x, mid, y + h - mid, t, !!(mask & 0b0000100));       // e
-	vbar(port, x, y, mid - y + t, t, !!(mask & 0b0000010));         // f
-	hbar(port, x, mid, w, t, !!(mask & 0b0000001));                 // g
+	hbar(port, x, y, w, t, !!(mask & 0b1000000));
+	vbar(port, x + w - t, y, mid - y + t, t, !!(mask & 0b0100000));
+	vbar(port, x + w - t, mid, y + h - mid, t, !!(mask & 0b0010000));
+	hbar(port, x, y + h - t, w, t, !!(mask & 0b0001000));
+	vbar(port, x, mid, y + h - mid, t, !!(mask & 0b0000100));
+	vbar(port, x, y, mid - y + t, t, !!(mask & 0b0000010));
+	hbar(port, x, mid, w, t, !!(mask & 0b0000001));
 }
-
 function drawColon(port: PortContent, x: number, y: number, w: number, h: number, on: boolean) {
 	const s = Math.max(3, Math.floor(Math.min(w, h) / 7));
 	const cx = x + Math.floor((w - s) / 2);
@@ -211,33 +198,27 @@ function drawColon(port: PortContent, x: number, y: number, w: number, h: number
 	port.fillColor(on ? ON : OFF, cx, y + Math.floor(h * 0.62), s, s);
 }
 
+function contentByName(app: AppHost, name: string): unknown {
+	return app.content(name);
+}
+
+function setStringProp(target: unknown, value: string) {
+	if (target && typeof target === "object" && "string" in target)
+		(target as { string: string }).string = value;
+}
+
+function setVisibleProp(target: unknown, value: boolean) {
+	if (target && typeof target === "object" && "visible" in target)
+		(target as { visible: boolean }).visible = value;
+}
+
 class SevenSegBehavior extends Behavior {
 	string: string = "--:--:--";
 	blink: boolean = true;
-	dateKey: string = "";
-
-	syncLabels(port: PortContent) {
-		const p = beijingParts();
-		const key = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
-		if (key === this.dateKey)
-			return;
-		this.dateKey = key;
-		const app = port.container;
-		if (!app)
-			return;
-		const dateLabel = app.content("dateLabel") as { string?: string } | undefined;
-		const lunarLabel = app.content("lunarLabel") as { string?: string } | undefined;
-		if (dateLabel)
-			dateLabel.string = formatDate();
-		if (lunarLabel)
-			lunarLabel.string = formatLunar();
-	}
 
 	onDisplaying(port: PortContent) {
 		this.string = formatNow();
 		this.blink = true;
-		this.dateKey = "";
-		this.syncLabels(port);
 		port.interval = 500;
 		port.start();
 		port.invalidate();
@@ -245,12 +226,11 @@ class SevenSegBehavior extends Behavior {
 	onTimeChanged(port: PortContent) {
 		this.blink = !this.blink;
 		this.string = formatNow();
-		this.syncLabels(port);
 		port.invalidate();
 	}
 	onDraw(port: PortContent) {
 		const text = this.string;
-		const n = text.length; // "HH:MM:SS" → 8
+		const n = text.length;
 		const gap = 4;
 		const colonW = 10;
 		let units = 0;
@@ -276,8 +256,148 @@ class SevenSegBehavior extends Behavior {
 	}
 }
 
+class AppBehavior extends Behavior {
+	mode: Mode = "clock";
+	kb: CardputerKeyboard | null = null;
+	kbTimer: unknown = null;
+	labelTimer: unknown = null;
+	prompt = "";
+	ssidDraft = "";
+	maskPass = false;
+	dateKey = "";
+	busy = false;
+
+	onDisplaying(content: unknown) {
+		const app = content as AppHost;
+		this.kb = new CardputerKeyboard();
+		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
+		this.labelTimer = Timer.repeat(() => this.refreshClockLabels(app), 500);
+
+		// Always show probe result briefly so a dead KB is obvious.
+		this.setLabels(app, this.kb.status, "W=WiFi");
+
+		const creds = loadWifiCreds();
+		if (creds)
+			this.startNet(app, creds);
+		else if (this.kb.available)
+			this.enterPrompt(app, "ssid");
+		else {
+			this.setLabels(app, this.kb.status, "no WiFi cfg");
+			this.showClock(app, true);
+		}
+	}
+
+	onKeyboardTick(app: AppHost) {
+		let stroke;
+		try {
+			stroke = this.kb?.poll() ?? null;
+		}
+		catch {
+			return;
+		}
+		if (!stroke)
+			return;
+
+		// W opens editor from clock OR busy/fail states.
+		const wantWifi = stroke.chars.some(ch => ch === "w" || ch === "W");
+		if (wantWifi && this.mode !== "ssid" && this.mode !== "pass") {
+			this.busy = false;
+			this.enterPrompt(app, "ssid");
+			return;
+		}
+
+		if (this.mode === "clock") {
+			// Debug: show raw chars so remap bugs are visible.
+			if (stroke.chars.length)
+				this.setLabels(app, formatDate(), `key:${stroke.chars.join("")}`);
+			return;
+		}
+
+		if (this.mode !== "ssid" && this.mode !== "pass")
+			return;
+
+		for (const ch of stroke.chars)
+			this.prompt += ch;
+		if (stroke.del && this.prompt.length > 0)
+			this.prompt = this.prompt.slice(0, -1);
+		if (stroke.enter) {
+			if (this.mode === "ssid") {
+				this.ssidDraft = this.prompt;
+				this.enterPrompt(app, "pass");
+			}
+			else {
+				const creds: WifiCreds = { ssid: this.ssidDraft, password: this.prompt };
+				saveWifiCreds(creds);
+				this.startNet(app, creds);
+			}
+			return;
+		}
+		this.paintPrompt(app);
+	}
+
+	enterPrompt(app: AppHost, which: "ssid" | "pass") {
+		this.mode = which;
+		this.prompt = which === "ssid" ? (loadWifiCreds()?.ssid ?? "") : "";
+		this.maskPass = which === "pass";
+		this.showClock(app, false);
+		this.paintPrompt(app);
+	}
+
+	paintPrompt(app: AppHost) {
+		const title = this.mode === "ssid" ? "SSID" : "Password";
+		const shown = this.maskPass ? "*".repeat(this.prompt.length) : this.prompt;
+		this.setLabels(app, title, "Enter=OK Del=BS");
+		setStringProp(contentByName(app, "valueLabel"), `${shown}_`);
+	}
+
+	startNet(app: AppHost, creds: WifiCreds) {
+		if (this.busy)
+			return;
+		this.busy = true;
+		this.mode = "busy";
+		this.showClock(app, false);
+		this.setLabels(app, "Connecting", creds.ssid);
+		setStringProp(contentByName(app, "valueLabel"), "...");
+
+		connectAndSync(creds, (msg) => {
+			this.setLabels(app, msg, `${creds.ssid} W=edit`);
+		}, (ok, detail) => {
+			this.busy = false;
+			this.mode = "clock";
+			this.dateKey = "";
+			this.showClock(app, true);
+			if (!ok)
+				this.setLabels(app, detail, "W=WiFi");
+			else
+				this.refreshClockLabels(app);
+		});
+	}
+
+	showClock(app: AppHost, on: boolean) {
+		setVisibleProp(contentByName(app, "clockPort"), on);
+		setVisibleProp(contentByName(app, "valueLabel"), !on);
+	}
+
+	setLabels(app: AppHost, top: string, bottom: string) {
+		setStringProp(contentByName(app, "dateLabel"), top);
+		setStringProp(contentByName(app, "lunarLabel"), bottom);
+	}
+
+	refreshClockLabels(app: AppHost) {
+		if (this.mode !== "clock")
+			return;
+		const p = beijingParts();
+		const key = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
+		if (key === this.dateKey)
+			return;
+		this.dateKey = key;
+		this.setLabels(app, formatDate(), formatLunar());
+	}
+}
+
 const HelloApplication = Application.template($ => ({
 	skin: backgroundSkin,
+	Behavior: AppBehavior,
 	contents: [
 		Label($, {
 			name: "dateLabel",
@@ -286,8 +406,16 @@ const HelloApplication = Application.template($ => ({
 			string: "",
 		}),
 		Port($, {
+			name: "clockPort",
 			left: 0, right: 0, top: 24, bottom: 22,
 			Behavior: SevenSegBehavior,
+		}),
+		Label($, {
+			name: "valueLabel",
+			left: 0, right: 0, top: 24, bottom: 22,
+			style: valueStyle,
+			string: "",
+			visible: false,
 		}),
 		Label($, {
 			name: "lunarLabel",

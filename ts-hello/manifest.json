@@ -3,11 +3,19 @@
 		"$(MODDABLE)/examples/manifest_base.json",
 		"$(MODDABLE)/examples/manifest_typings.json",
 		"$(MODDABLE)/examples/manifest_piu.json",
-		"$(MODDABLE)/examples/manifest_net.json"
+		"$(MODDABLE)/examples/manifest_net.json",
+		"$(MODULES)/files/preference"
 	],
 	"modules": {
-		"*": ["./main"]
+		"*": [
+			"./main",
+			"./netboot"
+		]
 	},
+	"preload": [
+		"keyboard",
+		"netboot"
+	],
 	"resources": {
 		"*-mask": [
 			"./fonts/Zpix-Regular-12"
@@ -19,14 +27,24 @@
 	"platforms": {
 		"esp32": {
 			"include": [
-				"$(MODULES)/drivers/st7789"
+				"$(MODULES)/drivers/st7789",
+				"$(MODULES)/io/i2c"
 			],
+			"modules": {
+				"keyboard": "./keyboard"
+			},
 			"config": {
 				"screen": "st7789",
 				"touch": "",
 				"touchCount": 0,
 				"backlight": "1",
-				"brightness": 90
+				"brightness": 90,
+				"keyboard": {
+					"sda": 8,
+					"scl": 9,
+					"address": 52,
+					"int": 11
+				}
 			},
 			"defines": {
 				"spi": {
@@ -65,6 +83,11 @@
 			"build": {
 				"ESP32_SUBCLASS": "esp32s3",
 				"USE_USB": "2"
+			}
+		},
+		"...": {
+			"modules": {
+				"keyboard": "./keyboard_stub"
 			}
 		}
 	}
