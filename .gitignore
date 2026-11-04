@@ -21,6 +21,8 @@ secrets.h
 **/secrets.h
 config.local.h
 **/config.local.h
+wifi.local.json
+**/wifi.local.json
 
 # OS / editor
 .DS_Store

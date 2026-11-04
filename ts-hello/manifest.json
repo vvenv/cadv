@@ -2,7 +2,8 @@
 	"include": [
 		"$(MODDABLE)/examples/manifest_base.json",
 		"$(MODDABLE)/examples/manifest_typings.json",
-		"$(MODDABLE)/examples/manifest_piu.json"
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"$(MODDABLE)/examples/manifest_net.json"
 	],
 	"modules": {
 		"*": ["./main"]
@@ -11,6 +12,9 @@
 		"*-mask": [
 			"./fonts/Zpix-Regular-12"
 		]
+	},
+	"config": {
+		"sntp": "ntp.aliyun.com"
 	},
 	"platforms": {
 		"esp32": {

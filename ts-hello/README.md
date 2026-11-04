@@ -47,12 +47,25 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 ./do.sh ts-flash    # 烧到 ESP32-S3（下载模式同 Cardputer）
 ```
 
-或手动：
+### Wi-Fi / NTP（真机对时）
+
+板端时间默认是 1970，需 Wi-Fi + SNTP。复制并填写（已 gitignore）：
+
+```bash
+cp ts-hello/wifi.local.json.example ts-hello/wifi.local.json
+# 编辑 ssid / password 后：
+./do.sh ts-flash
+```
+
+也可：`WIFI_SSID=… WIFI_PASSWORD=… ./do.sh ts-flash`  
+或手动：`mcconfig … ssid=… password=…`（NTP：`ntp.aliyun.com`）。
+
+或手动构建：
 
 ```bash
 cd ts-hello
 mcconfig -d -m -dn                          # 本机
-mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer USB Serial/JTAG（do.sh ts-flash 用这个）
+mcconfig -d -m -dn -p esp32/esp32s3_cdc ssid=… password=…   # Cardputer
 ```
 
 ## 范围说明
@@ -60,7 +73,8 @@ mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer USB Serial/JTAG（do.sh 
 | 有 | 没有 |
 |----|------|
 | TS 编译进固件 | 键盘 TCA8418 |
-| PIU + **7 段数码管时钟**（上：公历日期/星期，下：农历；`Zpix-Regular-12` 像素字） | Wi-Fi / NTP |
+| PIU + **7 段数码管时钟**（上：公历日期/星期，下：农历；`Zpix-Regular-12` 像素字） | 板上交互配网 |
+| Wi-Fi + SNTP 对时（`wifi.local.json` / 环境变量） | |
 | ESP32-S3 USB 下载 + ST7789（Cardputer ADV 引脚） | |
 
 完整 Cardputer-Adv UI 仍以 `firmware_arduino/`（C++）为主；本目录只验证「板端 TS」链路。

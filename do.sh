@@ -15,7 +15,7 @@
 #
 # TypeScript / Moddable（板端 Hello，需先装 Moddable SDK）:
 #   ./do.sh ts-sim                  # 桌面模拟器跑 ts-hello
-#   ./do.sh ts-flash                # 烧到 esp32/esp32s3（USB）
+#   ./do.sh ts-flash                # 烧到 esp32/esp32s3（USB；Wi-Fi 见 ts-hello/wifi.local.json）
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
 #
 # 其它:
@@ -246,6 +246,18 @@ need_moddable() {
   command -v mcconfig >/dev/null 2>&1 || log_die "找不到 mcconfig（MODDABLE=$MODDABLE）"
 }
 
+# Prints ssid=… / password=… lines for mcconfig from env or wifi.local.json.
+ts_wifi_args() {
+  local ssid="${WIFI_SSID:-}" password="${WIFI_PASSWORD:-}" file="$ROOT/ts-hello/wifi.local.json"
+  if [ -z "$ssid" ] && [ -f "$file" ]; then
+    ssid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8")).get("ssid") or "")' "$file")"
+    password="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8")).get("password") or "")' "$file")"
+  fi
+  [ -n "$ssid" ] || return 0
+  printf '%s\n' "ssid=$ssid"
+  printf '%s\n' "password=$password"
+}
+
 cmd_ts_check() {
   if [ -z "${MODDABLE:-}" ]; then
     if [ -d "$ROOT/third_party/moddable" ]; then
@@ -315,9 +327,27 @@ cmd_ts_flash() {
   ls -d "$HOME/.espressif/python_env"/idf* >/dev/null 2>&1 || log_die "IDF python_env 未就绪。等 install-python-env 结束后再试"
   # shellcheck disable=SC1091
   source "$IDF_PATH/export.sh"
+
+  local wifi_args=() line
+  while IFS= read -r line; do
+    [ -n "$line" ] && wifi_args+=("$line")
+  done < <(ts_wifi_args)
+  if [ "${#wifi_args[@]}" -eq 0 ]; then
+    log_warn "未配置 Wi-Fi：复制 ts-hello/wifi.local.json.example → wifi.local.json 后重烧，否则时钟停在 1970"
+  else
+    log_info "Wi-Fi SSID 已传入 mcconfig（密码不打印）"
+  fi
+
   log_info "Moddable 烧录 esp32/esp32s3_cdc（USB Serial/JTAG，适合 Cardputer）"
-  (cd "$ROOT/ts-hello" && mcconfig -d -m -dn -p esp32/esp32s3_cdc)
-  log_success "若成功，用串口/xsbug 看 Hello / tick 输出"
+  # Flash itself may succeed while xsbug connect fails with -dn; don't treat that as fatal.
+  set +e
+  (cd "$ROOT/ts-hello" && mcconfig -d -m -dn -p esp32/esp32s3_cdc "${wifi_args[@]}")
+  local rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    log_warn "mcconfig 退出码 $rc（若已 Hash verified / Done，多半是 xsbug 未连上，可忽略）"
+  fi
+  log_success "烧录流程结束；板子按 RESET。要对时需 wifi.local.json 或 WIFI_SSID/WIFI_PASSWORD"
 }
 
 run() {

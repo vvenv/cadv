@@ -81,6 +81,10 @@ function beijingParts(): { y: number; m: number; d: number; w: number; hh: numbe
 	};
 }
 
+function timeSynced(): boolean {
+	return beijingParts().y >= 2020;
+}
+
 /** Wall clock in Beijing time (UTC+8), independent of host TZ quirks. */
 function formatNow(): string {
 	const p = beijingParts();
@@ -88,6 +92,8 @@ function formatNow(): string {
 }
 
 function formatDate(): string {
+	if (!timeSynced())
+		return "等待对时";
 	const p = beijingParts();
 	return `${p.y}年${p.m}月${p.d}日 周${WEEKDAYS[p.w]}`;
 }
@@ -138,6 +144,8 @@ function lunarDayName(day: number): string {
 
 function formatLunar(): string {
 	const p = beijingParts();
+	if (!timeSynced())
+		return "无网络配置";
 	if (p.y < 1900 || p.y > 2100 || LUNAR_INFO.length <= p.y - 1900)
 		return "农历—";
 
@@ -210,7 +218,7 @@ class SevenSegBehavior extends Behavior {
 
 	syncLabels(port: PortContent) {
 		const p = beijingParts();
-		const key = `${p.y}-${p.m}-${p.d}`;
+		const key = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
 		if (key === this.dateKey)
 			return;
 		this.dateKey = key;
