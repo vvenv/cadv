@@ -1,8 +1,8 @@
 /*
 	Cardputer-Adv Moddable + TypeScript clock.
-	7-seg Beijing time; top solar date/weekday; bottom lunar YMD.
+	7-seg Beijing time; top solar date/weekday; bottom lunar + weather.
 	On-device Wi-Fi: W → SSID/password.
-	Sound: S / H / -/= ; Countdown: C → HH:MM:SS → Enter.
+	Sound: S / H / -/= ; Countdown: C; Alarm: A; Weather: T.
 */
 
 import {} from "piu/MC";
@@ -12,6 +12,7 @@ import { CardputerKeyboard } from "keyboard";
 import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
 import { ClockSound } from "sound";
 import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_MIN, type ClockSettings } from "settings";
+import { fetchWeather, formatLunarWithWeather, weatherLabel, WEATHER_REFRESH_MS } from "weather";
 
 type AppHost = {
 	content: (name: string) => unknown;
@@ -340,6 +341,8 @@ class AppBehavior extends Behavior {
 	alHours = 0;
 	alMinutes = 0;
 	lastAlarmKey = "";
+	weatherTimer: unknown = null;
+	weatherKey = "";
 
 	faceText(): string {
 		if (this.mode === "cd_edit")
@@ -361,6 +364,7 @@ class AppBehavior extends Behavior {
 		this.sound.setVolume(this.settings.volume);
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		this.labelTimer = Timer.repeat(() => this.onClockTick(app), 250);
+		this.weatherTimer = Timer.repeat(() => this.refreshWeather(app, false), WEATHER_REFRESH_MS);
 
 		this.flashStatus(app, `${this.kb.status} ${this.sound.status}`, formatSettings(this.settings));
 
@@ -372,6 +376,7 @@ class AppBehavior extends Behavior {
 		else {
 			this.setLabels(app, this.kb.status, "no WiFi cfg");
 			this.showClock(app, true);
+			this.refreshWeather(app, false);
 		}
 	}
 
@@ -388,14 +393,16 @@ class AppBehavior extends Behavior {
 	clockLabelKey(): string {
 		const p = beijingParts();
 		const day = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
+		const wx = weatherLabel() || "-";
 		if (!this.settings.alarmOn)
-			return `${day}|off`;
-		return `${day}|A${this.settings.alarmHH}:${this.settings.alarmMM}`;
+			return `${day}|off|${wx}`;
+		return `${day}|A${this.settings.alarmHH}:${this.settings.alarmMM}|${wx}`;
 	}
 
 	paintClockLabels(app: AppHost) {
-		this.setLabels(app, formatClockTop(this.settings), formatLunar());
+		this.setLabels(app, formatClockTop(this.settings), formatLunarWithWeather(formatLunar()));
 		this.dateKey = this.clockLabelKey();
+		this.weatherKey = weatherLabel();
 	}
 
 	/** Clear status overlay / ensure 7-seg + date/lunar are showing. */
@@ -566,6 +573,11 @@ class AppBehavior extends Behavior {
 				saveSettings(this.settings);
 				this.sound?.setVolume(v);
 				this.flashStatus(app, `Vol ${v}`, formatSettings(this.settings));
+				this.maybeBeep();
+				return;
+			}
+			if (chars.some(ch => ch === "t" || ch === "T")) {
+				this.refreshWeather(app, true);
 				this.maybeBeep();
 				return;
 			}
@@ -779,8 +791,29 @@ class AppBehavior extends Behavior {
 			this.showClock(app, true);
 			if (!ok)
 				this.setLabels(app, detail, "W=WiFi");
-			else
+			else {
 				this.onClockTick(app);
+				this.refreshWeather(app, true);
+			}
+		});
+	}
+
+	refreshWeather(app: AppHost, force: boolean) {
+		fetchWeather(force, (ok, detail) => {
+			if (this.mode !== "clock")
+				return;
+			if (force) {
+				this.flashStatus(app, ok ? "Weather" : "Wx fail", detail);
+				if (ok)
+					this.dateKey = "";
+				return;
+			}
+			if (!ok || detail === this.weatherKey)
+				return;
+			this.dateKey = "";
+			if (Date.now() < this.statusUntil)
+				return;
+			this.paintClockLabels(app);
 		});
 	}
 

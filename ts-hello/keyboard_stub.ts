@@ -11,6 +11,7 @@ export type KeyStroke = {
 };
 
 export class CardputerKeyboard {
+	status = "KB n/a";
 	get available(): boolean {
 		return false;
 	}

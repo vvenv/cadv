@@ -4,20 +4,23 @@
 		"$(MODDABLE)/examples/manifest_typings.json",
 		"$(MODDABLE)/examples/manifest_piu.json",
 		"$(MODDABLE)/examples/manifest_net.json",
-		"$(MODULES)/files/preference"
+		"$(MODULES)/files/preference",
+		"$(MODULES)/network/http"
 	],
 	"modules": {
 		"*": [
 			"./main",
 			"./netboot",
-			"./settings"
+			"./settings",
+			"./weather"
 		]
 	},
 	"preload": [
 		"keyboard",
 		"netboot",
 		"settings",
-		"sound"
+		"sound",
+		"weather"
 	],
 	"resources": {
 		"*-mask": [
@@ -25,7 +28,10 @@
 		]
 	},
 	"config": {
-		"sntp": "ntp.aliyun.com"
+		"sntp": "ntp.aliyun.com",
+		"weatherLat": 25.7212,
+		"weatherLon": 119.3841,
+		"weatherName": "Fuqing"
 	},
 	"platforms": {
 		"esp32": {

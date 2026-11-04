@@ -12,5 +12,6 @@ export class ClockSound {
 	click() {}
 	tick() {}
 	hourlyChime() {}
+	alarmChime() {}
 	play(_tones: { hz: number; ms: number }[]) {}
 }
