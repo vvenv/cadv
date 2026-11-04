@@ -68,6 +68,8 @@ export type KeyStroke = {
 	enter: boolean;
 	del: boolean;
 	shift: boolean;
+	/** Cardputer Esc: Fn+` or Ctrl+[ */
+	esc: boolean;
 };
 
 type KbConfig = { sda: number; scl: number; address: number };
@@ -214,6 +216,9 @@ export class CardputerKeyboard {
 		const chars: string[] = [];
 		let enter = false;
 		let del = false;
+		let esc = false;
+		const fn = mods.has(KEY_FN);
+		const ctrl = mods.has(KEY_LEFT_CTRL);
 		for (const { x, y } of this.#pressed.values()) {
 			const cell = KEY_MAP[y]?.[x];
 			if (!cell)
@@ -226,10 +231,15 @@ export class CardputerKeyboard {
 					del = true;
 				continue;
 			}
-			if (mods.has(KEY_FN) || mods.has(KEY_LEFT_CTRL) || mods.has(KEY_LEFT_ALT) || mods.has(KEY_OPT))
+			// Esc layer: Fn+` (silk Esc) or Ctrl+[
+			if ((fn && code === "`") || (ctrl && code === "[")) {
+				esc = true;
+				continue;
+			}
+			if (fn || ctrl || mods.has(KEY_LEFT_ALT) || mods.has(KEY_OPT))
 				continue;
 			chars.push(shift ? String(cell.b) : String(cell.a));
 		}
-		return { chars, enter, del, shift };
+		return { chars, enter, del, shift, esc };
 	}
 }

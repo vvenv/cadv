@@ -7,6 +7,7 @@ export type KeyStroke = {
 	enter: boolean;
 	del: boolean;
 	shift: boolean;
+	esc: boolean;
 };
 
 export class CardputerKeyboard {

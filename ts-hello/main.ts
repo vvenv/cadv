@@ -362,6 +362,11 @@ class AppBehavior extends Behavior {
 		if (this.mode !== "ssid" && this.mode !== "pass")
 			return;
 
+		if (stroke.esc) {
+			this.exitWifiPrompt(app);
+			return;
+		}
+
 		for (const ch of chars)
 			this.prompt += ch;
 		if (stroke.del && this.prompt.length > 0)
@@ -389,10 +394,21 @@ class AppBehavior extends Behavior {
 		this.paintPrompt(app);
 	}
 
+	/** Cancel Wi-Fi editor; keep previous Preference. */
+	exitWifiPrompt(app: AppHost) {
+		this.mode = "clock";
+		this.prompt = "";
+		this.ssidDraft = "";
+		this.dateKey = "";
+		this.showClock(app, true);
+		this.flashStatus(app, "WiFi cancel", "W=WiFi");
+		this.maybeBeep();
+	}
+
 	paintPrompt(app: AppHost) {
 		const title = this.mode === "ssid" ? "SSID" : "Password";
 		const shown = this.maskPass ? "*".repeat(this.prompt.length) : this.prompt;
-		this.setLabels(app, title, "Enter=OK Del=BS");
+		this.setLabels(app, title, "OK/BS Esc=quit");
 		setStringProp(contentByName(app, "valueLabel"), `${shown}_`);
 	}
 
