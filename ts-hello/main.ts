@@ -908,25 +908,25 @@ const HelloApplication = Application.template($ => ({
 	contents: [
 		Label($, {
 			name: "dateLabel",
-			left: 0, right: 0, top: 2, height: 18,
+			left: 0, right: 0, top: 2, height: 26,
 			style: titleStyle,
 			string: "",
 		}),
 		Port($, {
 			name: "clockPort",
-			left: 0, right: 0, top: 24, bottom: 22,
+			left: 0, right: 0, top: 32, bottom: 30,
 			Behavior: SevenSegBehavior,
 		}),
 		Label($, {
 			name: "valueLabel",
-			left: 0, right: 0, top: 24, bottom: 22,
+			left: 0, right: 0, top: 32, bottom: 30,
 			style: valueStyle,
 			string: "",
 			visible: false,
 		}),
 		Label($, {
 			name: "lunarLabel",
-			left: 0, right: 0, bottom: 2, height: 18,
+			left: 0, right: 0, bottom: 2, height: 26,
 			style: subStyle,
 			string: "",
 		}),
