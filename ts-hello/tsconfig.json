@@ -1,0 +1,12 @@
+{
+	"extends": "../third_party/moddable/typings/tsconfig.es2025.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"types": [
+			"../third_party/moddable/typings/xs"
+		]
+	},
+	"include": [
+		"*.ts"
+	]
+}
