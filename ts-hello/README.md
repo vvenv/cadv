@@ -1,7 +1,7 @@
 # ts-hello — Moddable + TypeScript 最小骨架
 
 板端用 **TypeScript**（经 Moddable XS）跑在 ESP32-S3 上。  
-当前级别：**串口 / xsbug 打印 Hello**，**未接** Cardputer 屏幕与键盘。
+桌面模拟器用 **PIU** 画 Hello + 实时时钟；真机同样走 PIU（默认模拟屏，**尚未**接到 Cardputer ST7789 / 键盘）。
 
 ## 一次安装（本机尚未装过时）
 
@@ -59,8 +59,8 @@ mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer USB Serial/JTAG（do.sh 
 
 | 有 | 没有 |
 |----|------|
-| TS 编译进固件 | ST7789 显示 |
-| `trace` / Timer | 键盘 TCA8418 |
-| ESP32-S3 USB 下载 | Wi-Fi / NTP 时钟逻辑 |
+| TS 编译进固件 | Cardputer ST7789 实驱 |
+| PIU Hello + 时钟 UI | 键盘 TCA8418 |
+| ESP32-S3 USB 下载 | Wi-Fi / NTP |
 
 完整 Cardputer-Adv UI 仍以 `firmware_arduino/`（C++）为主；本目录只验证「板端 TS」链路。

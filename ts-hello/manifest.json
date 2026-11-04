@@ -1,10 +1,18 @@
 {
 	"include": [
 		"$(MODDABLE)/examples/manifest_base.json",
-		"$(MODDABLE)/examples/manifest_typings.json"
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json"
 	],
 	"modules": {
 		"*": ["./main"]
+	},
+	"resources": {
+		"*-mask": [
+			"$(MODDABLE)/examples/assets/fonts/OpenSans-Regular-16",
+			"$(MODDABLE)/examples/assets/fonts/OpenSans-Regular-24",
+			"$(MODDABLE)/examples/assets/fonts/OpenSans-Semibold-20"
+		]
 	},
 	"platforms": {
 		"esp32": {

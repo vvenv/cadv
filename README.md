@@ -68,4 +68,4 @@ Cardputer-Adv **没有独立 RTC 芯片**，断电后时间会丢失，需要联
 
 本机已装好：`third_party/moddable`、`~/esp32/esp-idf-v6.1`、Espressif tools + `python@3.12` venv。`ts-check` 全绿即可烧。
 
-当前只有串口 `trace`，**未接** Cardputer 屏/键盘；完整时钟仍用 Arduino 固件。
+桌面 `ts-sim` 会开 mcsim 窗口画 Hello + 时钟。真机 UI 尚未接到 Cardputer ST7789/键盘；完整时钟仍用 Arduino 固件。
