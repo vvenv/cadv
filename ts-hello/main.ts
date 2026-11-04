@@ -125,6 +125,14 @@ function formatDate(): string {
 	return `${p.y}年${p.m}月${p.d}日 周${WEEKDAYS[p.w]}`;
 }
 
+/** Main-face top line; appends alarm mark when armed. */
+function formatClockTop(s: ClockSettings): string {
+	const base = formatDate();
+	if (!s.alarmOn)
+		return base;
+	return `${base} A${pad2(s.alarmHH)}:${pad2(s.alarmMM)}`;
+}
+
 function leapMonth(y: number): number {
 	return LUNAR_INFO[y - 1900] & 0xf;
 }
@@ -377,14 +385,25 @@ class AppBehavior extends Behavior {
 		this.statusUntil = Date.now() + 1500;
 	}
 
+	clockLabelKey(): string {
+		const p = beijingParts();
+		const day = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
+		if (!this.settings.alarmOn)
+			return `${day}|off`;
+		return `${day}|A${this.settings.alarmHH}:${this.settings.alarmMM}`;
+	}
+
+	paintClockLabels(app: AppHost) {
+		this.setLabels(app, formatClockTop(this.settings), formatLunar());
+		this.dateKey = this.clockLabelKey();
+	}
+
 	/** Clear status overlay / ensure 7-seg + date/lunar are showing. */
 	resumeClock(app: AppHost) {
 		this.statusUntil = 0;
 		this.mode = "clock";
 		this.showClock(app, true);
-		this.setLabels(app, formatDate(), formatLunar());
-		const p = beijingParts();
-		this.dateKey = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
+		this.paintClockLabels(app);
 	}
 
 	onKeyboardTick(app: AppHost) {
@@ -843,11 +862,10 @@ class AppBehavior extends Behavior {
 		if (Date.now() < this.statusUntil)
 			return;
 
-		const key = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
+		const key = this.clockLabelKey();
 		if (key === this.dateKey)
 			return;
-		this.dateKey = key;
-		this.setLabels(app, formatDate(), formatLunar());
+		this.paintClockLabels(app);
 	}
 }
 
