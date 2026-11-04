@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate ts-hello/fonts/UI-Regular-N BMFont from Source Han Sans SC.
+"""Generate app/fonts/UI-Regular-N BMFont from Source Han Sans SC.
 
 Usage:
   python3 scripts/gen-ui-font.py            # 20px Medium
@@ -16,7 +16,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = ROOT / "ts-hello" / "fonts"
+OUT_DIR = ROOT / "app" / "fonts"
 DEFAULT_FONT = Path.home() / "Library/Fonts/SourceHanSans-VF.otf.ttc"
 SC_INDEX = 2  # Source Han Sans SC VF
 FAMILY = "UI"
@@ -34,12 +34,12 @@ WEIGHT_NAME_TO_WGHT = {
 
 def collect_chars() -> str:
 	files = [
-		ROOT / "ts-hello" / "main.ts",
-		ROOT / "ts-hello" / "weather.ts",
-		ROOT / "ts-hello" / "settings.ts",
-		ROOT / "ts-hello" / "netboot.ts",
-		ROOT / "ts-hello" / "keyboard_stub.ts",
-		ROOT / "ts-hello" / "sound_stub.ts",
+		ROOT / "app" / "main.ts",
+		ROOT / "app" / "weather.ts",
+		ROOT / "app" / "settings.ts",
+		ROOT / "app" / "netboot.ts",
+		ROOT / "app" / "keyboard_stub.ts",
+		ROOT / "app" / "sound_stub.ts",
 	]
 	text = "\n".join(p.read_text(encoding="utf-8") for p in files if p.exists())
 	chars = {chr(c) for c in range(0x20, 0x7F)}  # full basic ASCII

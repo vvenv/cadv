@@ -1,12 +1,4 @@
-# PlatformIO
-.pio/
-compile_commands.json
-.vscode/.browse.c_cpp.db*
-.vscode/c_cpp_properties.json
-.vscode/launch.json
-.vscode/ipch
-
-# Arduino / build outputs
+# Build outputs
 *.elf
 *.bin
 *.hex
@@ -15,12 +7,10 @@ compile_commands.json
 *.a
 build/
 **/build/
+*.xsa
+app/build/
 
 # Secrets / local overrides
-secrets.h
-**/secrets.h
-config.local.h
-**/config.local.h
 wifi.local.json
 **/wifi.local.json
 
@@ -33,7 +23,7 @@ Thumbs.db
 .idea/
 *.iml
 
-# Python / PlatformIO tooling
+# Python
 __pycache__/
 *.pyc
 .venv/
@@ -44,7 +34,5 @@ venv/
 tmp/
 .cache/
 
-# Moddable build outputs (often under $MODDABLE/build; local tmp if any)
-ts-hello/build/
-*.xsa
+# Moddable SDK checkout (local)
 third_party/

@@ -1,5 +1,5 @@
 /*
-	Wi-Fi + SNTP bootstrap for ts-hello.
+	Wi-Fi + SNTP bootstrap for app.
 	Creds: Preference("wifi") first, then mc/config ssid/password.
 */
 

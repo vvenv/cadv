@@ -1,7 +1,7 @@
-# ts-hello — Moddable + TypeScript 最小骨架
+# app — Moddable + TypeScript 时钟
 
 板端用 **TypeScript**（经 Moddable XS）跑在 ESP32-S3 上。  
-桌面模拟器用 **PIU** 画 Hello + 实时时钟；真机同样走 PIU（默认模拟屏，**尚未**接到 Cardputer ST7789 / 键盘）。
+桌面模拟器用 **PIU** 画时钟；真机同样走 PIU + Cardputer-Adv ST7789 / TCA8418 键盘 / ES8311 扬声器。
 
 ## 一次安装（本机尚未装过时）
 
@@ -74,28 +74,26 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 也可预置（可选，烧录时写入 config；设备上仍可改）：
 
 ```bash
-cp ts-hello/wifi.local.json.example ts-hello/wifi.local.json
+cp app/wifi.local.json.example app/wifi.local.json
 ./do.sh ts-flash
 # 或 WIFI_SSID=… WIFI_PASSWORD=… ./do.sh ts-flash
 ```
 
 ```bash
-cd ts-hello
+cd app
 mcconfig -d -m -dn                          # 本机模拟
 mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer Adv
 ```
 
-## 范围说明
+## 功能范围
 
-| 有 | 没有 |
-|----|------|
-| TS 编译进固件 | 原版 Cardputer GPIO 矩阵键盘 |
-| PIU + **7 段数码管时钟**（上：`YYYY-MM-DD MO A:HH:MM`，下：`农历 XX℃ YY%`；思源黑体 20px，超长左右滚动） | |
-| Cardputer **Adv** 键盘配网（TCA8418）+ Preference | |
-| Wi-Fi + SNTP（`ntp.aliyun.com`） | |
-| ES8311 扬声器：`S` 声音 / `H` 整点报时 | |
-| 倒计时：`C` → 时分秒 | |
-| 闹钟：`A` → 时:分 → `Enter` 保存 | |
-| ESP32-S3 USB 下载 + ST7789 | |
-
-完整 Cardputer-Adv UI 仍以 `firmware_arduino/`（C++）为主；本目录只验证「板端 TS」链路。
+| 有 |
+|----|
+| TS 编译进固件 |
+| PIU + **7 段数码管时钟**（上：`YYYY-MM-DD MO A:HH:MM`，下：`农历 XX℃ YY%`；思源黑体 20px，超长左右滚动） |
+| Cardputer **Adv** 键盘配网（TCA8418）+ Preference |
+| Wi-Fi + SNTP（`ntp.aliyun.com`） |
+| ES8311 扬声器：`S` 声音 / `H` 整点报时 |
+| 倒计时：`C` → 时分秒 |
+| 闹钟：`A` → 时:分 → `Enter` 保存 |
+| ESP32-S3 USB 下载 + ST7789 |
