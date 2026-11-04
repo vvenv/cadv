@@ -9,7 +9,7 @@
 	},
 	"resources": {
 		"*-mask": [
-			"$(MODDABLE)/examples/assets/fonts/OpenSans-Regular-16"
+			"./fonts/Zpix-Regular-12"
 		]
 	},
 	"platforms": {
