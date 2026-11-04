@@ -1,0 +1,58 @@
+# ts-hello — Moddable + TypeScript 最小骨架
+
+板端用 **TypeScript**（经 Moddable XS）跑在 ESP32-S3 上。  
+当前级别：**串口 / xsbug 打印 Hello**，**未接** Cardputer 屏幕与键盘。
+
+## 一次安装（本机尚未装过时）
+
+按官方文档安装 Moddable SDK + ESP32 工具链：
+
+- https://github.com/Moddable-OpenSource/moddable  
+- https://moddable.com/documentation/devices/esp32  
+
+装完后 shell 里应有：
+
+```bash
+echo $MODDABLE   # 指向 Moddable 仓库根目录
+command -v mcconfig
+```
+
+本仓库已装到 `third_party/moddable`；也可用：
+
+```bash
+./scripts/setup-moddable-env.sh   # 写入 ~/.zshrc
+# 或手动：
+export MODDABLE="$HOME/vvenv/cadv/third_party/moddable"
+export PATH="$MODDABLE/build/bin/mac/release:$PATH"
+export IDF_PATH="$HOME/esp32/esp-idf-v6.1"
+source "$IDF_PATH/export.sh"      # 烧录 ESP32 前需要
+```
+
+## 构建
+
+在仓库根目录：
+
+```bash
+./do.sh ts-sim      # 桌面模拟器（mac），看 xsbug / 控制台 trace
+./do.sh ts-flash    # 烧到 ESP32-S3（下载模式同 Cardputer）
+```
+
+或手动：
+
+```bash
+cd ts-hello
+mcconfig -d -m -dn                 # 本机
+mcconfig -d -m -dn -p esp32/esp32s3
+# 更接近 Stamp-S3 核心板：
+# mcconfig -d -m -dn -p esp32/m5stamp_s3
+```
+
+## 范围说明
+
+| 有 | 没有 |
+|----|------|
+| TS 编译进固件 | ST7789 显示 |
+| `trace` / Timer | 键盘 TCA8418 |
+| ESP32-S3 USB 下载 | Wi-Fi / NTP 时钟逻辑 |
+
+完整 Cardputer-Adv UI 仍以 `firmware_arduino/`（C++）为主；本目录只验证「板端 TS」链路。

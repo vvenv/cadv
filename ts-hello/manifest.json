@@ -1,0 +1,17 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json"
+	],
+	"modules": {
+		"*": ["./main"]
+	},
+	"platforms": {
+		"esp32": {
+			"build": {
+				"ESP32_SUBCLASS": "esp32s3",
+				"USE_USB": "2"
+			}
+		}
+	}
+}

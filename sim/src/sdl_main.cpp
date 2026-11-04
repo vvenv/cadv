@@ -13,6 +13,8 @@ __attribute__((weak)) int user_func(bool* running) {
 }
 
 int main(int, char**) {
+    // Require Ctrl for L/R rotate / 1–6 scale so plain R/W/C reach firmware.
+    lgfx::Panel_sdl::setShortcutKeymod(KMOD_LCTRL);
     // Second arg: frame pacing for SDL panel redraw (ms).
     return lgfx::Panel_sdl::main(user_func, 64);
 }

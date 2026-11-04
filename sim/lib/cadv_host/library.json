@@ -1,0 +1,12 @@
+{
+  "name": "cadv_host",
+  "version": "1.0.0",
+  "description": "Host stubs so firmware/src runs under M5GFX SDL (WiFi, NVS, Cardputer keyboard)",
+  "build": {
+    "includeDir": "include",
+    "srcDir": "src",
+    "flags": [
+      "-Iinclude"
+    ]
+  }
+}

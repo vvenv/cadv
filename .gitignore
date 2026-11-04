@@ -40,3 +40,8 @@ venv/
 *.log
 tmp/
 .cache/
+
+# Moddable build outputs (often under $MODDABLE/build; local tmp if any)
+ts-hello/build/
+*.xsa
+third_party/

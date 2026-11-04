@@ -8,10 +8,15 @@
 #   ./do.sh monitor [端口]          # 串口监视 115200
 #   ./do.sh port                    # 列出可用串口
 #
-# 本机模拟（SDL，240×135，不烧录）:
+# 本机模拟（SDL 跑 firmware/src，不烧录）:
 #   ./do.sh sim                     # 构建（如需）并启动模拟器
 #   ./do.sh sim-build               # 只构建模拟器
 #   ./do.sh sim-stop                # 关掉正在跑的模拟器
+#
+# TypeScript / Moddable（板端 Hello，需先装 Moddable SDK）:
+#   ./do.sh ts-sim                  # 桌面模拟器跑 ts-hello
+#   ./do.sh ts-flash                # 烧到 esp32/esp32s3（USB）
+#   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
 #
 # 其它:
 #   ./do.sh clean                   # 清 .pio / 本地日志
@@ -141,12 +146,42 @@ cmd_sim_stop() {
 
 cmd_sim() {
   need_cmd pio
-  # build_flags（如 M5GFX_SCALE）改 ini 不会自动触发编译，这里按时间戳强制重建
-  if [ ! -x "$SIM_PROG" ] || [ "$ROOT/sim/platformio.ini" -nt "$SIM_PROG" ]; then
+  # ini / firmware / host stubs 变更不会总被 pio 感知，按时间戳强制重建
+  local need_build=0
+  if [ ! -x "$SIM_PROG" ]; then
+    need_build=1
+  else
+    local f
+    for f in \
+      "$ROOT/sim/platformio.ini" \
+      "$ROOT/firmware/src/main.cpp" \
+      "$ROOT/firmware/include/config.h" \
+      "$ROOT/sim/src/sdl_main.cpp" \
+      "$ROOT/sim/lib/cadv_host/include/Arduino.h" \
+      "$ROOT/sim/lib/cadv_host/include/M5Cardputer.h" \
+      "$ROOT/sim/lib/cadv_host/include/WiFi.h" \
+      "$ROOT/sim/lib/cadv_host/include/Preferences.h" \
+      "$ROOT/sim/lib/cadv_host/src/M5Cardputer.cpp" \
+      "$ROOT/sim/lib/cadv_host/src/Preferences.cpp"
+    do
+      if [ -e "$f" ] && [ "$f" -nt "$SIM_PROG" ]; then
+        need_build=1
+        break
+      fi
+    done
+  fi
+  if [ "$need_build" -eq 1 ]; then
     cmd_sim_build
   fi
+
+  # 首次启动预置假 Wi-Fi，跳过配网；W 可重配。Wi-Fi/NTP 在主机上是 stub。
+  local prefs=/tmp/cadv-sim-clock.prefs
+  if [ ! -f "$prefs" ]; then
+    printf 'ssid=sim\npass=sim\n' >"$prefs"
+  fi
+
   cmd_sim_stop >/dev/null 2>&1 || true
-  log_info "启动模拟器（Dock 里找窗口；L/R 旋转）"
+  log_info "启动模拟器（跑 firmware/src；Dock 找窗口；Ctrl+L/R 旋转；R 重校时 W 重配 Wi-Fi）"
   "$SIM_PROG" >/tmp/cadv-sim.log 2>&1 &
   disown || true
   sleep 0.4
@@ -163,6 +198,79 @@ cmd_clean() {
   log_success "已清理 .pio 与临时日志"
 }
 
+# ---------- Moddable / TypeScript ----------
+
+need_moddable() {
+  if [ -z "${MODDABLE:-}" ] || [ ! -d "${MODDABLE:-}" ]; then
+    if [ -d "$ROOT/third_party/moddable" ]; then
+      export MODDABLE="$ROOT/third_party/moddable"
+    else
+      log_die "未设置 MODDABLE。先按 ts-hello/README.md 安装 Moddable SDK，并 export MODDABLE=..."
+    fi
+  fi
+  # ensure mcconfig on PATH (common mac layout)
+  if ! command -v mcconfig >/dev/null 2>&1; then
+    local cand="$MODDABLE/build/bin/mac/release"
+    [ -d "$cand" ] && export PATH="$cand:$PATH"
+  fi
+  command -v mcconfig >/dev/null 2>&1 || log_die "找不到 mcconfig（MODDABLE=$MODDABLE）"
+}
+
+cmd_ts_check() {
+  if [ -z "${MODDABLE:-}" ]; then
+    if [ -d "$ROOT/third_party/moddable" ]; then
+      export MODDABLE="$ROOT/third_party/moddable"
+    else
+      log_warn "MODDABLE 未设置"
+    fi
+  fi
+  if [ -n "${MODDABLE:-}" ]; then
+    log_info "MODDABLE=$MODDABLE"
+    [ -d "$MODDABLE" ] && log_success "目录存在" || log_error "目录不存在"
+  fi
+  if ! command -v mcconfig >/dev/null 2>&1; then
+    local cand="${MODDABLE:-}/build/bin/mac/release"
+    [ -n "${MODDABLE:-}" ] && [ -d "$cand" ] && export PATH="$cand:$PATH"
+  fi
+  if command -v mcconfig >/dev/null 2>&1; then
+    log_success "mcconfig: $(command -v mcconfig)"
+  else
+    log_warn "mcconfig 不在 PATH"
+  fi
+  [ -f "$ROOT/ts-hello/main.ts" ] && log_success "ts-hello/main.ts 就绪" || log_error "缺少 ts-hello"
+  local idf="${IDF_PATH:-$HOME/esp32/esp-idf-v6.1}"
+  if [ -f "$idf/export.sh" ]; then
+    log_success "ESP-IDF: $idf"
+  else
+    log_warn "ESP-IDF 未就绪: $idf"
+  fi
+  if [ -d "$HOME/.espressif/tools" ]; then
+    log_info "Espressif tools: $(du -sh "$HOME/.espressif" 2>/dev/null | awk '{print $1}')"
+  else
+    log_warn "Espressif tools 尚未安装（./install.sh esp32s3）"
+  fi
+}
+
+cmd_ts_sim() {
+  need_moddable
+  log_info "Moddable 桌面模拟：ts-hello（-dn 不弹 xsbug）"
+  (cd "$ROOT/ts-hello" && mcconfig -d -m -dn -p mac)
+}
+
+cmd_ts_flash() {
+  need_moddable
+  # ESP-IDF env required
+  if [ -z "${IDF_PATH:-}" ] || [ ! -f "${IDF_PATH}/export.sh" ]; then
+    export IDF_PATH="${HOME}/esp32/esp-idf-v6.1"
+  fi
+  [ -f "$IDF_PATH/export.sh" ] || log_die "缺少 ESP-IDF：$IDF_PATH（安装未完成）"
+  # shellcheck disable=SC1091
+  source "$IDF_PATH/export.sh"
+  log_info "Moddable 烧录 esp32/esp32s3_cdc（USB Serial/JTAG，适合 Cardputer）"
+  (cd "$ROOT/ts-hello" && mcconfig -d -m -dn -p esp32/esp32s3_cdc)
+  log_success "若成功，用串口/xsbug 看 Hello / tick 输出"
+}
+
 run() {
   local cmd="$1"
   shift || true
@@ -175,6 +283,9 @@ run() {
     sim) cmd_sim ;;
     sim-build) cmd_sim_build ;;
     sim-stop) cmd_sim_stop ;;
+    ts-check) cmd_ts_check ;;
+    ts-sim) cmd_ts_sim ;;
+    ts-flash) cmd_ts_flash ;;
     clean) cmd_clean ;;
     -h | --help | help) usage ;;
     *)
@@ -202,6 +313,9 @@ main_menu() {
           "back:返回" \
           "sim-build:只构建模拟器（pio）" \
           "sim-stop:停止模拟器" \
+          "ts-check:检查 Moddable / TS 环境" \
+          "ts-sim:TS Hello 桌面模拟" \
+          "ts-flash:TS Hello 烧 ESP32-S3" \
           "port:列出串口" \
           "clean:清理 .pio / 临时日志" \
           "help:命令说明")"
