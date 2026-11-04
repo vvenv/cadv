@@ -21,9 +21,13 @@ type AppHost = {
 const BEIJING_OFFSET_SEC = 8 * 3600;
 
 const backgroundSkin = new Skin({ fill: "black" });
-const titleStyle = new Style({ font: "20px UI", color: "white", horizontal: "center", vertical: "middle" });
+/** Left-aligned: marquee ports position text manually. */
+const marqueeStyle = new Style({ font: "20px UI", color: "white", horizontal: "left", vertical: "middle" });
 const valueStyle = new Style({ font: "12px Zpix", color: "#39FF14", horizontal: "center", vertical: "middle" });
-const subStyle = new Style({ font: "20px UI", color: "white", horizontal: "center", vertical: "middle" });
+
+const MARQUEE_HOLD_MS = 0; // smoke: was 900
+const MARQUEE_TICK_MS = 40;
+const MARQUEE_PX = 4; // smoke: was 1
 
 const ON = "#39FF14";
 const OFF = "#143214";
@@ -123,8 +127,7 @@ function formatDate(): string {
 	if (!timeSynced())
 		return "等待对时";
 	const p = beijingParts();
-	// No solar year — 干支年 is on the bottom line; keeps 20px labels inside 240px.
-	return `${p.m}月${p.d}日 周${WEEKDAYS[p.w]}`;
+	return `${p.y}年${p.m}月${p.d}日 周${WEEKDAYS[p.w]}`;
 }
 
 /** Main-face top line; appends alarm mark when armed. */
@@ -253,6 +256,80 @@ function setVisibleProp(target: unknown, value: boolean) {
 		(target as { visible: boolean }).visible = value;
 }
 
+function setMarqueeText(target: unknown, value: string) {
+	if (!target || typeof target !== "object" || !("behavior" in target))
+		return;
+	const b = (target as { behavior?: { setText?: (port: PortContent, text: string) => void } }).behavior;
+	if (b && typeof b.setText === "function")
+		b.setText(target as PortContent, value);
+}
+
+/** Bounce-scroll a single line when it is wider than the port. */
+class MarqueeBehavior extends Behavior {
+	string = "";
+	textW = 0;
+	offset = 0;
+	dir = 1;
+	holdUntil = 0;
+
+	setText(port: PortContent, text: string) {
+		if (text === this.string)
+			return;
+		this.string = text;
+		this.textW = port.measureString(text, marqueeStyle).width;
+		this.offset = 0;
+		this.dir = 1;
+		this.holdUntil = Date.now() + MARQUEE_HOLD_MS;
+		port.invalidate();
+	}
+
+	onDisplaying(port: PortContent) {
+		if (this.string)
+			this.textW = port.measureString(this.string, marqueeStyle).width;
+		port.interval = MARQUEE_TICK_MS;
+		port.start();
+		port.invalidate();
+	}
+
+	onTimeChanged(port: PortContent) {
+		const maxScroll = this.textW - port.width;
+		if (maxScroll <= 0) {
+			if (this.offset !== 0) {
+				this.offset = 0;
+				port.invalidate();
+			}
+			return;
+		}
+		const now = Date.now();
+		if (now < this.holdUntil)
+			return;
+		this.offset += this.dir * MARQUEE_PX;
+		if (this.offset >= maxScroll) {
+			this.offset = maxScroll;
+			this.dir = -1;
+			this.holdUntil = now + MARQUEE_HOLD_MS;
+		}
+		else if (this.offset <= 0) {
+			this.offset = 0;
+			this.dir = 1;
+			this.holdUntil = now + MARQUEE_HOLD_MS;
+		}
+		port.invalidate();
+	}
+
+	onDraw(port: PortContent) {
+		const text = this.string;
+		if (!text)
+			return;
+		const maxScroll = this.textW - port.width;
+		const x = maxScroll <= 0
+			? Math.floor((port.width - this.textW) / 2)
+			: -this.offset;
+		const drawW = Math.max(this.textW, port.width);
+		port.drawString(text, marqueeStyle, "white", x, 0, drawW, port.height);
+	}
+}
+
 function faceFromPort(port: PortContent): string {
 	const container = port.container;
 	if (container && typeof container === "object" && "behavior" in container) {
@@ -266,19 +343,24 @@ function faceFromPort(port: PortContent): string {
 	return formatNow();
 }
 
+/** Colon and edit caret: lit for the first half of each second. */
+function secondBlink(): boolean {
+	return (Date.now() % 1000) < 500;
+}
+
 class SevenSegBehavior extends Behavior {
 	string: string = "--:--:--";
 	blink: boolean = true;
 
 	onDisplaying(port: PortContent) {
 		this.string = faceFromPort(port);
-		this.blink = true;
+		this.blink = secondBlink();
 		port.interval = 250;
 		port.start();
 		port.invalidate();
 	}
 	onTimeChanged(port: PortContent) {
-		this.blink = !this.blink;
+		this.blink = secondBlink();
 		this.string = faceFromPort(port);
 		port.invalidate();
 	}
@@ -401,7 +483,12 @@ class AppBehavior extends Behavior {
 	}
 
 	paintClockLabels(app: AppHost) {
-		this.setLabels(app, formatClockTop(this.settings), formatLunarWithWeather(formatLunar()));
+		// SMOKE_MARQUEE: force overflow; remove after capture
+		this.setLabels(
+			app,
+			">>> " + formatClockTop(this.settings) + " <<< ALARM-SCROLL-TEST",
+			">>> " + formatLunarWithWeather(formatLunar()) + " <<< WX-SCROLL-TEST",
+		);
 		this.dateKey = this.clockLabelKey();
 		this.weatherKey = weatherLabel();
 	}
@@ -824,8 +911,8 @@ class AppBehavior extends Behavior {
 	}
 
 	setLabels(app: AppHost, top: string, bottom: string) {
-		setStringProp(contentByName(app, "dateLabel"), top);
-		setStringProp(contentByName(app, "lunarLabel"), bottom);
+		setMarqueeText(contentByName(app, "dateLabel"), top);
+		setMarqueeText(contentByName(app, "lunarLabel"), bottom);
 	}
 
 	onClockTick(app: AppHost) {
@@ -907,11 +994,10 @@ const HelloApplication = Application.template($ => ({
 	skin: backgroundSkin,
 	Behavior: AppBehavior,
 	contents: [
-		Label($, {
+		Port($, {
 			name: "dateLabel",
 			left: 0, right: 0, top: 0, height: 32,
-			style: titleStyle,
-			string: "",
+			Behavior: MarqueeBehavior,
 		}),
 		Port($, {
 			name: "clockPort",
@@ -925,11 +1011,10 @@ const HelloApplication = Application.template($ => ({
 			string: "",
 			visible: false,
 		}),
-		Label($, {
+		Port($, {
 			name: "lunarLabel",
 			left: 0, right: 0, bottom: 0, height: 32,
-			style: subStyle,
-			string: "",
+			Behavior: MarqueeBehavior,
 		}),
 	],
 }));
