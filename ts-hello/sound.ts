@@ -119,6 +119,18 @@ export class ClockSound {
 		]);
 	}
 
+	/** Alarm ring (longer repeating motif). */
+	alarmChime() {
+		this.play([
+			{ hz: 880, ms: 160 },
+			{ hz: 1175, ms: 160 },
+			{ hz: 880, ms: 160 },
+			{ hz: 1175, ms: 160 },
+			{ hz: 1319, ms: 280 },
+			{ hz: 988, ms: 220 },
+		]);
+	}
+
 	play(tones: Tone[]) {
 		if (!this.#ready || !this.#audio)
 			return;

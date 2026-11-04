@@ -11,7 +11,7 @@ import Timer from "timer";
 import { CardputerKeyboard } from "keyboard";
 import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
 import { ClockSound } from "sound";
-import { formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_MIN, type ClockSettings } from "settings";
+import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_MIN, type ClockSettings } from "settings";
 
 type AppHost = {
 	content: (name: string) => unknown;
@@ -63,7 +63,7 @@ const SEG: number[] = [
 	0b1011011, 0b1011111, 0b1110000, 0b1111111, 0b1111011,
 ];
 
-type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done";
+type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring";
 
 function pad2(n: number): string {
 	return n < 10 ? `0${n}` : `${n}`;
@@ -309,7 +309,7 @@ class AppBehavior extends Behavior {
 	mode: Mode = "clock";
 	kb: CardputerKeyboard | null = null;
 	sound: ClockSound | null = null;
-	settings: ClockSettings = { sound: true, hourly: true, volume: 6 };
+	settings: ClockSettings = { sound: true, hourly: true, volume: 6, alarmOn: false, alarmHH: 7, alarmMM: 0 };
 	kbTimer: unknown = null;
 	labelTimer: unknown = null;
 	prompt = "";
@@ -327,12 +327,21 @@ class AppBehavior extends Behavior {
 	cdStep = 0;
 	cdHours = 0;
 	cdMinutes = 0;
+	/** Alarm edit: 0=hour 1=min */
+	alStep = 0;
+	alHours = 0;
+	alMinutes = 0;
+	lastAlarmKey = "";
 
 	faceText(): string {
 		if (this.mode === "cd_edit")
 			return this.cdSlotsText();
+		if (this.mode === "al_edit")
+			return this.alSlotsText();
 		if (this.mode === "cd_run" || this.mode === "cd_done")
 			return formatHMS(this.cdRemainSec);
+		if (this.mode === "al_ring")
+			return `${pad2(this.settings.alarmHH)}:${pad2(this.settings.alarmMM)}:00`;
 		return formatNow();
 	}
 
@@ -405,6 +414,58 @@ class AppBehavior extends Behavior {
 			return;
 		}
 
+		if (this.mode === "al_ring") {
+			if (stroke.esc || stroke.enter || chars.some(ch => ch === "a" || ch === "A")) {
+				this.resumeClock(app);
+				this.maybeBeep();
+			}
+			return;
+		}
+
+		if (this.mode === "al_edit") {
+			if (stroke.esc) {
+				this.resumeClock(app);
+				this.maybeBeep();
+				return;
+			}
+			let typed = false;
+			for (const ch of chars) {
+				if (ch >= "0" && ch <= "9" && this.prompt.length < 2) {
+					this.prompt += ch;
+					typed = true;
+				}
+			}
+			if (stroke.del) {
+				if (this.prompt.length > 0)
+					this.prompt = this.prompt.slice(0, -1);
+				else if (this.alStep > 0) {
+					this.alStep = 0;
+					this.prompt = String(this.alHours);
+					if (this.prompt === "0")
+						this.prompt = "";
+				}
+				else {
+					// Del on empty hour → clear saved alarm
+					this.settings.alarmOn = false;
+					saveSettings(this.settings);
+					this.resumeClock(app);
+					this.flashStatus(app, "Alarm OFF", "A=set");
+					this.maybeBeep();
+					return;
+				}
+			}
+			if (typed && this.prompt.length >= 2 && this.alStep === 0) {
+				this.commitAlarmField(app);
+				return;
+			}
+			if (stroke.enter) {
+				this.commitAlarmField(app);
+				return;
+			}
+			this.paintAlarmPrompt(app);
+			return;
+		}
+
 		if (this.mode === "cd_edit") {
 			if (stroke.esc) {
 				this.resumeClock(app);
@@ -451,6 +512,11 @@ class AppBehavior extends Behavior {
 			}
 			if (chars.some(ch => ch === "c" || ch === "C")) {
 				this.enterCountdownEdit(app);
+				this.maybeBeep();
+				return;
+			}
+			if (chars.some(ch => ch === "a" || ch === "A")) {
+				this.enterAlarmEdit(app);
 				this.maybeBeep();
 				return;
 			}
@@ -524,6 +590,62 @@ class AppBehavior extends Behavior {
 		this.prompt = "";
 		this.showClock(app, true);
 		this.paintCountdownPrompt(app);
+	}
+
+	enterAlarmEdit(app: AppHost) {
+		this.busy = false;
+		this.statusUntil = 0;
+		this.mode = "al_edit";
+		this.alStep = 0;
+		this.alHours = this.settings.alarmOn ? this.settings.alarmHH : 0;
+		this.alMinutes = this.settings.alarmOn ? this.settings.alarmMM : 0;
+		this.prompt = "";
+		this.showClock(app, true);
+		this.paintAlarmPrompt(app);
+	}
+
+	alSlotActive(): string {
+		if (this.prompt.length <= 0)
+			return "__";
+		if (this.prompt.length === 1)
+			return `${this.prompt}_`;
+		return this.prompt.slice(0, 2);
+	}
+
+	alSlotsText(): string {
+		const h = this.alStep > 0 ? pad2(this.alHours) : this.alSlotActive();
+		const m = this.alStep === 1 ? this.alSlotActive() : "__";
+		return `${h}:${m}`;
+	}
+
+	commitAlarmField(app: AppHost) {
+		const max = this.alStep === 0 ? 23 : 59;
+		const n = parseFieldDigits(this.prompt, max);
+		if (n === null) {
+			this.paintAlarmPrompt(app, "Bad");
+			return;
+		}
+		if (this.alStep === 0) {
+			this.alHours = n;
+			this.alStep = 1;
+			this.prompt = "";
+			this.maybeBeep();
+			this.paintAlarmPrompt(app);
+			return;
+		}
+		this.settings.alarmOn = true;
+		this.settings.alarmHH = this.alHours;
+		this.settings.alarmMM = n;
+		saveSettings(this.settings);
+		this.resumeClock(app);
+		this.flashStatus(app, formatAlarm(this.settings), "saved");
+		this.maybeBeep();
+	}
+
+	paintAlarmPrompt(app: AppHost, err?: string) {
+		const top = err ?? (this.settings.alarmOn ? formatAlarm(this.settings) : "设闹钟");
+		const bottom = this.alStep === 0 ? "时 满2位/Del关 Esc" : "分 Enter=开 Esc";
+		this.setLabels(app, top, bottom);
 	}
 
 	/** Active slot: digits + trailing `_`, empty → `__`. */
@@ -676,24 +798,45 @@ class AppBehavior extends Behavior {
 			return;
 		}
 
+		if (this.mode === "al_ring") {
+			return;
+		}
+
 		if (this.mode !== "clock")
 			return;
 
 		const p = beijingParts();
 
-		// Second tick whenever sound is on (even while status flash shows).
-		if (this.settings.sound && p.ss !== this.lastTickSec) {
+		// Per-second edge (alarm fires even if Snd off; ticks still need Snd).
+		if (p.ss !== this.lastTickSec) {
 			this.lastTickSec = p.ss;
-			if (timeSynced() && this.settings.hourly && p.mm === 0 && p.ss === 0) {
-				const chimeKey = `${p.y}-${p.m}-${p.d}-${p.hh}`;
-				if (chimeKey !== this.lastChimeKey) {
-					this.lastChimeKey = chimeKey;
-					this.sound?.hourlyChime();
-					this.flashStatus(app, `${pad2(p.hh)}:00`, "Hourly");
-				}
+			const alarmKey = `${p.y}-${p.m}-${p.d}-${p.hh}-${p.mm}`;
+			const hitAlarm = timeSynced()
+				&& this.settings.alarmOn
+				&& p.hh === this.settings.alarmHH
+				&& p.mm === this.settings.alarmMM
+				&& p.ss === 0
+				&& alarmKey !== this.lastAlarmKey;
+			if (hitAlarm) {
+				this.lastAlarmKey = alarmKey;
+				this.mode = "al_ring";
+				this.statusUntil = 0;
+				this.showClock(app, true);
+				this.setLabels(app, formatAlarm(this.settings), "Esc=关");
+				this.sound?.alarmChime();
 			}
-			else {
-				this.sound?.tick();
+			else if (this.settings.sound) {
+				if (timeSynced() && this.settings.hourly && p.mm === 0 && p.ss === 0) {
+					const chimeKey = `${p.y}-${p.m}-${p.d}-${p.hh}`;
+					if (chimeKey !== this.lastChimeKey) {
+						this.lastChimeKey = chimeKey;
+						this.sound?.hourlyChime();
+						this.flashStatus(app, `${pad2(p.hh)}:00`, "Hourly");
+					}
+				}
+				else {
+					this.sound?.tick();
+				}
 			}
 		}
 

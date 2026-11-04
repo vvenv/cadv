@@ -13,6 +13,9 @@ export type ClockSettings = {
 	sound: boolean;
 	hourly: boolean;
 	volume: number; // 0..10
+	alarmOn: boolean;
+	alarmHH: number; // 0..23
+	alarmMM: number; // 0..59
 };
 
 function readBool(name: string, fallback: boolean): boolean {
@@ -57,6 +60,9 @@ export function loadSettings(): ClockSettings {
 		sound: readBool("sound", true),
 		hourly: readBool("hourly", true),
 		volume: readInt("volume", VOL_DEFAULT, VOL_MIN, VOL_MAX),
+		alarmOn: readBool("alarmOn", false),
+		alarmHH: readInt("alarmHH", 7, 0, 23),
+		alarmMM: readInt("alarmMM", 0, 0, 59),
 	};
 }
 
@@ -64,6 +70,17 @@ export function saveSettings(s: ClockSettings) {
 	Preference.set(PREF, "sound", s.sound ? 1 : 0);
 	Preference.set(PREF, "hourly", s.hourly ? 1 : 0);
 	Preference.set(PREF, "volume", s.volume);
+	Preference.set(PREF, "alarmOn", s.alarmOn ? 1 : 0);
+	Preference.set(PREF, "alarmHH", s.alarmHH);
+	Preference.set(PREF, "alarmMM", s.alarmMM);
+}
+
+export function formatAlarm(s: ClockSettings): string {
+	if (!s.alarmOn)
+		return "Alarm OFF";
+	const hh = s.alarmHH < 10 ? `0${s.alarmHH}` : `${s.alarmHH}`;
+	const mm = s.alarmMM < 10 ? `0${s.alarmMM}` : `${s.alarmMM}`;
+	return `Alarm ${hh}:${mm}`;
 }
 
 export function formatSettings(s: ClockSettings): string {
