@@ -10,6 +10,10 @@
 	"modules": {
 		"*": [
 			"./main",
+			"./app-behavior",
+			"./marquee",
+			"./sevenseg",
+			"./lunar",
 			"./netboot",
 			"./settings",
 			"./weather"
@@ -17,6 +21,10 @@
 	},
 	"preload": [
 		"keyboard",
+		"app-behavior",
+		"marquee",
+		"sevenseg",
+		"lunar",
 		"netboot",
 		"settings",
 		"sound",
