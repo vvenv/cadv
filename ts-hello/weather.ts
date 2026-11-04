@@ -65,15 +65,16 @@ export function getWeather(): WeatherSnapshot | null {
 	return state.cached;
 }
 
-/** Compact label for 20px UI face (`/` `%` digits fit 240px with lunar). */
+/** Weather fragment `XX℃ YY%`; long lines marquee on the bottom port. */
 export function weatherLabel(): string {
 	if (!state.cached)
 		return "";
 	const t = Math.round(state.cached.tempC);
 	const h = Math.round(state.cached.humidity);
-	return `${t}/${h}%`;
+	return `${t}℃ ${h}%`;
 }
 
+/** Bottom line: `农历…` or `农历… XX℃ YY%`. */
 export function formatLunarWithWeather(lunar: string): string {
 	const w = weatherLabel();
 	return w ? `${lunar} ${w}` : lunar;

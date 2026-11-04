@@ -25,14 +25,15 @@ const backgroundSkin = new Skin({ fill: "black" });
 const marqueeStyle = new Style({ font: "20px UI", color: "white", horizontal: "left", vertical: "middle" });
 const valueStyle = new Style({ font: "12px Zpix", color: "#39FF14", horizontal: "center", vertical: "middle" });
 
-const MARQUEE_HOLD_MS = 0; // smoke: was 900
-const MARQUEE_TICK_MS = 40;
-const MARQUEE_PX = 4; // smoke: was 1
+const MARQUEE_HOLD_MS = 900;
+const MARQUEE_MS = 50;
+const MARQUEE_PX = 1;
 
 const ON = "#39FF14";
 const OFF = "#143214";
 
-const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+/** Top-line weekday codes (Sun→Sat), matching `YYYY-MM-DD MO …`. */
+const WEEKDAYS_EN = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 const GAN = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
 const ZHI = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
 const LM = ["正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"];
@@ -127,15 +128,15 @@ function formatDate(): string {
 	if (!timeSynced())
 		return "等待对时";
 	const p = beijingParts();
-	return `${p.y}年${p.m}月${p.d}日 周${WEEKDAYS[p.w]}`;
+	return `${p.y}-${pad2(p.m)}-${pad2(p.d)} ${WEEKDAYS_EN[p.w]}`;
 }
 
-/** Main-face top line; appends alarm mark when armed. */
+/** Top line: `YYYY-MM-DD MO` or `YYYY-MM-DD MO A:HH:MM` when alarm armed. */
 function formatClockTop(s: ClockSettings): string {
 	const base = formatDate();
 	if (!s.alarmOn)
 		return base;
-	return `${base} A${pad2(s.alarmHH)}:${pad2(s.alarmMM)}`;
+	return `${base} A:${pad2(s.alarmHH)}:${pad2(s.alarmMM)}`;
 }
 
 function leapMonth(y: number): number {
@@ -256,15 +257,20 @@ function setVisibleProp(target: unknown, value: boolean) {
 		(target as { visible: boolean }).visible = value;
 }
 
-function setMarqueeText(target: unknown, value: string) {
+function asMarquee(target: unknown): MarqueeBehavior | null {
 	if (!target || typeof target !== "object" || !("behavior" in target))
-		return;
-	const b = (target as { behavior?: { setText?: (port: PortContent, text: string) => void } }).behavior;
-	if (b && typeof b.setText === "function")
+		return null;
+	const b = (target as { behavior?: MarqueeBehavior }).behavior;
+	return b && typeof b.setText === "function" && typeof b.tick === "function" ? b : null;
+}
+
+function setMarqueeText(target: unknown, value: string) {
+	const b = asMarquee(target);
+	if (b)
 		b.setText(target as PortContent, value);
 }
 
-/** Bounce-scroll a single line when it is wider than the port. */
+/** Bounce-scroll a single line when it is wider than the port. Ticked by AppBehavior. */
 class MarqueeBehavior extends Behavior {
 	string = "";
 	textW = 0;
@@ -283,15 +289,10 @@ class MarqueeBehavior extends Behavior {
 		port.invalidate();
 	}
 
-	onDisplaying(port: PortContent) {
-		if (this.string)
-			this.textW = port.measureString(this.string, marqueeStyle).width;
-		port.interval = MARQUEE_TICK_MS;
-		port.start();
-		port.invalidate();
-	}
-
-	onTimeChanged(port: PortContent) {
+	tick(port: PortContent) {
+		if (!this.string)
+			return;
+		this.textW = port.measureString(this.string, marqueeStyle).width;
 		const maxScroll = this.textW - port.width;
 		if (maxScroll <= 0) {
 			if (this.offset !== 0) {
@@ -324,7 +325,7 @@ class MarqueeBehavior extends Behavior {
 		const maxScroll = this.textW - port.width;
 		const x = maxScroll <= 0
 			? Math.floor((port.width - this.textW) / 2)
-			: -this.offset;
+			: -Math.floor(this.offset);
 		const drawW = Math.max(this.textW, port.width);
 		port.drawString(text, marqueeStyle, "white", x, 0, drawW, port.height);
 	}
@@ -404,6 +405,7 @@ class AppBehavior extends Behavior {
 	settings: ClockSettings = { sound: true, hourly: true, volume: 6, alarmOn: false, alarmHH: 7, alarmMM: 0 };
 	kbTimer: unknown = null;
 	labelTimer: unknown = null;
+	marqueeTimer: unknown = null;
 	prompt = "";
 	ssidDraft = "";
 	maskPass = false;
@@ -447,6 +449,7 @@ class AppBehavior extends Behavior {
 		this.sound.setVolume(this.settings.volume);
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		this.labelTimer = Timer.repeat(() => this.onClockTick(app), 250);
+		this.marqueeTimer = Timer.repeat(() => this.tickMarquees(app), MARQUEE_MS);
 		this.weatherTimer = Timer.repeat(() => this.refreshWeather(app, false), WEATHER_REFRESH_MS);
 
 		this.flashStatus(app, `${this.kb.status} ${this.sound.status}`, formatSettings(this.settings));
@@ -483,12 +486,7 @@ class AppBehavior extends Behavior {
 	}
 
 	paintClockLabels(app: AppHost) {
-		// SMOKE_MARQUEE: force overflow; remove after capture
-		this.setLabels(
-			app,
-			">>> " + formatClockTop(this.settings) + " <<< ALARM-SCROLL-TEST",
-			">>> " + formatLunarWithWeather(formatLunar()) + " <<< WX-SCROLL-TEST",
-		);
+		this.setLabels(app, formatClockTop(this.settings), formatLunarWithWeather(formatLunar()));
 		this.dateKey = this.clockLabelKey();
 		this.weatherKey = weatherLabel();
 	}
@@ -913,6 +911,15 @@ class AppBehavior extends Behavior {
 	setLabels(app: AppHost, top: string, bottom: string) {
 		setMarqueeText(contentByName(app, "dateLabel"), top);
 		setMarqueeText(contentByName(app, "lunarLabel"), bottom);
+	}
+
+	tickMarquees(app: AppHost) {
+		for (const name of ["dateLabel", "lunarLabel"]) {
+			const port = contentByName(app, name);
+			const b = asMarquee(port);
+			if (b)
+				b.tick(port as PortContent);
+		}
 	}
 
 	onClockTick(app: AppHost) {
