@@ -66,7 +66,7 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 | **`H`** | 整点报时开关（需声音开；`:00` 三声和弦，替代该秒滴答） |
 | **`-` / `=`** | 音量 0–10（默认 6；掉电保存） |
 | **`C`** | 倒计时：数码管 `__:__:__`；时/分满 2 位自动跳下格；秒输完需 **`Enter`** 开始；`Esc` 退出 |
-| **`A`** | 闹钟：数码管 `__:__`（时:分）；时满 2 位跳分；分 **`Enter`** 保存（北京时间，掉电保留）；时位空 `Del` 关闭；响铃 `Esc` 关；顶栏显示 `YYYY-MM-DD MO A:HH:MM` |
+| **`A`** | 闹钟：数码管 `__:__`（时:分）；时满 2 位跳分；分 **`Enter`** 保存（北京时间，掉电保留）；时位空 `Del` 关闭；响铃 `Esc` 关；顶栏显示 `YYYY-MM-DD MO AL:HH:MM` |
 | **`T`** | 立即刷新天气（Open-Meteo；默认福清；底栏 `农历 XX℃ YY%`；超长自动左右滚动） |
 
 屏上会短暂显示 `Snd:… Hour:… Vol:N`；联网后每 20 分钟自动拉温湿度。城市经纬度在 `manifest.json` 的 `weatherLat` / `weatherLon`。
@@ -90,7 +90,7 @@ mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer Adv
 | 有 |
 |----|
 | TS 编译进固件 |
-| PIU + **7 段数码管时钟**（上：`YYYY-MM-DD MO A:HH:MM`，下：`农历 XX℃ YY%`；思源黑体 20px，超长左右滚动） |
+| PIU + **7 段数码管时钟**（上：`YYYY-MM-DD MO AL:HH:MM`，下：`农历 XX℃ YY%`；思源黑体 20px，超长左右滚动） |
 | Cardputer **Adv** 键盘配网（TCA8418）+ Preference |
 | Wi-Fi + SNTP（`ntp.aliyun.com`） |
 | ES8311 扬声器：`S` 声音 / `H` 整点报时 |

@@ -131,12 +131,12 @@ function formatDate(): string {
 	return `${p.y}-${pad2(p.m)}-${pad2(p.d)} ${WEEKDAYS_EN[p.w]}`;
 }
 
-/** Top line: `YYYY-MM-DD MO` or `YYYY-MM-DD MO A:HH:MM` when alarm armed. */
+/** Top line: `YYYY-MM-DD MO` or `YYYY-MM-DD MO AL:HH:MM` when alarm armed. */
 function formatClockTop(s: ClockSettings): string {
 	const base = formatDate();
 	if (!s.alarmOn)
 		return base;
-	return `${base} A:${pad2(s.alarmHH)}:${pad2(s.alarmMM)}`;
+	return `${base} AL:${pad2(s.alarmHH)}:${pad2(s.alarmMM)}`;
 }
 
 function leapMonth(y: number): number {
