@@ -6,6 +6,7 @@
 #   ./do.sh ts-flash                # 烧到 esp32/esp32s3（USB；Wi-Fi 见 app/wifi.local.json）
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
 #   ./do.sh port                    # 列出可用串口
+#   ./do.sh gen-font                # 用 fontbm 生成 app/fonts/UI-Regular-20
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh help                    # 本说明
 set -euo pipefail
@@ -76,6 +77,10 @@ cmd_port() {
 cmd_clean() {
   rm -f /tmp/cadv-sim.log /tmp/sim_*.log /tmp/cardputer_*.log /tmp/clock_*.log 2>/dev/null || true
   log_success "已清理临时日志"
+}
+
+cmd_gen_font() {
+  "$ROOT/scripts/gen-ui-font.sh" "$@"
 }
 
 # ---------- Moddable / TypeScript ----------
@@ -207,6 +212,7 @@ run() {
     ts-check | check) cmd_ts_check ;;
     ts-sim | sim) cmd_ts_sim ;;
     ts-flash | flash) cmd_ts_flash ;;
+    gen-font | font) cmd_gen_font "$@" ;;
     port) cmd_port ;;
     clean) cmd_clean ;;
     -h | --help | help) usage ;;
@@ -224,6 +230,7 @@ main_menu() {
       "ts-flash:烧录到 ESP32-S3" \
       "ts-sim:桌面模拟" \
       "ts-check:检查 Moddable / TS 环境" \
+      "gen-font:生成 UI BMFont" \
       "port:列出串口" \
       "clean:清理临时日志" \
       "help:命令说明" \
