@@ -306,6 +306,16 @@ class AppBehavior extends Behavior {
 		this.statusUntil = Date.now() + 1500;
 	}
 
+	/** Clear status overlay / ensure 7-seg + date/lunar are showing. */
+	resumeClock(app: AppHost) {
+		this.statusUntil = 0;
+		this.mode = "clock";
+		this.showClock(app, true);
+		this.setLabels(app, formatDate(), formatLunar());
+		const p = beijingParts();
+		this.dateKey = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
+	}
+
 	onKeyboardTick(app: AppHost) {
 		let stroke;
 		try {
@@ -326,6 +336,11 @@ class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "clock" || this.mode === "busy") {
+			// Esc dismisses Sound/Hourly/Vol status overlay → clock labels
+			if (stroke.esc) {
+				this.resumeClock(app);
+				return;
+			}
 			if (chars.some(ch => ch === "s" || ch === "S")) {
 				this.settings.sound = !this.settings.sound;
 				saveSettings(this.settings);
