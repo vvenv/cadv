@@ -65,13 +65,13 @@ export function getWeather(): WeatherSnapshot | null {
 	return state.cached;
 }
 
-/** Compact label using glyphs available in Zpix-Regular-12 (`C` `%` digits). */
+/** Compact label for 20px UI face (`/` `%` digits fit 240px with lunar). */
 export function weatherLabel(): string {
 	if (!state.cached)
 		return "";
 	const t = Math.round(state.cached.tempC);
 	const h = Math.round(state.cached.humidity);
-	return `${t}C ${h}%`;
+	return `${t}/${h}%`;
 }
 
 export function formatLunarWithWeather(lunar: string): string {

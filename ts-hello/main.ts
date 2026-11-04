@@ -21,9 +21,9 @@ type AppHost = {
 const BEIJING_OFFSET_SEC = 8 * 3600;
 
 const backgroundSkin = new Skin({ fill: "black" });
-const titleStyle = new Style({ font: "12px Zpix", color: "white", horizontal: "center", vertical: "middle" });
+const titleStyle = new Style({ font: "20px UI", color: "white", horizontal: "center", vertical: "middle" });
 const valueStyle = new Style({ font: "12px Zpix", color: "#39FF14", horizontal: "center", vertical: "middle" });
-const subStyle = new Style({ font: "12px Zpix", color: "#888888", horizontal: "center", vertical: "middle" });
+const subStyle = new Style({ font: "20px UI", color: "white", horizontal: "center", vertical: "middle" });
 
 const ON = "#39FF14";
 const OFF = "#143214";
@@ -123,7 +123,8 @@ function formatDate(): string {
 	if (!timeSynced())
 		return "等待对时";
 	const p = beijingParts();
-	return `${p.y}年${p.m}月${p.d}日 周${WEEKDAYS[p.w]}`;
+	// No solar year — 干支年 is on the bottom line; keeps 20px labels inside 240px.
+	return `${p.m}月${p.d}日 周${WEEKDAYS[p.w]}`;
 }
 
 /** Main-face top line; appends alarm mark when armed. */
@@ -908,25 +909,25 @@ const HelloApplication = Application.template($ => ({
 	contents: [
 		Label($, {
 			name: "dateLabel",
-			left: 0, right: 0, top: 2, height: 26,
+			left: 0, right: 0, top: 0, height: 32,
 			style: titleStyle,
 			string: "",
 		}),
 		Port($, {
 			name: "clockPort",
-			left: 0, right: 0, top: 32, bottom: 30,
+			left: 0, right: 0, top: 32, bottom: 32,
 			Behavior: SevenSegBehavior,
 		}),
 		Label($, {
 			name: "valueLabel",
-			left: 0, right: 0, top: 32, bottom: 30,
+			left: 0, right: 0, top: 32, bottom: 32,
 			style: valueStyle,
 			string: "",
 			visible: false,
 		}),
 		Label($, {
 			name: "lunarLabel",
-			left: 0, right: 0, bottom: 2, height: 26,
+			left: 0, right: 0, bottom: 0, height: 32,
 			style: subStyle,
 			string: "",
 		}),

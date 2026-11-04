@@ -24,7 +24,8 @@
 	],
 	"resources": {
 		"*-mask": [
-			"./fonts/Zpix-Regular-12"
+			"./fonts/Zpix-Regular-12",
+			"./fonts/UI-Regular-20"
 		]
 	},
 	"config": {
