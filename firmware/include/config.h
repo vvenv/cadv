@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 // Optional compile-time Wi-Fi. Leave empty to configure on-device via keyboard.
 #ifndef WIFI_SSID
 #define WIFI_SSID ""
@@ -23,6 +25,6 @@
 #define NTP_SERVER3 "time.apple.com"
 #endif
 
-static constexpr uint32_t kWifiConnectTimeoutMs = 20000;
-static constexpr uint32_t kNtpWaitTimeoutMs     = 30000;
-static constexpr uint32_t kNtpResyncIntervalMs  = 60UL * 60UL * 1000UL;
+static constexpr std::uint32_t kWifiConnectTimeoutMs = 20000;
+static constexpr std::uint32_t kNtpWaitTimeoutMs     = 30000;
+static constexpr std::uint32_t kNtpResyncIntervalMs  = 60UL * 60UL * 1000UL;

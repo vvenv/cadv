@@ -59,8 +59,8 @@ mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer USB Serial/JTAG（do.sh 
 
 | 有 | 没有 |
 |----|------|
-| TS 编译进固件 | Cardputer ST7789 实驱 |
-| PIU Hello + 时钟 UI | 键盘 TCA8418 |
-| ESP32-S3 USB 下载 | Wi-Fi / NTP |
+| TS 编译进固件 | 键盘 TCA8418 |
+| PIU + **7 段数码管时钟**（Port 画 a–g） | Wi-Fi / NTP |
+| ESP32-S3 USB 下载 + ST7789（Cardputer ADV 引脚） | |
 
 完整 Cardputer-Adv UI 仍以 `firmware_arduino/`（C++）为主；本目录只验证「板端 TS」链路。

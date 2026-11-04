@@ -9,13 +9,55 @@
 	},
 	"resources": {
 		"*-mask": [
-			"$(MODDABLE)/examples/assets/fonts/OpenSans-Regular-16",
-			"$(MODDABLE)/examples/assets/fonts/OpenSans-Regular-24",
-			"$(MODDABLE)/examples/assets/fonts/OpenSans-Semibold-20"
+			"$(MODDABLE)/examples/assets/fonts/OpenSans-Regular-16"
 		]
 	},
 	"platforms": {
 		"esp32": {
+			"include": [
+				"$(MODULES)/drivers/st7789"
+			],
+			"config": {
+				"screen": "st7789",
+				"touch": "",
+				"touchCount": 0,
+				"backlight": "1",
+				"brightness": 90
+			},
+			"defines": {
+				"spi": {
+					"miso_pin": -1,
+					"mosi_pin": 35,
+					"sck_pin": 36
+				},
+				"ili9341": {
+					"hz": 40000000,
+					"width": 240,
+					"height": 135,
+					"cs_pin": 37,
+					"dc_pin": 34,
+					"rst_pin": 33,
+					"column_offset": 40,
+					"row_offset": 53,
+					"spi_port": "SPI3_HOST",
+					"spi_mode": 0,
+					"backlight_pin": 38,
+					"backlight_on": 1,
+					"registers": [
+						"0x01, 0,",
+						"0xff, 150,",
+						"0x36, 1, 0x70,",
+						"0x3A, 1, 0x05,",
+						"0x21, 0,",
+						"0x11, 0,",
+						"0x29, 0,",
+						"0xff, 100,",
+						"0x2B, 4, 0x00, 0x35, 0x00, 0xbb,",
+						"0x2A, 4, 0x00, 0x28, 0x01, 0x17,",
+						"0xff, 0,"
+					]
+				}
+			},
 			"build": {
 				"ESP32_SUBCLASS": "esp32s3",
 				"USE_USB": "2"

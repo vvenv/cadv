@@ -1,0 +1,9 @@
+{
+  "clangd.path": "/usr/bin/clangd",
+  "clangd.checkUpdates": false,
+  "clangd.arguments": [
+    "--background-index",
+    "--header-insertion=never",
+    "--pch-storage=memory"
+  ]
+}

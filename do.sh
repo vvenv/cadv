@@ -19,6 +19,7 @@
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
 #
 # 其它:
+#   ./do.sh ide                     # 生成 compile_commands.json（Cmd+悬停 hint）
 #   ./do.sh clean                   # 清 .pio / 本地日志
 #   ./do.sh help                    # 本说明
 set -euo pipefail
@@ -192,6 +193,35 @@ cmd_sim() {
   fi
 }
 
+cmd_ide() {
+  need_cmd pio
+  need_cmd python3
+  log_info "生成 compile_commands.json，供编辑器 Cmd+悬停"
+  (cd "$ROOT/sim" && pio run -e "$SIM_ENV" -t compiledb)
+  ROOT="$ROOT" python3 - <<'PY'
+import json, os
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+db = json.loads((root / "sim" / "compile_commands.json").read_text())
+entry = next(
+    e
+    for e in db
+    if str(e.get("file", "")).endswith("src/main.cpp") and "sdl_main" not in str(e.get("file", ""))
+)
+src = (root / "firmware" / "src" / "main.cpp").resolve()
+suffix = " src/main.cpp"
+cmd = entry["command"]
+if not cmd.endswith(suffix):
+    raise SystemExit("compile command does not end with src/main.cpp")
+cmd = cmd[: -len(suffix)] + " " + str(src)
+out = [{"directory": entry["directory"], "file": str(src), "command": cmd}]
+(root / "compile_commands.json").write_text(json.dumps(out, indent=2) + "\n")
+print(src)
+PY
+  log_success "已写入 $ROOT/compile_commands.json（装 clangd 扩展后重载窗口）"
+}
+
 cmd_clean() {
   rm -rf "$ROOT/sim/.pio" "$ROOT/firmware/.pio"
   rm -f /tmp/cadv-sim.log /tmp/sim_*.log /tmp/cardputer_*.log /tmp/clock_*.log 2>/dev/null || true
@@ -305,6 +335,7 @@ run() {
     ts-check) cmd_ts_check ;;
     ts-sim) cmd_ts_sim ;;
     ts-flash) cmd_ts_flash ;;
+    ide) cmd_ide ;;
     clean) cmd_clean ;;
     -h | --help | help) usage ;;
     *)
@@ -336,6 +367,7 @@ main_menu() {
           "ts-sim:TS Hello 桌面模拟" \
           "ts-flash:TS Hello 烧 ESP32-S3" \
           "port:列出串口" \
+          "ide:生成 Cmd+悬停用的编译数据库" \
           "clean:清理 .pio / 临时日志" \
           "help:命令说明")"
         case "$choice" in

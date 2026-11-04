@@ -20,7 +20,9 @@ bool timeSynced     = false;
 uint32_t lastResync = 0;
 int lastDrawnSecond = -1;
 String lastNtpError;
-M5Canvas clockCanvas(&M5Cardputer.Display);
+// Display is a reference bound in M5Cardputer's constructor. Capturing it
+// during static init stores a null parent, and the first pushSprite crashes.
+M5Canvas clockCanvas;
 bool clockCanvasReady = false;
 
 const char* const kWeekday[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
@@ -256,15 +258,17 @@ void drawClock(const tm& ti) {
     // Compose off-screen, then one blit — avoids fillScreen black flash each second.
     c.fillSprite(TFT_BLACK);
 
+    // Font7 is the 48px seven-segment face (digits, colon, space only).
+    // "HH:MM:SS" is 216px wide, which fits the 240px panel.
     c.setTextDatum(middle_center);
     c.setTextColor(TFT_WHITE, TFT_BLACK);
-    c.setFont(&fonts::FreeSansBold24pt7b);
-    c.setTextSize(1.0f);
-    c.drawString(timeBuf, c.width() / 2, c.height() / 2 - 6);
+    c.setFont(&fonts::Font7);
+    c.setTextSize(1);
+    c.drawString(timeBuf, c.width() / 2, c.height() / 2 - 12);
 
     c.setFont(&fonts::FreeSansBold9pt7b);
     c.setTextColor(TFT_CYAN, TFT_BLACK);
-    c.drawString(dateBuf, c.width() / 2, c.height() / 2 + 38);
+    c.drawString(dateBuf, c.width() / 2, c.height() / 2 + 36);
 
     c.setTextDatum(bottom_left);
     c.setTextColor(TFT_DARKGREY, TFT_BLACK);
@@ -280,7 +284,7 @@ void drawClock(const tm& ti) {
         c.drawString("WiFi?", c.width() - 4, c.height() - 2);
     }
 
-    c.pushSprite(0, 0);
+    c.pushSprite(&M5Cardputer.Display, 0, 0);
 }
 
 void bootstrapNetwork() {

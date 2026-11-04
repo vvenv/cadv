@@ -1,0 +1,14 @@
+# Hover / go-to-definition for firmware/src/main.cpp.
+# Database is produced by ./do.sh ide (host sim compile, not the xtensa firmware).
+CompileFlags:
+  CompilationDatabase: .
+  Add:
+    - -Wno-unknown-warning-option
+    - -Wno-unknown-attributes
+    - -ferror-limit=200
+  Remove:
+    - -m*
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    - -fno-shrink-wrap
+    - -Og
