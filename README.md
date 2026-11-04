@@ -61,9 +61,11 @@ Cardputer-Adv **没有独立 RTC 芯片**，断电后时间会丢失，需要联
 板端 TS 走 [Moddable](https://github.com/Moddable-OpenSource/moddable)，见 `ts-hello/README.md`。
 
 ```bash
-./do.sh ts-check   # 是否已装 MODDABLE / mcconfig
+./do.sh ts-check   # Moddable + ESP-IDF 工具是否就绪
 ./do.sh ts-sim     # 桌面跑 Hello
-./do.sh ts-flash   # 烧到 ESP32-S3
+./do.sh ts-flash   # 烧到 ESP32-S3（USB Serial/JTAG；插上再烧）
 ```
+
+本机已装好：`third_party/moddable`、`~/esp32/esp-idf-v6.1`、Espressif tools + `python@3.12` venv。`ts-check` 全绿即可烧。
 
 当前只有串口 `trace`，**未接** Cardputer 屏/键盘；完整时钟仍用 Arduino 固件。

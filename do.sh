@@ -246,6 +246,19 @@ cmd_ts_check() {
   fi
   if [ -d "$HOME/.espressif/tools" ]; then
     log_info "Espressif tools: $(du -sh "$HOME/.espressif" 2>/dev/null | awk '{print $1}')"
+    local t
+    for t in xtensa-esp-elf riscv32-esp-elf openocd-esp32; do
+      if [ -d "$HOME/.espressif/tools/$t" ]; then
+        log_success "tool: $t"
+      else
+        log_warn "缺 tool: $t"
+      fi
+    done
+    if ls -d "$HOME/.espressif/python_env"/idf* >/dev/null 2>&1; then
+      log_success "IDF python_env 就绪"
+    else
+      log_warn "IDF python_env 未就绪"
+    fi
   else
     log_warn "Espressif tools 尚未安装（./install.sh esp32s3）"
   fi
@@ -259,11 +272,17 @@ cmd_ts_sim() {
 
 cmd_ts_flash() {
   need_moddable
+  # Prefer brew python@3.12 — system/homebrew python3 may be 3.14 and break IDF venv
+  export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/opt/python@3.12/bin:$PATH"
+  export IDF_GITHUB_ASSETS="${IDF_GITHUB_ASSETS:-dl.espressif.com/github_assets}"
   # ESP-IDF env required
   if [ -z "${IDF_PATH:-}" ] || [ ! -f "${IDF_PATH}/export.sh" ]; then
     export IDF_PATH="${HOME}/esp32/esp-idf-v6.1"
   fi
   [ -f "$IDF_PATH/export.sh" ] || log_die "缺少 ESP-IDF：$IDF_PATH（安装未完成）"
+  [ -d "$HOME/.espressif/tools/xtensa-esp-elf" ] || log_die "Espressif 工具未装完（缺 xtensa-esp-elf）。等 install 结束后再试"
+  [ -d "$HOME/.espressif/tools/riscv32-esp-elf" ] || log_die "Espressif 工具未装完（缺 riscv32-esp-elf）。等 install 结束后再试"
+  ls -d "$HOME/.espressif/python_env"/idf* >/dev/null 2>&1 || log_die "IDF python_env 未就绪。等 install-python-env 结束后再试"
   # shellcheck disable=SC1091
   source "$IDF_PATH/export.sh"
   log_info "Moddable 烧录 esp32/esp32s3_cdc（USB Serial/JTAG，适合 Cardputer）"

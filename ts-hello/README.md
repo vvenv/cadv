@@ -20,12 +20,22 @@ command -v mcconfig
 本仓库已装到 `third_party/moddable`；也可用：
 
 ```bash
-./scripts/setup-moddable-env.sh   # 写入 ~/.zshrc
+./scripts/setup-moddable-env.sh   # 写入 ~/.zshrc（含 python@3.12 PATH + IDF 镜像）
 # 或手动：
 export MODDABLE="$HOME/vvenv/cadv/third_party/moddable"
-export PATH="$MODDABLE/build/bin/mac/release:$PATH"
+export PATH="/opt/homebrew/opt/python@3.12/bin:$MODDABLE/build/bin/mac/release:$PATH"
 export IDF_PATH="$HOME/esp32/esp-idf-v6.1"
+export IDF_GITHUB_ASSETS="dl.espressif.com/github_assets"  # 工具包走乐鑫 CDN
 source "$IDF_PATH/export.sh"      # 烧录 ESP32 前需要
+```
+
+首次装 ESP-IDF 工具（仅一次）：
+
+```bash
+export PATH="/opt/homebrew/opt/python@3.12/bin:$PATH"
+export IDF_PATH="$HOME/esp32/esp-idf-v6.1"
+export IDF_GITHUB_ASSETS="dl.espressif.com/github_assets"
+cd "$IDF_PATH" && ./install.sh esp32s3
 ```
 
 ## 构建
@@ -41,10 +51,8 @@ source "$IDF_PATH/export.sh"      # 烧录 ESP32 前需要
 
 ```bash
 cd ts-hello
-mcconfig -d -m -dn                 # 本机
-mcconfig -d -m -dn -p esp32/esp32s3
-# 更接近 Stamp-S3 核心板：
-# mcconfig -d -m -dn -p esp32/m5stamp_s3
+mcconfig -d -m -dn                          # 本机
+mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer USB Serial/JTAG（do.sh ts-flash 用这个）
 ```
 
 ## 范围说明
