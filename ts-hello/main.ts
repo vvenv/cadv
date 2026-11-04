@@ -2,7 +2,7 @@
 	Cardputer-Adv Moddable + TypeScript clock.
 	7-seg Beijing time; top solar date/weekday; bottom lunar YMD.
 	On-device Wi-Fi: W → SSID/password.
-	Sound: S toggle master; H toggle hourly chime.
+	Sound: S / H / -/= ; Countdown: C → HH:MM:SS → Enter.
 */
 
 import {} from "piu/MC";
@@ -63,10 +63,36 @@ const SEG: number[] = [
 	0b1011011, 0b1011111, 0b1110000, 0b1111111, 0b1111011,
 ];
 
-type Mode = "clock" | "ssid" | "pass" | "busy";
+type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done";
 
 function pad2(n: number): string {
 	return n < 10 ? `0${n}` : `${n}`;
+}
+
+function formatHMS(totalSec: number): string {
+	let t = totalSec | 0;
+	if (t < 0)
+		t = 0;
+	const h = Math.floor(t / 3600);
+	const m = Math.floor((t % 3600) / 60);
+	const s = t % 60;
+	return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+}
+
+/** Digits-only field; empty → 0. */
+function parseFieldDigits(raw: string, max: number): number | null {
+	const s = raw.trim();
+	if (!s.length)
+		return 0;
+	for (let i = 0; i < s.length; i++) {
+		const c = s.charCodeAt(i);
+		if (c < 48 || c > 57)
+			return null;
+	}
+	const n = parseInt(s, 10);
+	if (n !== n || n < 0 || n > max)
+		return null;
+	return n;
 }
 
 function beijingParts(): { y: number; m: number; d: number; w: number; hh: number; mm: number; ss: number } {
@@ -181,17 +207,20 @@ function hbar(port: PortContent, x: number, y: number, w: number, t: number, on:
 function vbar(port: PortContent, x: number, y: number, h: number, t: number, on: boolean) {
 	port.fillColor(on ? ON : OFF, x, y + t, t, h - 2 * t);
 }
-function drawDigit(port: PortContent, x: number, y: number, w: number, h: number, digit: number) {
+function drawSegMask(port: PortContent, x: number, y: number, w: number, h: number, mask: number) {
 	const t = Math.max(3, Math.floor(Math.min(w, h) / 8));
 	const mid = y + Math.floor((h - t) / 2);
-	const mask = SEG[digit] | 0;
-	hbar(port, x, y, w, t, !!(mask & 0b1000000));
-	vbar(port, x + w - t, y, mid - y + t, t, !!(mask & 0b0100000));
-	vbar(port, x + w - t, mid, y + h - mid, t, !!(mask & 0b0010000));
-	hbar(port, x, y + h - t, w, t, !!(mask & 0b0001000));
-	vbar(port, x, mid, y + h - mid, t, !!(mask & 0b0000100));
-	vbar(port, x, y, mid - y + t, t, !!(mask & 0b0000010));
-	hbar(port, x, mid, w, t, !!(mask & 0b0000001));
+	const m = mask | 0;
+	hbar(port, x, y, w, t, !!(m & 0b1000000));
+	vbar(port, x + w - t, y, mid - y + t, t, !!(m & 0b0100000));
+	vbar(port, x + w - t, mid, y + h - mid, t, !!(m & 0b0010000));
+	hbar(port, x, y + h - t, w, t, !!(m & 0b0001000));
+	vbar(port, x, mid, y + h - mid, t, !!(m & 0b0000100));
+	vbar(port, x, y, mid - y + t, t, !!(m & 0b0000010));
+	hbar(port, x, mid, w, t, !!(m & 0b0000001));
+}
+function drawDigit(port: PortContent, x: number, y: number, w: number, h: number, digit: number) {
+	drawSegMask(port, x, y, w, h, SEG[digit] | 0);
 }
 function drawColon(port: PortContent, x: number, y: number, w: number, h: number, on: boolean) {
 	const s = Math.max(3, Math.floor(Math.min(w, h) / 7));
@@ -214,20 +243,33 @@ function setVisibleProp(target: unknown, value: boolean) {
 		(target as { visible: boolean }).visible = value;
 }
 
+function faceFromPort(port: PortContent): string {
+	const container = port.container;
+	if (container && typeof container === "object" && "behavior" in container) {
+		const b = container.behavior;
+		if (b && typeof b === "object" && "faceText" in b) {
+			const fn = (b as { faceText?: unknown }).faceText;
+			if (typeof fn === "function")
+				return (fn as () => string).call(b);
+		}
+	}
+	return formatNow();
+}
+
 class SevenSegBehavior extends Behavior {
 	string: string = "--:--:--";
 	blink: boolean = true;
 
 	onDisplaying(port: PortContent) {
-		this.string = formatNow();
+		this.string = faceFromPort(port);
 		this.blink = true;
-		port.interval = 500;
+		port.interval = 250;
 		port.start();
 		port.invalidate();
 	}
 	onTimeChanged(port: PortContent) {
 		this.blink = !this.blink;
-		this.string = formatNow();
+		this.string = faceFromPort(port);
 		port.invalidate();
 	}
 	onDraw(port: PortContent) {
@@ -248,6 +290,11 @@ class SevenSegBehavior extends Behavior {
 			if (ch === ":") {
 				drawColon(port, x, y, colonW, digitH, this.blink);
 				x += colonW + gap;
+			}
+			else if (ch === "_" || ch === " ") {
+				// blank placeholder; blink mid bar as caret when `_`
+				drawSegMask(port, x, y, digitW, digitH, (ch === "_" && this.blink) ? 0b0000001 : 0);
+				x += digitW + gap;
 			}
 			else {
 				const d = ch.charCodeAt(0) - 48;
@@ -273,6 +320,21 @@ class AppBehavior extends Behavior {
 	lastChimeKey = "";
 	lastTickSec = -1;
 	statusUntil = 0;
+	cdEndMs = 0;
+	cdRemainSec = 0;
+	cdLastSec = -1;
+	/** 0=hour 1=min 2=sec */
+	cdStep = 0;
+	cdHours = 0;
+	cdMinutes = 0;
+
+	faceText(): string {
+		if (this.mode === "cd_edit")
+			return this.cdSlotsText();
+		if (this.mode === "cd_run" || this.mode === "cd_done")
+			return formatHMS(this.cdRemainSec);
+		return formatNow();
+	}
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
@@ -329,9 +391,55 @@ class AppBehavior extends Behavior {
 
 		const chars = stroke.chars;
 		const wantWifi = chars.some(ch => ch === "w" || ch === "W");
-		if (wantWifi && this.mode !== "ssid" && this.mode !== "pass") {
+		if (wantWifi && (this.mode === "clock" || this.mode === "busy")) {
 			this.busy = false;
 			this.enterPrompt(app, "ssid");
+			return;
+		}
+
+		if (this.mode === "cd_run" || this.mode === "cd_done") {
+			if (stroke.esc || chars.some(ch => ch === "c" || ch === "C")) {
+				this.resumeClock(app);
+				this.maybeBeep();
+			}
+			return;
+		}
+
+		if (this.mode === "cd_edit") {
+			if (stroke.esc) {
+				this.resumeClock(app);
+				this.maybeBeep();
+				return;
+			}
+			let typed = false;
+			for (const ch of chars) {
+				if (ch >= "0" && ch <= "9" && this.prompt.length < 2) {
+					this.prompt += ch;
+					typed = true;
+				}
+			}
+			if (stroke.del) {
+				if (this.prompt.length > 0)
+					this.prompt = this.prompt.slice(0, -1);
+				else if (this.cdStep > 0) {
+					this.cdStep -= 1;
+					this.prompt = this.cdStep === 0
+						? String(this.cdHours)
+						: String(this.cdMinutes);
+					if (this.prompt === "0")
+						this.prompt = "";
+				}
+			}
+			// HH/MM: 2 digits auto-advance. SS: need Enter to start.
+			if (typed && this.prompt.length >= 2 && this.cdStep < 2) {
+				this.commitCdField(app);
+				return;
+			}
+			if (stroke.enter) {
+				this.commitCdField(app);
+				return;
+			}
+			this.paintCountdownPrompt(app);
 			return;
 		}
 
@@ -339,6 +447,11 @@ class AppBehavior extends Behavior {
 			// Esc dismisses Sound/Hourly/Vol status overlay → clock labels
 			if (stroke.esc) {
 				this.resumeClock(app);
+				return;
+			}
+			if (chars.some(ch => ch === "c" || ch === "C")) {
+				this.enterCountdownEdit(app);
+				this.maybeBeep();
 				return;
 			}
 			if (chars.some(ch => ch === "s" || ch === "S")) {
@@ -401,6 +514,86 @@ class AppBehavior extends Behavior {
 		this.paintPrompt(app);
 	}
 
+	enterCountdownEdit(app: AppHost) {
+		this.busy = false;
+		this.statusUntil = 0;
+		this.mode = "cd_edit";
+		this.cdStep = 0;
+		this.cdHours = 0;
+		this.cdMinutes = 0;
+		this.prompt = "";
+		this.showClock(app, true);
+		this.paintCountdownPrompt(app);
+	}
+
+	/** Active slot: digits + trailing `_`, empty → `__`. */
+	cdSlotActive(): string {
+		if (this.prompt.length <= 0)
+			return "__";
+		if (this.prompt.length === 1)
+			return `${this.prompt}_`;
+		return this.prompt.slice(0, 2);
+	}
+
+	/** Seven-seg face: `__:__:__` with filled HH:MM:SS as confirmed. */
+	cdSlotsText(): string {
+		const h = this.cdStep > 0 ? pad2(this.cdHours) : this.cdSlotActive();
+		const m = this.cdStep > 1
+			? pad2(this.cdMinutes)
+			: (this.cdStep === 1 ? this.cdSlotActive() : "__");
+		const s = this.cdStep === 2 ? this.cdSlotActive() : "__";
+		return `${h}:${m}:${s}`;
+	}
+
+	/** Commit current HH/MM/SS slot; 2 digits auto-call this. */
+	commitCdField(app: AppHost) {
+		const max = this.cdStep === 0 ? 99 : 59;
+		const n = parseFieldDigits(this.prompt, max);
+		if (n === null) {
+			this.paintCountdownPrompt(app, "Bad");
+			return;
+		}
+		if (this.cdStep === 0) {
+			this.cdHours = n;
+			this.cdStep = 1;
+			this.prompt = "";
+			this.maybeBeep();
+			this.paintCountdownPrompt(app);
+			return;
+		}
+		if (this.cdStep === 1) {
+			this.cdMinutes = n;
+			this.cdStep = 2;
+			this.prompt = "";
+			this.maybeBeep();
+			this.paintCountdownPrompt(app);
+			return;
+		}
+		const total = this.cdHours * 3600 + this.cdMinutes * 60 + n;
+		if (total <= 0) {
+			this.paintCountdownPrompt(app, "Need >0");
+			return;
+		}
+		this.startCountdown(app, total > 359999 ? 359999 : total);
+	}
+
+	paintCountdownPrompt(app: AppHost, err?: string) {
+		const top = err ?? "时 分 秒";
+		const bottom = this.cdStep < 2 ? "满2位跳下格 Esc" : "Enter=开始 Esc";
+		this.setLabels(app, top, bottom);
+	}
+
+	startCountdown(app: AppHost, totalSec: number) {
+		this.cdEndMs = Date.now() + totalSec * 1000;
+		this.cdRemainSec = totalSec;
+		this.cdLastSec = -1;
+		this.mode = "cd_run";
+		this.prompt = "";
+		this.showClock(app, true);
+		this.setLabels(app, "Countdown", "Esc=stop");
+		this.maybeBeep();
+	}
+
 	enterPrompt(app: AppHost, which: "ssid" | "pass") {
 		this.mode = which;
 		this.prompt = which === "ssid" ? (loadWifiCreds()?.ssid ?? "") : "";
@@ -461,6 +654,28 @@ class AppBehavior extends Behavior {
 	}
 
 	onClockTick(app: AppHost) {
+		if (this.mode === "cd_run") {
+			const left = Math.max(0, Math.ceil((this.cdEndMs - Date.now()) / 1000));
+			this.cdRemainSec = left;
+			if (left !== this.cdLastSec) {
+				this.cdLastSec = left;
+				this.setLabels(app, "Countdown", left > 0 ? "Esc=stop" : "Done Esc");
+				if (this.settings.sound && left > 0)
+					this.sound?.tick();
+				if (left <= 0) {
+					this.mode = "cd_done";
+					if (this.settings.sound)
+						this.sound?.hourlyChime();
+				}
+			}
+			return;
+		}
+
+		if (this.mode === "cd_done") {
+			this.cdRemainSec = 0;
+			return;
+		}
+
 		if (this.mode !== "clock")
 			return;
 

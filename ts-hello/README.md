@@ -65,6 +65,7 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 | **`S`** | 总声音开关（关则静音；开则每秒滴答） |
 | **`H`** | 整点报时开关（需声音开；`:00` 三声和弦，替代该秒滴答） |
 | **`-` / `=`** | 音量 0–10（默认 6；掉电保存） |
+| **`C`** | 倒计时：数码管 `__:__:__`；时/分满 2 位自动跳下格；秒输完需 **`Enter`** 开始；`Esc` 退出 |
 
 屏上会短暂显示 `Snd:… Hour:… Vol:N`。
 
@@ -91,6 +92,7 @@ mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer Adv
 | Cardputer **Adv** 键盘配网（TCA8418）+ Preference | |
 | Wi-Fi + SNTP（`ntp.aliyun.com`） | |
 | ES8311 扬声器：`S` 声音 / `H` 整点报时 | |
+| 倒计时：`C` → 时/`Enter` → 分/`Enter` → 秒/`Enter` | |
 | ESP32-S3 USB 下载 + ST7789 | |
 
 完整 Cardputer-Adv UI 仍以 `firmware_arduino/`（C++）为主；本目录只验证「板端 TS」链路。
