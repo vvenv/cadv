@@ -4,7 +4,7 @@
  * The device XS heap cannot hold the lexicon as live string arrays.
  *
  * Pack A — 闽教版小学 (merged) → fw/words/wordbank.bin (flash Resource).
- * Pack B — 初中2182 (one bank per .txt) → fw/words/junior.bin and
+ * Pack B — 初中2182 (merged) → fw/words/junior.bin and
  *          fw/words/sample/cadv/words/junior.bin (manual SD load).
  *
  * Chinese gloss: a `word | pos | meaning` line in
@@ -47,6 +47,7 @@ const PHONE_CAP = 24;
 const PRIMARY_DIR = "闽教版小学";
 const PRIMARY_LABEL = "闽教小";
 const JUNIOR_DIR = "初中2182";
+const JUNIOR_LABEL = "初中";
 
 const GRADE_RANK = { 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
 const TERM_RANK = { 上: 0, 下: 1, 全: 2 };
@@ -98,14 +99,6 @@ function headword(line) {
 	return word;
 }
 
-/** Short on-screen bank name: 第一册 常见 → 一常. */
-function juniorBankLabel(base) {
-	const m = base.match(/^第([一二三四五六七八九十]+)册\s*(常见|生僻)$/);
-	if (m)
-		return m[1] + m[2].charAt(0);
-	return base.slice(0, 4);
-}
-
 function collectPrimary() {
 	const dir = path.join(DATA, PRIMARY_DIR);
 	if (!fs.existsSync(dir))
@@ -131,14 +124,15 @@ function collectJunior() {
 	const files = fs.readdirSync(dir)
 		.filter((f) => f.endsWith(".txt"))
 		.sort(compareLabels);
-	const banks = [];
+	const lines = [];
 	for (const file of files) {
 		const text = fs.readFileSync(path.join(dir, file), "utf8");
-		const lines = text.split(/\r?\n/);
-		const label = juniorBankLabel(file.replace(/\.txt$/i, ""));
-		banks.push({ label, lines });
+		for (const line of text.split(/\r?\n/))
+			lines.push(line);
 	}
-	return banks;
+	if (lines.length === 0)
+		return [];
+	return [{ label: JUNIOR_LABEL, lines }];
 }
 
 function firstClause(text) {
