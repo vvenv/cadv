@@ -1,1 +1,16 @@
-{}
+{
+	"C_Cpp.default.includePath": [
+		"${workspaceFolder}/third_party/moddable/xs/includes",
+		"${workspaceFolder}/third_party/moddable/xs/platforms/esp",
+		"${workspaceFolder}/third_party/moddable/xs/platforms/mc",
+		"${workspaceFolder}/third_party/moddable/build/tmp/esp32/esp32s3_cdc/release/sd"
+	],
+	"C_Cpp.default.defines": [
+		"ESP32=3",
+		"ESP_PLATFORM",
+		"__XTENSA__"
+	],
+	"C_Cpp.default.cppStandard": "gnu++17",
+	"C_Cpp.default.cStandard": "gnu17",
+	"C_Cpp.default.compilerPath": "${env:HOME}/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+}

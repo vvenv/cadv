@@ -1,0 +1,22 @@
+{
+	"configurations": [
+		{
+			"name": "ESP32",
+			"includePath": [
+				"${workspaceFolder}/third_party/moddable/xs/includes",
+				"${workspaceFolder}/third_party/moddable/xs/platforms/esp",
+				"${workspaceFolder}/third_party/moddable/xs/platforms/mc",
+				"${workspaceFolder}/third_party/moddable/build/tmp/esp32/esp32s3_cdc/release/sd"
+			],
+			"defines": [
+				"ESP32=3",
+				"ESP_PLATFORM",
+				"__XTENSA__"
+			],
+			"compilerPath": "${env:HOME}/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc",
+			"cStandard": "gnu17",
+			"intelliSenseMode": "linux-gcc-x64"
+		}
+	],
+	"version": 4
+}

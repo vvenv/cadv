@@ -1,0 +1,7 @@
+-Ithird_party/moddable/xs/includes
+-Ithird_party/moddable/xs/platforms/esp
+-Ithird_party/moddable/xs/platforms/mc
+-Ithird_party/moddable/build/tmp/esp32/esp32s3_cdc/release/sd
+-DESP32=3
+-DESP_PLATFORM
+-D__XTENSA__
