@@ -4,9 +4,12 @@
 # TypeScript / Moddable（Cardputer-Adv 时钟）:
 #   ./do.sh ts-sim                  # 桌面模拟器跑 app
 #   ./do.sh ts-flash                # 烧到 esp32/esp32s3（USB；Wi-Fi 见 app/wifi.local.json）
+#   词库或字体比源文件旧时，ts-sim / ts-flash 会先问要不要生成。
+#   CADV_REFRESH=1 直接生成；CADV_REFRESH=0 跳过。
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
 #   ./do.sh port                    # 列出可用串口
 #   ./do.sh gen-font                # 用 fontbm 生成 app/fonts/UI-Regular-20
+#   ./do.sh gen-words               # 从 ../alice/data 生成 app/wordbank.ts
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh help                    # 本说明
 set -euo pipefail
@@ -81,6 +84,83 @@ cmd_clean() {
 
 cmd_gen_font() {
   "$ROOT/scripts/gen-ui-font.sh" "$@"
+}
+
+cmd_gen_words() {
+  node "$ROOT/scripts/gen-wordbank.mjs"
+}
+
+# app/wordbank.ts is older than the generator, ../alice/data, or the ECDICT gloss file.
+wordbank_stale() {
+  local out="$APP_DIR/wordbank.ts"
+  local alice="$ROOT/../alice"
+  local hit
+  [ -f "$out" ] || return 0
+  [ "$ROOT/scripts/gen-wordbank.mjs" -nt "$out" ] && return 0
+  if [ -f "$alice/assets/data/ecdict-meta.json" ] && [ "$alice/assets/data/ecdict-meta.json" -nt "$out" ]; then
+    return 0
+  fi
+  if [ -d "$alice/data" ]; then
+    hit="$(find "$alice/data" -name '*.txt' -newer "$out" -print -quit)"
+    [ -n "$hit" ] && return 0
+  fi
+  return 1
+}
+
+font_stale() {
+  if "$ROOT/scripts/gen-ui-font.sh" --stale; then
+    return 1
+  fi
+  return 0
+}
+
+# ts-sim / ts-flash: offer to rebuild a stale word bank, then the font that embeds its glosses.
+# CADV_REFRESH=1 runs it; CADV_REFRESH=0 skips; otherwise ask on a terminal.
+refresh_generated() {
+  local words=0 fonts=0 msg ans
+  if wordbank_stale; then
+    words=1
+  fi
+  if font_stale; then
+    fonts=1
+  fi
+  if [ "$words" -eq 0 ] && [ "$fonts" -eq 0 ]; then
+    return 0
+  fi
+  if [ "$words" -eq 1 ]; then
+    msg="词库比 ../alice/data 旧，会重做词库和字体"
+  else
+    msg="字体比界面文案或词库旧"
+  fi
+
+  case "${CADV_REFRESH:-ask}" in
+    1) ;;
+    0)
+      log_warn "${msg}。已跳过（CADV_REFRESH=0）"
+      return 0
+      ;;
+    *)
+      if [ -t 0 ] || [ -t 1 ]; then
+        read -r -p "${msg}。现在生成？ [Y/n] " ans </dev/tty || ans=n
+        case "${ans:-Y}" in
+          n|N|no|NO|否)
+            log_warn "已跳过，继续用现有词库和字体"
+            return 0
+            ;;
+        esac
+      else
+        log_warn "${msg}。非交互已跳过；CADV_REFRESH=1 可自动生成"
+        return 0
+      fi
+      ;;
+  esac
+
+  if [ "$words" -eq 1 ]; then
+    cmd_gen_words
+  fi
+  if font_stale; then
+    cmd_gen_font
+  fi
 }
 
 # ---------- Moddable / TypeScript ----------
@@ -162,12 +242,14 @@ cmd_ts_check() {
 }
 
 cmd_ts_sim() {
+  refresh_generated
   need_moddable
   log_info "Moddable 桌面模拟：app（-dn 不弹 xsbug）"
   (cd "$APP_DIR" && mcconfig -d -m -dn -p mac)
 }
 
 cmd_ts_flash() {
+  refresh_generated
   need_moddable
   # Prefer brew python@3.12 — system/homebrew python3 may be 3.14 and break IDF venv
   export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/opt/python@3.12/bin:$PATH"
@@ -194,21 +276,31 @@ cmd_ts_flash() {
   fi
 
   log_info "Moddable 烧录 esp32/esp32s3_cdc（USB Serial/JTAG，适合 Cardputer）"
-  # Flash itself may succeed while xsbug connect fails with -dn; don't treat that as fatal.
+  # -dn builds a debug image but does not launch xsbug. serial2xsbug then
+  # exits non-zero after a successful flash. Hash verified means the image is on the board.
   # bash 3.2 + set -u: empty "${arr[@]}" is "unbound variable" — branch instead.
+  local log rc
+  log="$(mktemp "${TMPDIR:-/tmp}/cadv-flash.XXXXXX")"
   set +e
+  set +o pipefail
   if [ "${#wifi_args[@]}" -gt 0 ]; then
-    (cd "$APP_DIR" && mcconfig -d -m -dn -p esp32/esp32s3_cdc "${wifi_args[@]}")
+    (cd "$APP_DIR" && mcconfig -d -m -dn -p esp32/esp32s3_cdc "${wifi_args[@]}") 2>&1 | tee "$log"
   else
-    (cd "$APP_DIR" && mcconfig -d -m -dn -p esp32/esp32s3_cdc)
+    (cd "$APP_DIR" && mcconfig -d -m -dn -p esp32/esp32s3_cdc) 2>&1 | tee "$log"
   fi
-  local rc=$?
+  rc=${PIPESTATUS[0]}
+  set -o pipefail
   set -e
+  if [ "$rc" -ne 0 ] && grep -q "Hash of data verified" "$log"; then
+    log_warn "xsbug 没开，调试器连接失败。固件已经写入。"
+    rc=0
+  fi
+  rm -f "$log"
   if [ "$rc" -ne 0 ]; then
     # ${rc}: bash 3.2 treats $rc（ as a multi-byte var name
-    log_warn "mcconfig 退出码 ${rc}（若已 Hash verified / Done，多半是 xsbug 未连上，可忽略）"
+    log_die "mcconfig 退出码 ${rc}"
   fi
-  log_success "烧录流程结束；板子按 RESET。要对时需 wifi.local.json 或 WIFI_SSID/WIFI_PASSWORD"
+  log_success "烧录完成。板子按 RESET。要对时需 wifi.local.json 或 WIFI_SSID/WIFI_PASSWORD"
 }
 
 run() {
@@ -219,6 +311,7 @@ run() {
     ts-sim | sim) cmd_ts_sim ;;
     ts-flash | flash) cmd_ts_flash ;;
     gen-font | font) cmd_gen_font "$@" ;;
+    gen-words | words) cmd_gen_words ;;
     port) cmd_port ;;
     clean) cmd_clean ;;
     -h | --help | help) usage ;;
@@ -237,6 +330,7 @@ main_menu() {
       "ts-sim:桌面模拟" \
       "ts-check:检查 Moddable / TS 环境" \
       "gen-font:生成 UI BMFont" \
+      "gen-words:从 alice/data 生成词库" \
       "port:列出串口" \
       "clean:清理临时日志" \
       "help:命令说明" \
@@ -251,7 +345,9 @@ main_menu() {
   done
 }
 
-if [ $# -eq 0 ]; then
+if [ "${CADV_LIB:-}" = "1" ]; then
+  :
+elif [ $# -eq 0 ]; then
   if [ -t 0 ]; then
     main_menu
   else

@@ -16,6 +16,10 @@ export type ClockSettings = {
 	alarmOn: boolean;
 	alarmHH: number; // 0..23
 	alarmMM: number; // 0..59
+	/** Word quiz: 0 易 ≈1/3, 1 中 ≈1/2, 2 难 = every letter. */
+	wordLevel: number;
+	/** Index into the alice/data word banks. */
+	wordBank: number;
 };
 
 function readBool(name: string, fallback: boolean): boolean {
@@ -63,6 +67,8 @@ export function loadSettings(): ClockSettings {
 		alarmOn: readBool("alarmOn", false),
 		alarmHH: readInt("alarmHH", 7, 0, 23),
 		alarmMM: readInt("alarmMM", 0, 0, 59),
+		wordLevel: readInt("wordLevel", 0, 0, 2),
+		wordBank: readInt("wordBank", 0, 0, 15),
 	};
 }
 
@@ -73,6 +79,8 @@ export function saveSettings(s: ClockSettings) {
 	Preference.set(PREF, "alarmOn", s.alarmOn ? 1 : 0);
 	Preference.set(PREF, "alarmHH", s.alarmHH);
 	Preference.set(PREF, "alarmMM", s.alarmMM);
+	Preference.set(PREF, "wordLevel", s.wordLevel);
+	Preference.set(PREF, "wordBank", s.wordBank);
 }
 
 export function formatAlarm(s: ClockSettings): string {

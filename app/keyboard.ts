@@ -70,6 +70,8 @@ export type KeyStroke = {
 	shift: boolean;
 	/** Cardputer Esc: Fn+` or Ctrl+[ */
 	esc: boolean;
+	up: boolean;
+	down: boolean;
 };
 
 type KbConfig = { sda: number; scl: number; address: number };
@@ -240,6 +242,6 @@ export class CardputerKeyboard {
 				continue;
 			chars.push(shift ? String(cell.b) : String(cell.a));
 		}
-		return { chars, enter, del, shift, esc };
+		return { chars, enter, del, shift, esc, up: false, down: false };
 	}
 }

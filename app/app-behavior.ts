@@ -5,19 +5,70 @@
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import Timer from "timer";
-import { CardputerKeyboard } from "keyboard";
+import { CardputerKeyboard, type KeyStroke } from "keyboard";
+import { asMenu } from "menu-view";
+import { menuDirFromChars, menuItems, menuStep } from "menu";
 import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
 import { ClockSound } from "sound";
 import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_MIN, type ClockSettings } from "settings";
 import { fetchWeather, formatLunarWithWeather, weatherLabel, WEATHER_REFRESH_MS } from "weather";
 import { beijingParts, formatClockTop, formatHMS, formatLunar, formatNow, pad2, timeSynced } from "lunar";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
+import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, puzzleCorrect, renderPuzzle, wordAt, wordCount } from "words";
 
 export type AppHost = {
 	content: (name: string) => unknown;
 };
 
-type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring";
+type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "menu" | "word";
+
+const WORD_HOLD_MS = 700;
+
+let valueStyleSmall: object | undefined;
+let valueStyleWord: object | undefined;
+let valueStyleFit: object | undefined;
+
+function valueStyle(word: boolean): object {
+	if (word) {
+		if (!valueStyleWord)
+			valueStyleWord = new Style({ font: "48px Word", color: "#39FF14", horizontal: "center", vertical: "middle" });
+		return valueStyleWord;
+	}
+	if (!valueStyleSmall)
+		valueStyleSmall = new Style({ font: "12px Zpix", color: "#39FF14", horizontal: "center", vertical: "middle" });
+	return valueStyleSmall;
+}
+
+/** 48px fits at most 7 letters in 240px. Longer headwords use 20px. */
+function puzzleStyle(letters: number): object {
+	if (letters > 7) {
+		if (!valueStyleFit)
+			valueStyleFit = new Style({ font: "20px UI", color: "#39FF14", horizontal: "center", vertical: "middle" });
+		return valueStyleFit;
+	}
+	return valueStyle(true);
+}
+
+function hasStyle(target: unknown): target is { style: object } {
+	return !!target && typeof target === "object" && "style" in target;
+}
+
+/** Desktop simulator keys. Hardware polling owns the keypad when it is up. */
+function hostStroke(key: string): KeyStroke | null {
+	if (key === "\r" || key === "\n")
+		return { chars: [], enter: true, del: false, shift: false, esc: false, up: false, down: false };
+	if (key === "\u001b")
+		return { chars: [], enter: false, del: false, shift: false, esc: true, up: false, down: false };
+	if (key === "\u007f" || key === "\b")
+		return { chars: [], enter: false, del: true, shift: false, esc: false, up: false, down: false };
+	if (key === "\uf700")
+		return { chars: [], enter: false, del: false, shift: false, esc: false, up: true, down: false };
+	if (key === "\uf701")
+		return { chars: [], enter: false, del: false, shift: false, esc: false, up: false, down: true };
+	if (key.length === 1 && key >= " " && key <= "~")
+		return { chars: [key], enter: false, del: false, shift: false, esc: false, up: false, down: false };
+	return null;
+}
 
 /** Digits-only field; empty → 0. */
 function parseFieldDigits(raw: string, max: number): number | null {
@@ -53,7 +104,7 @@ export class AppBehavior extends Behavior {
 	mode: Mode = "clock";
 	kb: CardputerKeyboard | null = null;
 	sound: ClockSound | null = null;
-	settings: ClockSettings = { sound: true, hourly: true, volume: 6, alarmOn: false, alarmHH: 7, alarmMM: 0 };
+	settings: ClockSettings = { sound: true, hourly: true, volume: 6, alarmOn: false, alarmHH: 7, alarmMM: 0, wordLevel: 0, wordBank: 0 };
 	kbTimer: unknown = null;
 	labelTimer: unknown = null;
 	marqueeTimer: unknown = null;
@@ -79,6 +130,16 @@ export class AppBehavior extends Behavior {
 	lastAlarmKey = "";
 	weatherTimer: unknown = null;
 	weatherKey = "";
+	menuIndex = 0;
+	wordIndex = 0;
+	wordTyped = "";
+	wordHidden: number[] = [];
+	wordMaskLevel = -1;
+	wordNote = "";
+	wordNoteUntil = 0;
+	wordAdvance = false;
+	/** Simulator Enter repeat would open the list and immediately activate. */
+	hostEnterDown = false;
 
 	faceText(): string {
 		if (this.mode === "cd_edit")
@@ -160,12 +221,64 @@ export class AppBehavior extends Behavior {
 		}
 		if (!stroke)
 			return;
+		this.handleStroke(app, stroke);
+	}
 
+	/** Simulator keyboard. Ignored when the TCA8418 keypad is present. */
+	onKeyDown(content: unknown, key: unknown) {
+		if (this.kb?.available)
+			return;
+		if (typeof key !== "string")
+			return;
+		if ((key === "\r" || key === "\n") && this.hostEnterDown)
+			return;
+		if (key === "\r" || key === "\n")
+			this.hostEnterDown = true;
+		const stroke = hostStroke(key);
+		if (!stroke)
+			return;
+		this.handleStroke(content as AppHost, stroke);
+	}
+
+	onKeyUp(_content: unknown, key: unknown) {
+		if (typeof key === "string" && (key === "\r" || key === "\n"))
+			this.hostEnterDown = false;
+	}
+
+	handleStroke(app: AppHost, stroke: KeyStroke) {
 		const chars = stroke.chars;
 		const wantWifi = chars.some(ch => ch === "w" || ch === "W");
 		if (wantWifi && (this.mode === "clock" || this.mode === "busy")) {
 			this.busy = false;
 			this.enterPrompt(app, "ssid");
+			return;
+		}
+
+		if (this.mode === "menu") {
+			if (stroke.esc) {
+				this.resumeClock(app);
+				this.maybeBeep();
+				return;
+			}
+			let dir: -1 | 0 | 1 = menuDirFromChars(chars);
+			if (stroke.up)
+				dir = -1;
+			if (stroke.down)
+				dir = 1;
+			if (dir !== 0) {
+				const n = menuItems(this.settings.sound, this.settings.hourly, this.settings.wordLevel, this.settings.wordBank).length;
+				this.menuIndex = menuStep(this.menuIndex, n, dir);
+				this.paintMenu(app);
+				this.maybeBeep();
+				return;
+			}
+			if (stroke.enter)
+				this.activateMenu(app);
+			return;
+		}
+
+		if (this.mode === "word") {
+			this.onWordStroke(app, stroke);
 			return;
 		}
 
@@ -271,6 +384,10 @@ export class AppBehavior extends Behavior {
 			// Esc dismisses Sound/Hourly/Vol status overlay → clock labels
 			if (stroke.esc) {
 				this.resumeClock(app);
+				return;
+			}
+			if (this.mode === "clock" && stroke.enter) {
+				this.enterMenu(app);
 				return;
 			}
 			if (chars.some(ch => ch === "c" || ch === "C")) {
@@ -555,8 +672,20 @@ export class AppBehavior extends Behavior {
 	}
 
 	showClock(app: AppHost, on: boolean) {
+		this.showList(app, false);
+		const value = contentByName(app, "valueLabel");
+		if (hasStyle(value))
+			value.style = valueStyle(false);
 		setVisibleProp(contentByName(app, "clockPort"), on);
 		setVisibleProp(contentByName(app, "valueLabel"), !on);
+	}
+
+	showList(app: AppHost, on: boolean) {
+		setVisibleProp(contentByName(app, "listPort"), on);
+		if (on) {
+			setVisibleProp(contentByName(app, "clockPort"), false);
+			setVisibleProp(contentByName(app, "valueLabel"), false);
+		}
 	}
 
 	setLabels(app: AppHost, top: string, bottom: string) {
@@ -573,7 +702,267 @@ export class AppBehavior extends Behavior {
 		}
 	}
 
+	enterMenu(app: AppHost) {
+		this.wordAdvance = false;
+		this.statusUntil = 0;
+		this.mode = "menu";
+		this.showList(app, true);
+		this.paintMenu(app);
+		this.maybeBeep();
+	}
+
+	paintMenu(app: AppHost) {
+		const items = menuItems(this.settings.sound, this.settings.hourly, this.settings.wordLevel, this.settings.wordBank);
+		if (this.menuIndex < 0 || this.menuIndex >= items.length)
+			this.menuIndex = 0;
+		const lines = [];
+		for (let i = 0; i < items.length; i++)
+			lines.push({ text: items[i].label, selected: i === this.menuIndex });
+		const port = contentByName(app, "listPort");
+		const view = asMenu(port);
+		if (view)
+			view.setList(port, "功能", lines, `${this.menuIndex + 1}/${items.length}  j/k 选择 Enter Esc`);
+	}
+
+	activateMenu(app: AppHost) {
+		const items = menuItems(this.settings.sound, this.settings.hourly, this.settings.wordLevel, this.settings.wordBank);
+		const id = items[this.menuIndex] ? items[this.menuIndex].id : "";
+		this.maybeBeep();
+		if (id === "word") {
+			this.enterWord(app);
+			return;
+		}
+		if (id === "level") {
+			this.setWordLevel(app, this.settings.wordLevel + 1);
+			return;
+		}
+		if (id === "bank") {
+			this.setWordBank(app, this.settings.wordBank + 1);
+			return;
+		}
+		if (id === "cd") {
+			this.enterCountdownEdit(app);
+			return;
+		}
+		if (id === "al") {
+			this.enterAlarmEdit(app);
+			return;
+		}
+		if (id === "wx") {
+			this.resumeClock(app);
+			this.refreshWeather(app, true);
+			return;
+		}
+		if (id === "wifi") {
+			this.enterPrompt(app, "ssid");
+			return;
+		}
+		if (id === "snd") {
+			this.settings.sound = !this.settings.sound;
+			saveSettings(this.settings);
+			this.paintMenu(app);
+			return;
+		}
+		if (id === "hour") {
+			this.settings.hourly = !this.settings.hourly;
+			saveSettings(this.settings);
+			this.paintMenu(app);
+		}
+	}
+
+	loadWord() {
+		const n = wordCount(this.settings.wordBank);
+		if (n <= 0)
+			return;
+		if (this.wordIndex < 0 || this.wordIndex >= n)
+			this.wordIndex = 0;
+		const entry = wordAt(this.settings.wordBank, this.wordIndex);
+		this.wordMaskLevel = clampWordLevel(this.settings.wordLevel);
+		this.wordHidden = hiddenIndices(entry.word, this.wordIndex, this.wordMaskLevel);
+		this.wordTyped = "";
+	}
+
+	setWordBank(app: AppHost, bank: number) {
+		const count = bankCount();
+		if (count <= 0)
+			return;
+		let b = (bank | 0) % count;
+		if (b < 0)
+			b += count;
+		this.settings.wordBank = b;
+		saveSettings(this.settings);
+		this.wordIndex = 0;
+		this.wordAdvance = false;
+		this.wordNote = "";
+		this.wordHidden = [];
+		this.wordMaskLevel = -1;
+		if (this.mode === "word") {
+			this.loadWord();
+			this.paintWord(app);
+			return;
+		}
+		this.paintMenu(app);
+	}
+
+	setWordLevel(app: AppHost, level: number) {
+		const n = WORD_LEVEL_NAME.length;
+		let lv = (level | 0) % n;
+		if (lv < 0)
+			lv += n;
+		this.settings.wordLevel = lv;
+		saveSettings(this.settings);
+		this.wordAdvance = false;
+		this.wordNote = "";
+		if (this.mode === "word") {
+			this.loadWord();
+			this.paintWord(app);
+			return;
+		}
+		this.paintMenu(app);
+	}
+
+	enterWord(app: AppHost) {
+		this.wordAdvance = false;
+		this.wordNote = "";
+		this.mode = "word";
+		if (this.wordHidden.length === 0 || this.wordMaskLevel !== clampWordLevel(this.settings.wordLevel))
+			this.loadWord();
+		this.showClock(app, false);
+		const value = contentByName(app, "valueLabel");
+		if (hasStyle(value))
+			value.style = valueStyle(true);
+		this.paintWord(app);
+	}
+
+	stepWord(app: AppHost, dir: -1 | 1) {
+		const n = wordCount(this.settings.wordBank);
+		if (n <= 0)
+			return;
+		this.wordIndex = (this.wordIndex + dir + n) % n;
+		this.wordAdvance = false;
+		this.wordNote = "";
+		this.loadWord();
+		this.paintWord(app);
+		this.maybeBeep();
+	}
+
+	paintWord(app: AppHost) {
+		const entry = wordAt(this.settings.wordBank, this.wordIndex);
+		if (!entry.word)
+			return;
+		const view = renderPuzzle(entry.word, this.wordHidden, this.wordTyped);
+		const note = this.wordNote && Date.now() < this.wordNoteUntil ? this.wordNote : "";
+		const level = WORD_LEVEL_NAME[clampWordLevel(this.settings.wordLevel)];
+		const gloss = entry.gloss ? `${entry.gloss} ` : "";
+		const top = note
+			? `${gloss}${level} ${note}`
+			: `${gloss}${level} ${this.wordIndex + 1}/${wordCount(this.settings.wordBank)}`;
+		this.setLabels(app, top, "[]难度  \\换库  Del ,.换题  Enter Esc");
+		const value = contentByName(app, "valueLabel");
+		if (hasStyle(value))
+			value.style = puzzleStyle(entry.word.length);
+		setStringProp(contentByName(app, "valueLabel"), view);
+	}
+
+	onWordStroke(app: AppHost, stroke: KeyStroke) {
+		const chars = stroke.chars;
+		if (stroke.esc) {
+			if (this.wordAdvance) {
+				this.wordAdvance = false;
+				const n = wordCount(this.settings.wordBank);
+				this.wordIndex = n > 0 ? (this.wordIndex + 1) % n : 0;
+				this.loadWord();
+			}
+			this.enterMenu(app);
+			return;
+		}
+		if (this.wordAdvance)
+			return;
+		if (chars.some(ch => ch === "[" || ch === "{")) {
+			this.setWordLevel(app, this.settings.wordLevel - 1);
+			this.maybeBeep();
+			return;
+		}
+		if (chars.some(ch => ch === "]" || ch === "}")) {
+			this.setWordLevel(app, this.settings.wordLevel + 1);
+			this.maybeBeep();
+			return;
+		}
+		if (chars.some(ch => ch === "\\" || ch === "|")) {
+			this.setWordBank(app, this.settings.wordBank + 1);
+			this.maybeBeep();
+			return;
+		}
+		if (stroke.up || chars.some(ch => ch === ",")) {
+			this.stepWord(app, -1);
+			return;
+		}
+		if (stroke.down || chars.some(ch => ch === ".")) {
+			this.stepWord(app, 1);
+			return;
+		}
+		const entry = wordAt(this.settings.wordBank, this.wordIndex);
+		if (!entry.word)
+			return;
+		let typed = false;
+		for (const ch of chars) {
+			const c = ch.toLowerCase();
+			if (c < "a" || c > "z")
+				continue;
+			if (this.wordTyped.length >= this.wordHidden.length)
+				break;
+			this.wordTyped += c;
+			typed = true;
+		}
+		if (stroke.del && this.wordTyped.length > 0) {
+			this.wordTyped = this.wordTyped.slice(0, -1);
+			typed = true;
+		}
+		if (stroke.enter) {
+			if (puzzleCorrect(entry.word, this.wordHidden, this.wordTyped)) {
+				this.wordNote = "正确";
+				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
+				this.wordAdvance = true;
+				this.paintWord(app);
+				this.maybeBeep();
+			}
+			else {
+				this.wordNote = "不对";
+				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
+				this.paintWord(app);
+			}
+			return;
+		}
+		if (typed) {
+			this.wordNote = "";
+			this.paintWord(app);
+		}
+	}
+
+	tickWord(app: AppHost) {
+		if (!this.wordNote || Date.now() < this.wordNoteUntil)
+			return;
+		if (this.wordAdvance) {
+			this.wordAdvance = false;
+			this.wordNote = "";
+			const n = wordCount(this.settings.wordBank);
+			this.wordIndex = n > 0 ? (this.wordIndex + 1) % n : 0;
+			this.loadWord();
+			this.paintWord(app);
+			return;
+		}
+		this.wordNote = "";
+		this.paintWord(app);
+	}
+
 	onClockTick(app: AppHost) {
+		if (this.mode === "word") {
+			this.tickWord(app);
+			return;
+		}
+		if (this.mode === "menu")
+			return;
+
 		if (this.mode === "cd_run") {
 			const left = Math.max(0, Math.ceil((this.cdEndMs - Date.now()) / 1000));
 			this.cdRemainSec = left;

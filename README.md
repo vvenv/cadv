@@ -1,6 +1,6 @@
 # Cardputer ADV 时钟（TypeScript）
 
-在 M5Stack Cardputer-Adv 上用 **Moddable + TypeScript** 显示时钟：Wi-Fi NTP 校时（默认中国时区 `CST-8`）、键盘配网、天气、闹钟、倒计时、整点报时。
+在 M5Stack Cardputer-Adv 上用 **Moddable + TypeScript** 显示时钟：Wi-Fi NTP 校时（默认中国时区 `CST-8`）、键盘配网、天气、闹钟、倒计时、整点报时。时钟界面 **Enter** 打开功能列表。单词补充完整用 `../alice/data` 的词库。
 
 Cardputer-Adv **没有独立 RTC 芯片**，断电后时间会丢失，需要联网重新校时。
 
@@ -22,6 +22,8 @@ Cardputer-Adv **没有独立 RTC 芯片**，断电后时间会丢失，需要联
 ./do.sh ts-flash   # 烧到 ESP32-S3（USB Serial/JTAG；插上再烧）
 ./do.sh help       # 全部子命令
 ```
+
+`ts-sim` / `ts-flash` 发现词库或字体过期会先问要不要生成。`CADV_REFRESH=1` 直接生成，`CADV_REFRESH=0` 跳过。
 
 烧录前：电源 **OFF** → 按住 **G0** → 插 USB → 松开。
 

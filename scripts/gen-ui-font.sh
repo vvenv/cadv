@@ -16,6 +16,7 @@ OUT_DIR="$ROOT/app/fonts"
 FAMILY="UI"
 SIZE=20
 MONO=0
+STALE_CHECK=0
 FONT_FILE="${UI_FONT:-$HOME/Library/Fonts/SourceHanSans-VF.otf.ttc}"
 SC_INDEX=2
 FONTBM_VER="10.0.2"
@@ -31,6 +32,10 @@ CHAR_SOURCES=(
   "$ROOT/app/netboot.ts"
   "$ROOT/app/keyboard_stub.ts"
   "$ROOT/app/sound_stub.ts"
+  "$ROOT/app/menu.ts"
+  "$ROOT/app/menu-view.ts"
+  "$ROOT/app/words.ts"
+  "$ROOT/app/wordbank.ts"
 )
 
 usage() {
@@ -43,6 +48,7 @@ while [ $# -gt 0 ]; do
     --size) SIZE="${2:?}"; shift 2 ;;
     --font) FONT_FILE="${2:?}"; shift 2 ;;
     --mono) MONO=1; shift ;;
+    --stale) STALE_CHECK=1; shift ;;
     -h | --help | help) usage 0 ;;
     *)
       log_error "未知参数：$1"
@@ -215,7 +221,52 @@ main() {
     print 0;
   ')"
   log_success "wrote ${out_stem} glyphs=${nglyphs} → app/fonts/ (family=${FAMILY})"
+
+  # Puzzle face. Middle band is 240×71. 48px ASCII fits 8 unspaced letters; 40px did not once spaces were added.
+  local word_size=48 word_family="Word" word_stem="Word-Regular-48"
+  log_info "fontbm size=${word_size} → ${word_stem} (puzzle)"
+  "$FONTBM" \
+    --font-file "$font_use" \
+    --font-size "$word_size" \
+    --output "$WORK_DIR/$word_stem" \
+    --texture-crop-width \
+    --texture-crop-height \
+    --texture-name-suffix none \
+    --data-format bin \
+    --chars 32-126
+  [ -f "$WORK_DIR/${word_stem}.fnt" ] && [ -f "$WORK_DIR/${word_stem}.png" ] \
+    || log_die "fontbm 未生成 ${word_stem}.{fnt,png}"
+  bmf_set_family "$WORK_DIR/${word_stem}.fnt" "$word_family"
+  find "$OUT_DIR" -maxdepth 1 -type f -name "Word-Regular-*.*" -delete
+  mv "$WORK_DIR/${word_stem}.fnt" "$OUT_DIR/"
+  mv "$WORK_DIR/${word_stem}.png" "$OUT_DIR/"
+  log_success "wrote ${word_stem} → app/fonts/ (family=${word_family})"
 }
+
+# Exit 0 when both faces are at least as new as the script, the glyph sources, and the font file.
+fonts_current() {
+  local ui="$OUT_DIR/${FAMILY}-Regular-${SIZE}.fnt"
+  local word="$OUT_DIR/Word-Regular-48.fnt"
+  local oldest src
+  [ -f "$ui" ] && [ -f "$word" ] || return 1
+  oldest="$ui"
+  [ "$word" -ot "$oldest" ] && oldest="$word"
+  for src in "${BASH_SOURCE[0]}" "${CHAR_SOURCES[@]}"; do
+    [ -e "$src" ] || continue
+    [ "$src" -nt "$oldest" ] && return 1
+  done
+  if [ -e "$FONT_FILE" ] && [ "$FONT_FILE" -nt "$oldest" ]; then
+    return 1
+  fi
+  return 0
+}
+
+if [ "$STALE_CHECK" -eq 1 ]; then
+  if fonts_current; then
+    exit 0
+  fi
+  exit 1
+fi
 
 WORK_DIR=""
 main

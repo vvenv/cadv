@@ -12,28 +12,37 @@
 			"./main",
 			"./app-behavior",
 			"./marquee",
+			"./menu",
+			"./menu-view",
 			"./sevenseg",
 			"./lunar",
 			"./netboot",
 			"./settings",
-			"./weather"
+			"./weather",
+			"./wordbank",
+			"./words"
 		]
 	},
 	"preload": [
 		"keyboard",
 		"app-behavior",
 		"marquee",
+		"menu",
+		"menu-view",
 		"sevenseg",
 		"lunar",
 		"netboot",
 		"settings",
 		"sound",
-		"weather"
+		"weather",
+		"wordbank",
+		"words"
 	],
 	"resources": {
 		"*-mask": [
 			"./fonts/Zpix-Regular-12",
-			"./fonts/UI-Regular-20"
+			"./fonts/UI-Regular-20",
+			"./fonts/Word-Regular-48"
 		]
 	},
 	"config": {
