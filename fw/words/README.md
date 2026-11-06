@@ -18,4 +18,4 @@
 ./do.sh sim words
 ```
 
-词库或字体比源文件旧时会先问要不要生成。手动：`./do.sh gen-words`，再 `./do.sh gen-font`。
+构建或模拟时会自动判断词库和字体是否过期并重做。也可手动：`./do.sh gen-words`，再 `./do.sh gen-font`。

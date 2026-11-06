@@ -9,8 +9,8 @@
 #   fw/<id>/sample 存在时，模拟把文件根指到该目录。
 #   菜单里 Esc、← 或 BS 返回上一级。主菜单再按一次即退出。
 #   模拟不写 id、或上传「一个固件」时，会列出 fw/*/label。取消则什么都不做。
-#   字体比源文件旧时会先问要不要生成。选中的固件用到 wordbank.bin 时才重做词库。
-#   CADV_REFRESH=1 直接生成；CADV_REFRESH=0 跳过。
+#   构建/模拟时自动判断：词库或字体比源文件旧就重做。只有选中的固件用到
+#   wordbank.bin 时才检查词库。CADV_REFRESH=0 跳过；=ask 改回先问再生成。
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
 #   ./do.sh port                    # 列出可用串口
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
@@ -188,8 +188,8 @@ font_stale() {
   return 0
 }
 
-# Offer to rebuild a stale word bank (only if this firmware embeds one), then the shared font.
-# CADV_REFRESH=1 runs it; CADV_REFRESH=0 skips; otherwise ask on a terminal.
+# Rebuild a stale word bank (only if this firmware embeds one), then the shared font.
+# Default: regenerate when stale. CADV_REFRESH=0 skips; =ask prompts on a terminal.
 refresh_generated() {
   local want_words="${1:-0}"
   local words=0 fonts=0 msg ans
@@ -208,13 +208,12 @@ refresh_generated() {
     msg="字体比界面文案或词库旧"
   fi
 
-  case "${CADV_REFRESH:-ask}" in
-    1) ;;
+  case "${CADV_REFRESH:-1}" in
     0)
       log_warn "${msg}。已跳过（CADV_REFRESH=0）"
       return 0
       ;;
-    *)
+    ask)
       if [ -t 0 ] || [ -t 1 ]; then
         read -r -p "${msg}。现在生成？ [Y/n] " ans </dev/tty || ans=n
         case "${ans:-Y}" in
@@ -224,12 +223,13 @@ refresh_generated() {
             ;;
         esac
       else
-        log_warn "${msg}。非交互已跳过；CADV_REFRESH=1 可自动生成"
+        log_warn "${msg}。非交互已跳过；去掉 CADV_REFRESH=ask 可自动生成"
         return 0
       fi
       ;;
   esac
 
+  log_info "$msg"
   if [ "$words" -eq 1 ]; then
     cmd_gen_words
   fi
