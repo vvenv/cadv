@@ -5,17 +5,21 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
+import { BG, DIM, FONT_UI, INK, ON } from "ink";
 import { MENU_VISIBLE, windowStart } from "list";
 
 export type MenuLine = { text: string; selected: boolean };
 
 const ROW = 21;
 const DRAW_H = 30;
+const PAD_X = 6;
+const BAR_Y = 4;
+const BAR_H = 22;
 
 let menuStyle: /* Style */ object | undefined;
 function getMenuStyle(): /* Style */ any {
 	if (!menuStyle)
-		menuStyle = new Style({ font: "bold 20px UI", color: "white", horizontal: "left", vertical: "top" });
+		menuStyle = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "top" });
 	return menuStyle;
 }
 
@@ -48,8 +52,8 @@ export class MenuBehavior extends Behavior {
 
 	onDraw(port: PortContent) {
 		const style = getMenuStyle();
-		port.fillColor("black", 0, 0, port.width, port.height);
-		drawCentered(port, this.title, "white", 0);
+		port.fillColor(BG, 0, 0, port.width, port.height);
+		drawCentered(port, this.title, INK, 0);
 		const visible = MENU_VISIBLE;
 		let selected = 0;
 		let marked = false;
@@ -67,12 +71,11 @@ export class MenuBehavior extends Behavior {
 				continue;
 			const y = (i + 1) * ROW;
 			if (line.selected)
-				port.fillColor("#143214", 0, y + 4, port.width, 22);
-			const color = line.selected ? "#39FF14" : "white";
-			const text = (marked ? (line.selected ? "> " : "- ") : "") + line.text;
-			port.drawString(text, style, color, 6, y, port.width - 12, DRAW_H);
+				port.fillColor(DIM, 0, y + BAR_Y, port.width, BAR_H);
+			const color = line.selected ? ON : INK;
+			port.drawString(line.text, style, color, PAD_X, y, port.width - PAD_X * 2, DRAW_H);
 		}
 		if (this.hint)
-			drawCentered(port, this.hint, "white", (1 + visible) * ROW);
+			drawCentered(port, this.hint, INK, (1 + visible) * ROW);
 	}
 }

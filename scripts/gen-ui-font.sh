@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Generate shared/fonts/UI-Bold-N and Word-Bold-48 from Source Han Sans SC Bold.
+# Generate shared/fonts/UI-Bold-N and Word-Bold-48 from Source Han Sans SC Bold,
+# and Ipa-Bold-20 from Arial Bold for the word-quiz phonetic line.
 #
 # Source Han Sans VF's default instance is ExtraLight (wght 250). fontbm
 # rasterizes that master, which is too thin on a 240×135 panel. Pin the
@@ -17,8 +18,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/lib/log.sh"
 
 OUT_DIR="$ROOT/shared/fonts"
-# File names are UI-Bold-20 / Word-Bold-48. Styles must say "bold 20px UI"
-# and "bold 48px Word". "20px UI" looks up UI-Regular-20, which this script removes.
+# File names are UI-Bold-20 / Word-Bold-48 / Ipa-Bold-20. Styles must say
+# "bold 20px UI", "bold 48px Word", and "bold 20px Ipa".
 FAMILY="UI"
 SIZE=20
 MONO=0
@@ -29,7 +30,7 @@ SC_INDEX=2
 WEIGHT=700
 FONTBM_VER="10.0.2"
 CHARS_EXTRA="年月日周闰初十廿卅冬腊设闹钟等待对时℃"
-# Every firmware and shared module contributes glyphs, so a new fw/ folder is picked up.
+# UI glyphs come from firmware text and wordbank-chars.txt. phone-chars.txt is IPA-only and is not included here.
 CHAR_SOURCES=()
 while IFS= read -r _src; do
   CHAR_SOURCES+=("$_src")
@@ -245,21 +246,75 @@ main() {
   mv "$WORK_DIR/${word_stem}.fnt" "$OUT_DIR/"
   mv "$WORK_DIR/${word_stem}.png" "$OUT_DIR/"
   log_success "wrote ${word_stem} → shared/fonts/ (family=${word_family})"
+
+  # Phonetic face. Family Ipa matches Style { font: "bold 20px Ipa" }.
+  local ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"
+  local ipa_stem="Ipa-Bold-20" ipa_family="Ipa"
+  local phone_chars="$ROOT/fw/words/phone-chars.txt"
+  [ -f "$ipa_src" ] || log_die "IPA 字体不存在：$ipa_src（可设置 IPA_FONT）"
+  if [ -s "$phone_chars" ] && command -v hb-shape >/dev/null 2>&1; then
+    local miss
+    miss="$(IPA_FONT="$ipa_src" PHONE_CHARS="$phone_chars" python3 - <<'PY'
+import os, subprocess
+font = os.environ["IPA_FONT"]
+chars = open(os.environ["PHONE_CHARS"], encoding="utf-8").read()
+bad = []
+seen = set()
+for ch in chars:
+    if ch.isspace() or ch in seen:
+        continue
+    seen.add(ch)
+    cp = f"{ord(ch):04x}"
+    out = subprocess.check_output(["hb-shape", "--font-file", font, "-u", cp], text=True)
+    if ".notdef" in out:
+        bad.append(ch)
+print("".join(bad))
+PY
+)"
+    [ -z "$miss" ] || log_die "Arial Bold 缺少音标字形：$miss"
+  fi
+  log_info "fontbm size=20 → ${ipa_stem} (phonetic)"
+  local -a ipa_args=(
+    --font-file "$ipa_src"
+    --font-size 20
+    --output "$WORK_DIR/$ipa_stem"
+    --texture-crop-width
+    --texture-crop-height
+    --texture-name-suffix none
+    --data-format bin
+    --chars 32-126
+  )
+  [ -s "$phone_chars" ] && ipa_args+=(--chars-file "$phone_chars")
+  "$FONTBM" "${ipa_args[@]}"
+  [ -f "$WORK_DIR/${ipa_stem}.fnt" ] && [ -f "$WORK_DIR/${ipa_stem}.png" ] \
+    || log_die "fontbm 未生成 ${ipa_stem}.{fnt,png}"
+  bmf_set_family "$WORK_DIR/${ipa_stem}.fnt" "$ipa_family"
+  find "$OUT_DIR" -maxdepth 1 -type f \( -name "Ipa-Regular-*.*" -o -name "Ipa-Bold-*.*" \) -delete
+  mv "$WORK_DIR/${ipa_stem}.fnt" "$OUT_DIR/"
+  mv "$WORK_DIR/${ipa_stem}.png" "$OUT_DIR/"
+  log_success "wrote ${ipa_stem} → shared/fonts/ (family=${ipa_family})"
 }
 
-# Exit 0 when both faces are at least as new as the script, the glyph sources, and the font file.
+# Exit 0 when UI, Word, and Ipa are at least as new as their sources.
 fonts_current() {
   local ui="$OUT_DIR/${FAMILY}-Bold-${SIZE}.fnt"
   local word="$OUT_DIR/Word-Bold-48.fnt"
-  local oldest src
-  [ -f "$ui" ] && [ -f "$word" ] || return 1
+  local ipa="$OUT_DIR/Ipa-Bold-20.fnt"
+  local phone_chars="$ROOT/fw/words/phone-chars.txt"
+  local oldest src ipa_src
+  [ -f "$ui" ] && [ -f "$word" ] && [ -f "$ipa" ] || return 1
   oldest="$ui"
   [ "$word" -ot "$oldest" ] && oldest="$word"
-  for src in "${BASH_SOURCE[0]}" "${CHAR_SOURCES[@]}"; do
+  [ "$ipa" -ot "$oldest" ] && oldest="$ipa"
+  for src in "${BASH_SOURCE[0]}" "${CHAR_SOURCES[@]}" "$phone_chars"; do
     [ -e "$src" ] || continue
     [ "$src" -nt "$oldest" ] && return 1
   done
   if [ -e "$FONT_FILE" ] && [ "$FONT_FILE" -nt "$oldest" ]; then
+    return 1
+  fi
+  ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"
+  if [ -e "$ipa_src" ] && [ "$ipa_src" -nt "$ipa" ]; then
     return 1
   fi
   return 0

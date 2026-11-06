@@ -4,10 +4,11 @@
 
 import {} from "piu/MC";
 import { AppBehavior } from "behavior";
+import { BG } from "ink";
 import { MenuBehavior } from "menu-view";
 
 const SdApplication = Application.template($ => ({
-	skin: new Skin({ fill: "black" }),
+	skin: new Skin({ fill: BG }),
 	Behavior: AppBehavior,
 	contents: [
 		Port($, {

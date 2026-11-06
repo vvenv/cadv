@@ -4,12 +4,13 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
+import { FONT_UI, INK } from "ink";
 
 /** Lazily built — Moddable link rejects top-level `new Style` outside main. */
 let marqueeStyle: /* Style */ object | undefined;
 function getMarqueeStyle(): /* Style */ any {
 	if (!marqueeStyle)
-		marqueeStyle = new Style({ font: "bold 20px UI", color: "white", horizontal: "left", vertical: "middle" });
+		marqueeStyle = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "middle" });
 	return marqueeStyle;
 }
 
@@ -24,10 +25,10 @@ export function asMarquee(target: unknown): MarqueeBehavior | null {
 	return b && typeof b.setText === "function" && typeof b.tick === "function" ? b : null;
 }
 
-export function setMarqueeText(target: unknown, value: string) {
+export function setMarqueeText(target: unknown, value: string, face?: object) {
 	const b = asMarquee(target);
 	if (b)
-		b.setText(target as PortContent, value);
+		b.setText(target as PortContent, value, face);
 }
 
 /** Bounce-scroll a single line when it is wider than the port. Ticked by AppBehavior. */
@@ -37,12 +38,15 @@ export class MarqueeBehavior extends Behavior {
 	offset = 0;
 	dir = 1;
 	holdUntil = 0;
+	fontFace: object | undefined;
 
-	setText(port: PortContent, text: string) {
-		if (text === this.string)
+	setText(port: PortContent, text: string, face?: object) {
+		const next = face ?? getMarqueeStyle();
+		if (text === this.string && next === this.fontFace)
 			return;
 		this.string = text;
-		this.textW = port.measureString(text, getMarqueeStyle()).width;
+		this.fontFace = next;
+		this.textW = text ? port.measureString(text, next).width : 0;
 		this.offset = 0;
 		this.dir = 1;
 		this.holdUntil = Date.now() + MARQUEE_HOLD_MS;
@@ -52,7 +56,7 @@ export class MarqueeBehavior extends Behavior {
 	tick(port: PortContent) {
 		if (!this.string)
 			return;
-		this.textW = port.measureString(this.string, getMarqueeStyle()).width;
+		this.textW = port.measureString(this.string, this.fontFace ?? getMarqueeStyle()).width;
 		const maxScroll = this.textW - port.width;
 		if (maxScroll <= 0) {
 			if (this.offset !== 0) {
@@ -87,6 +91,6 @@ export class MarqueeBehavior extends Behavior {
 			? Math.floor((port.width - this.textW) / 2)
 			: -Math.floor(this.offset);
 		const drawW = Math.max(this.textW, port.width);
-		port.drawString(text, getMarqueeStyle(), "white", x, 0, drawW, port.height);
+		port.drawString(text, this.fontFace ?? getMarqueeStyle(), INK, x, 0, drawW, port.height);
 	}
 }

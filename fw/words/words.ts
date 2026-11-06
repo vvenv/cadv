@@ -1,11 +1,12 @@
 /*
 	Fill-in-the-blank English words. The lists live in wordbank.bin,
-	generated from ../../alice/data into wordbank.bin.
+	generated from ../../alice/data. Glosses prefer library.json, then
+	ecdict-meta.json. Phonetics come from ECDICT.
 */
 
-import { storedBankCount, storedBankName, storedBankSize, storedLexId, storedLexWord } from "wordbank";
+import { storedBankCount, storedBankName, storedBankSize, storedLexGloss, storedLexId, storedLexPhone, storedLexWord } from "wordbank";
 
-export type WordEntry = { word: string };
+export type WordEntry = { word: string; gloss: string; phone: string };
 
 export function bankCount(): number {
 	return storedBankCount();
@@ -35,9 +36,13 @@ export function wordAt(bank: number, index: number): WordEntry {
 	const b = clampBank(bank);
 	const n = storedBankSize(b);
 	if (n <= 0)
-		return { word: "" };
+		return { word: "", gloss: "", phone: "" };
 	const id = storedLexId(b, index);
-	return { word: storedLexWord(id) };
+	return {
+		word: storedLexWord(id),
+		gloss: storedLexGloss(id),
+		phone: storedLexPhone(id),
+	};
 }
 
 /** 易 / 中 / 难. Share of letters the player must type. */

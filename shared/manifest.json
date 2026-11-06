@@ -6,6 +6,7 @@
 			"./list",
 			"./keys",
 			"./ui",
+			"./ink",
 			"./hostkey",
 			"./volume"
 		]
@@ -16,6 +17,7 @@
 		"list",
 		"keys",
 		"ui",
+		"ink",
 		"hostkey",
 		"volume",
 		"keyboard",

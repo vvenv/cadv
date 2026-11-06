@@ -8,10 +8,11 @@ import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { MarqueeBehavior } from "marquee";
 import { MenuBehavior } from "menu-view";
+import { BG, FONT_UI, ON } from "ink";
 import { SevenSegBehavior } from "sevenseg";
 
 const ClockApplication = Application.template($ => ({
-	skin: new Skin({ fill: "black" }),
+	skin: new Skin({ fill: BG }),
 	Behavior: AppBehavior,
 	contents: [
 		Port($, {
@@ -27,7 +28,7 @@ const ClockApplication = Application.template($ => ({
 		Label($, {
 			name: "valueLabel",
 			left: 0, right: 0, top: 32, bottom: 32,
-			style: new Style({ font: "bold 20px UI", color: "#39FF14", horizontal: "center", vertical: "middle" }),
+			style: new Style({ font: FONT_UI, color: ON, horizontal: "center", vertical: "middle" }),
 			string: "",
 			visible: false,
 		}),

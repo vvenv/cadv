@@ -19,6 +19,7 @@ import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_M
 import { fetchWeather, formatLunarWithWeather, weatherLabel, WEATHER_REFRESH_MS } from "weather";
 import { beijingParts, formatClockTop, formatHMS, formatLunar, formatNow, pad2, timeSynced } from "lunar";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
+import { FONT_UI, ON } from "ink";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
 
 type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "menu" | "help";
@@ -27,7 +28,7 @@ let valueStyleSmall: object | undefined;
 
 function valueStyle(): object {
 	if (!valueStyleSmall)
-		valueStyleSmall = new Style({ font: "bold 20px UI", color: "#39FF14", horizontal: "center", vertical: "middle" });
+		valueStyleSmall = new Style({ font: FONT_UI, color: ON, horizontal: "center", vertical: "middle" });
 	return valueStyleSmall;
 }
 

@@ -18,8 +18,9 @@ import { menuItems } from "menu";
 import { ClockSound } from "sound";
 import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from "settings";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
+import { FONT_UI, FONT_WORD, INK, ON } from "ink";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
-import { WORD_LEVEL_NAME, bankCount, bankName, clampWordLevel, hiddenIndices, puzzleCorrect, renderPuzzle, wordAt, wordCount } from "words";
+import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, puzzleCorrect, renderPuzzle, wordAt, wordCount } from "words";
 
 type Mode = "play" | "menu" | "help";
 
@@ -32,12 +33,21 @@ let valueStyleFit: object | undefined;
 function puzzleStyle(letters: number): object {
 	if (letters > 7) {
 		if (!valueStyleFit)
-			valueStyleFit = new Style({ font: "bold 20px UI", color: "#39FF14", horizontal: "center", vertical: "middle" });
+			valueStyleFit = new Style({ font: FONT_UI, color: ON, horizontal: "center", vertical: "middle" });
 		return valueStyleFit;
 	}
 	if (!valueStyleWord)
-		valueStyleWord = new Style({ font: "bold 48px Word", color: "#39FF14", horizontal: "center", vertical: "middle" });
+		valueStyleWord = new Style({ font: FONT_WORD, color: ON, horizontal: "center", vertical: "middle" });
 	return valueStyleWord;
+}
+
+let phoneFaceStyle: object | undefined;
+
+/** Bottom bar. Arial Bold; Source Han has no IPA. */
+function phoneFace(): object {
+	if (!phoneFaceStyle)
+		phoneFaceStyle = new Style({ font: "bold 20px Ipa", color: INK, horizontal: "left", vertical: "middle" });
+	return phoneFaceStyle;
 }
 
 function hasStyle(target: unknown): target is { style: object } {
@@ -198,7 +208,7 @@ export class AppBehavior extends Behavior {
 
 	setLabels(app: AppHost, top: string, bottom: string) {
 		setMarqueeText(contentByName(app, "dateLabel"), top);
-		setMarqueeText(contentByName(app, "lunarLabel"), bottom);
+		setMarqueeText(contentByName(app, "lunarLabel"), bottom, bottom ? phoneFace() : undefined);
 	}
 
 	tickMarquees(app: AppHost) {
@@ -362,14 +372,10 @@ export class AppBehavior extends Behavior {
 	paintWord(app: AppHost) {
 		const entry = wordAt(this.settings.wordBank, this.wordIndex);
 		const note = this.wordNote && Date.now() < this.wordNoteUntil ? this.wordNote : "";
-		const level = WORD_LEVEL_NAME[clampWordLevel(this.settings.wordLevel)];
-		const n = wordCount(this.settings.wordBank);
-		const top = !entry.word
-			? "无词库"
-			: note
-				? `${level} ${note}`
-				: `${level} ${this.wordIndex + 1}/${n}`;
-		this.setLabels(app, top, entry.word ? bankName(this.settings.wordBank) : "");
+		const top = !entry.word ? "无词库" : (note || entry.gloss);
+		const easy = clampWordLevel(this.settings.wordLevel) === 0;
+		const bottom = entry.word && easy ? entry.phone : "";
+		this.setLabels(app, top, bottom);
 		const value = contentByName(app, "valueLabel");
 		if (hasStyle(value))
 			value.style = puzzleStyle(entry.word ? entry.word.length : 0);

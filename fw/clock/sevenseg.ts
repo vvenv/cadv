@@ -5,9 +5,7 @@
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { formatNow } from "lunar";
-
-const ON = "#39FF14";
-const OFF = "#143214";
+import { DIM, ON } from "ink";
 
 const SEG: number[] = [
 	0b1111110, 0b0110000, 0b1101101, 0b1111001, 0b0110011,
@@ -15,10 +13,10 @@ const SEG: number[] = [
 ];
 
 function hbar(port: PortContent, x: number, y: number, w: number, t: number, on: boolean) {
-	port.fillColor(on ? ON : OFF, x + t, y, w - 2 * t, t);
+	port.fillColor(on ? ON : DIM, x + t, y, w - 2 * t, t);
 }
 function vbar(port: PortContent, x: number, y: number, h: number, t: number, on: boolean) {
-	port.fillColor(on ? ON : OFF, x, y + t, t, h - 2 * t);
+	port.fillColor(on ? ON : DIM, x, y + t, t, h - 2 * t);
 }
 function drawSegMask(port: PortContent, x: number, y: number, w: number, h: number, mask: number) {
 	const t = Math.max(3, Math.floor(Math.min(w, h) / 8));
@@ -38,8 +36,8 @@ function drawDigit(port: PortContent, x: number, y: number, w: number, h: number
 function drawColon(port: PortContent, x: number, y: number, w: number, h: number, on: boolean) {
 	const s = Math.max(3, Math.floor(Math.min(w, h) / 7));
 	const cx = x + Math.floor((w - s) / 2);
-	port.fillColor(on ? ON : OFF, cx, y + Math.floor(h * 0.28), s, s);
-	port.fillColor(on ? ON : OFF, cx, y + Math.floor(h * 0.62), s, s);
+	port.fillColor(on ? ON : DIM, cx, y + Math.floor(h * 0.28), s, s);
+	port.fillColor(on ? ON : DIM, cx, y + Math.floor(h * 0.62), s, s);
 }
 
 function faceFromPort(port: PortContent): string {

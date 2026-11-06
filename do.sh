@@ -159,13 +159,20 @@ cmd_gen_words() {
   node "$ROOT/scripts/gen-wordbank.mjs"
 }
 
-# fw/words/wordbank.bin is older than the generator or the elementary lists in ../alice/data.
+# fw/words/wordbank.bin is older than the generator, the elementary lists,
+# or the gloss and phonetic sources.
 wordbank_stale() {
   local out="$FW_ROOT/words/wordbank.bin"
   local alice="$ROOT/../alice"
-  local hit
+  local hit meta csv
   [ -f "$out" ] || return 0
   [ "$ROOT/scripts/gen-wordbank.mjs" -nt "$out" ] && return 0
+  for meta in "$alice/assets/data/library.json" "$alice/assets/data/ecdict-meta.json"; do
+    [ -f "$meta" ] && [ "$meta" -nt "$out" ] && return 0
+  done
+  for csv in "$ROOT/.cache/ecdict.csv" "$alice/.cache/ecdict.csv"; do
+    [ -f "$csv" ] && [ "$csv" -nt "$out" ] && return 0
+  done
   if [ -d "$alice/data" ]; then
     hit="$(find "$alice/data" -path '*小学*/*.txt' -newer "$out" -print -quit)"
     [ -n "$hit" ] && return 0
@@ -195,7 +202,7 @@ refresh_generated() {
     return 0
   fi
   if [ "$words" -eq 1 ]; then
-    msg="词库比 ../alice/data 旧，会重做词库和字体"
+    msg="词库比词表或释义旧，会重做词库和字体"
   else
     msg="字体比界面文案或词库旧"
   fi
