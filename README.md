@@ -8,7 +8,7 @@
 
 时间天气和单词拼写按键相同：`BS` / `Esc` / `←` 回退，`Enter` / 空格确认，`j` `k` 或 `,` `.` 上下，`?` 或 `/` 帮助，`-` `=` 音量。板子没有方向键：`Fn`+`H`/`J`/`K`/`L` 是 ←↓↑→。配网时空格仍是字符。
 
-SD 卡：设备只看卡上的 `cadv/`。里面放各固件的镜像，开机选一个，再按一次就写进另一块闪存并重启。芯片一次只跑一个；卡上可以放很多。从载入的固件回到启动器：按住 **Fn+BS**。先 `./do.sh flash sd` 把启动器烧进芯片。
+SD 卡：设备只看卡上的 `cadv/`。里面放各固件的镜像，开机选一个，再按一次就写进另一块闪存并重启。芯片一次只跑一个；卡上可以放很多。从载入的固件回到启动器：按住 **Fn+BS**。先 `./do.sh flash` 把启动器烧进芯片。
 
 ## 目录
 
@@ -33,15 +33,13 @@ fw/新名字/
   main.ts          # Application.template 必须放在这个文件
 ```
 
-`./do.sh` 会扫 `fw/*/manifest.json`。然后 `./do.sh flash 新名字`。
+`./do.sh` 会扫 `fw/*/manifest.json`。新固件用 `./do.sh sd fw 新名字` 放进卡，不烧进芯片。
 
 ## 快捷命令
 
 ```bash
-./do.sh                 # 交互菜单。Esc、← 或 BS 返回上一级；烧录和模拟会再让你选固件
-./do.sh flash clock     # 烧时间天气
-./do.sh flash words     # 烧单词拼写
-./do.sh flash sd        # 烧 SD 卡
+./do.sh                 # 交互菜单。Esc、← 或 BS 返回上一级。烧录不再选固件
+./do.sh flash           # 烧启动器到芯片
 ./do.sh sim clock       # 桌面模拟某一个
 ./do.sh sd              # 列出卡上的 cadv/
 ./do.sh sd fw           # 把全部固件拷进 cadv/（不含启动器）
@@ -63,7 +61,7 @@ fw/新名字/
 
 ```bash
 cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
-./do.sh flash clock
+./do.sh sd fw clock
 ```
 
 本机已装好：`third_party/moddable`、`~/esp32/esp-idf-v6.1`、Espressif tools + `python@3.12` venv。`ts-check` 全绿即可烧。

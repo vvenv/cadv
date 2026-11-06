@@ -2,13 +2,13 @@
 # cadv 常用命令入口。无参数进入交互菜单；具体做法仍在本脚本命令函数里，这里做转发。
 #
 # 固件在 fw/<id>/（manifest.json + 一行 label）。do.sh 按目录发现，不写死名单。
-#   ./do.sh                         # 交互菜单，烧录和模拟都会再选固件
-#   ./do.sh flash clock             # 烧「时间天气」
-#   ./do.sh flash words             # 烧「单词拼写」
+#   ./do.sh                         # 交互菜单。烧录直接烧启动器；模拟会再选固件
+#   ./do.sh flash                   # 把启动器烧进芯片。其它固件放 SD 卡，在设备上选
+#   ./do.sh flash <id>              # 仍可把某一个直接烧进芯片，会盖掉启动器
 #   ./do.sh sim clock               # 桌面模拟某一个固件
 #   fw/<id>/sample 存在时，模拟把文件根指到该目录。
 #   菜单里 Esc、← 或 BS 返回上一级。主菜单再按一次即退出。
-#   不写 id 且当前是终端时，会列出 fw/*/label 让你选。取消则什么都不做。
+#   模拟不写 id、或上传「一个固件」时，会列出 fw/*/label。取消则什么都不做。
 #   字体比源文件旧时会先问要不要生成。选中的固件用到 wordbank.bin 时才重做词库。
 #   CADV_REFRESH=1 直接生成；CADV_REFRESH=0 跳过。
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
@@ -637,8 +637,9 @@ build_fw_image() {
 
 cmd_ts_flash() {
   local id want=0
-  id="$(require_fw "${1:-}")"
-  [ -n "$id" ] || return 0
+  # The chip only holds the launcher. Other firmware is chosen on the device.
+  id="${1:-sd}"
+  fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
   if fw_uses_wordbank "$id"; then
     want=1
   fi
@@ -713,7 +714,7 @@ main_menu() {
   local choice id
   while true; do
     choice="$(prompt_menu "cadv" --back --default=1 \
-      "flash:烧录固件" \
+      "flash:烧录启动器" \
       "sim:桌面模拟" \
       "sd:SD 卡（列出 / 上传）" \
       "ts-check:检查 Moddable / TS 环境" \
@@ -725,11 +726,15 @@ main_menu() {
       "quit:退出")"
     case "$choice" in
       "" | quit) return 0 ;;
-      flash | sim)
+      flash)
+        (run flash) || log_error "执行失败（flash）"
+        pause_menu
+        ;;
+      sim)
         id="$(pick_fw "选择固件")"
         # 取消固件选择：回到主菜单，不暂停
         [ -n "$id" ] || continue
-        (run "$choice" "$id") || log_error "执行失败（${choice}）"
+        (run sim "$id") || log_error "执行失败（sim）"
         pause_menu
         ;;
       sd)
