@@ -1,47 +1,51 @@
 /*
 	Per-function help. `?` on a screen shows only that screen's lines.
-	Lines stay short so 20px UI fits the 240px panel.
+	Key left / action right on the 240px list.
 */
 
-const CLOCK_HELP = [
-	"? / 本页",
-	"Enter/空格 列表",
-	"BS Esc Fn+H 回退",
-	"W 配网",
-	"配网 BS 退格",
-	"空格 ? / 是字符",
-	"Esc/Fn+H 取消",
-	"S 声音  H 整点",
-	"- = 音量",
-	"C 倒计时  A 闹钟",
-	"T 刷新天气",
-	"Fn+BS 启动器",
+export type HelpRow = { key: string; action: string };
+
+const CLOCK_HELP: HelpRow[] = [
+	{ key: "?/", action: "打开本页" },
+	{ key: "Enter/空格", action: "开列表" },
+	{ key: "BS/Esc/Fn+H", action: "关掉提示" },
+	{ key: "W", action: "重配 Wi-Fi" },
+	{ key: "配网+BS", action: "删一字" },
+	{ key: "配网+空格?/", action: "当字符" },
+	{ key: "配网+Esc/Fn+H", action: "取消" },
+	{ key: "S", action: "开关滴答" },
+	{ key: "H", action: "开关整点报" },
+	{ key: "-/=", action: "小声/大声" },
+	{ key: "C", action: "倒计时" },
+	{ key: "A", action: "设闹钟" },
+	{ key: "T", action: "拉天气" },
+	{ key: "Fn+BS", action: "回选应用" },
 ];
 
-const MENU_HELP = [
-	"? 本页",
-	"j k , . 上下",
-	"Fn+K/J 也是上下",
-	"Enter/空格 确认",
-	"BS Esc Fn+H 返回",
+const MENU_HELP: HelpRow[] = [
+	{ key: "?", action: "打开本页" },
+	{ key: "j/k/,/.", action: "上下移动" },
+	{ key: "Fn+K/J", action: "上下移动" },
+	{ key: "Enter/空格", action: "确认选中" },
+	{ key: "BS/Esc/Fn+H", action: "回时钟" },
 ];
 
-const CD_HELP = [
-	"? 本页",
-	"Esc/Fn+H 直接退出",
-	"BS 退格或回上一格",
-	"时位空 BS 回时钟",
-	"Enter/空格 确认",
-	"进行中 回退或确认即停",
+const CD_HELP: HelpRow[] = [
+	{ key: "?", action: "打开本页" },
+	{ key: "Esc/Fn+H", action: "退出" },
+	{ key: "BS", action: "删数字/回上格" },
+	{ key: "时位空+BS", action: "回时钟" },
+	{ key: "秒位+Enter/空格", action: "开始" },
+	{ key: "进行中+回退/确认", action: "停止" },
 ];
 
-const AL_HELP = [
-	"? 本页",
-	"Esc/Fn+H 退出",
-	"时满两位跳到分",
-	"Enter/空格 保存",
-	"时位空 BS 关闭",
-	"响铃 回退或确认即停",
+const AL_HELP: HelpRow[] = [
+	{ key: "?", action: "打开本页" },
+	{ key: "Esc/Fn+H", action: "退出" },
+	{ key: "时满两位", action: "跳到分" },
+	{ key: "分位+Enter/空格", action: "保存" },
+	{ key: "时位空+BS", action: "关闹钟" },
+	{ key: "响铃+回退/确认", action: "停止" },
 ];
 
 /** Which page `?` opens for the screen you are on. */
@@ -65,7 +69,7 @@ export function helpTitle(topic: string): string {
 	return "时钟帮助";
 }
 
-export function helpFor(topic: string): string[] {
+export function helpFor(topic: string): HelpRow[] {
 	if (topic === "menu")
 		return MENU_HELP;
 	if (topic === "cd")

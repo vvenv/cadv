@@ -779,9 +779,9 @@ export class AppBehavior extends Behavior {
 		this.helpIndex = start;
 		const lines = [];
 		for (let i = 0; i < vis; i++) {
-			const text = page[start + i];
-			if (text)
-				lines.push({ text, selected: false });
+			const row = page[start + i];
+			if (row)
+				lines.push({ text: row.key, right: row.action, selected: false });
 		}
 		const port = contentByName(app, "listPort");
 		const view = asMenu(port);

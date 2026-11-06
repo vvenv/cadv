@@ -8,7 +8,8 @@ import type { Port as PortContent } from "piu/MC";
 import { BG, DIM, FONT_UI, INK, ON } from "ink";
 import { MENU_VISIBLE, windowStart } from "list";
 
-export type MenuLine = { text: string; selected: boolean };
+/** `right` draws flush-right (help: key left, action right). */
+export type MenuLine = { text: string; selected: boolean; right?: string };
 
 const ROW = 21;
 const DRAW_H = 30;
@@ -73,7 +74,17 @@ export class MenuBehavior extends Behavior {
 			if (line.selected)
 				port.fillColor(DIM, 0, y + BAR_Y, port.width, BAR_H);
 			const color = line.selected ? ON : INK;
-			port.drawString(line.text, style, color, PAD_X, y, port.width - PAD_X * 2, DRAW_H);
+			const inner = port.width - PAD_X * 2;
+			if (line.right) {
+				const rightW = port.measureString(line.right, style).width;
+				const gap = 8;
+				const leftMax = Math.max(1, inner - rightW - gap);
+				port.drawString(line.text, style, color, PAD_X, y, leftMax, DRAW_H);
+				port.drawString(line.right, style, color, port.width - PAD_X - rightW, y, rightW, DRAW_H);
+			}
+			else {
+				port.drawString(line.text, style, color, PAD_X, y, inner, DRAW_H);
+			}
 		}
 		if (this.hint)
 			drawCentered(port, this.hint, INK, (1 + visible) * ROW);

@@ -23,7 +23,8 @@
 #   卡插在电脑上时直接写卡。没插卡、板子用 USB 连着并且跑着启动器时，经串口写入板子上的卡。
 #   CADV_SD=/Volumes/名字 指定卡。CADV_PORT=/dev/cu.usbmodemXXX 指定串口。
 #   CADV_LINK=device 强制走板子；CADV_LINK=0 只认插在电脑上的卡。
-#   CADV_SD_BUILD=1 先重编再拷。启动器要先 ./do.sh flash，这一版才从 USB 收文件。
+#   镜像比 fw/<id> 或 shared 旧时会先问要不要重编。CADV_SD_BUILD=1 直接重编；=0 仍用旧镜像。
+#   启动器要先 ./do.sh flash，这一版才从 USB 收文件。
 #   ./do.sh help                    # 本说明
 set -euo pipefail
 
@@ -395,6 +396,27 @@ fw_image() {
   printf '%s\n' "$MODDABLE/build/bin/esp32/esp32s3_cdc/debug/$1/xs_esp32.bin"
 }
 
+# Newest fw/<id> or shared file newer than the image, relative to the repo.
+# Empty when the image is missing or current.
+fw_image_newer_source() {
+  local id="$1" bin best best_m m f
+  bin="$(fw_image "$id")"
+  [ -f "$bin" ] || return 0
+  best=""
+  best_m=0
+  while IFS= read -r f; do
+    m="$(stat -f '%m' "$f")"
+    if [ "$m" -gt "$best_m" ]; then
+      best_m="$m"
+      best="$f"
+    fi
+  done < <(find "$FW_ROOT/$id" "$ROOT/shared" -type f \
+    ! -name '.DS_Store' \
+    -newer "$bin")
+  [ -n "$best" ] || return 0
+  printf '%s\n' "${best#"$ROOT"/}"
+}
+
 cmd_sd_ls_device() {
   local port="$1" rel="${2:-.}" out size name shown=0
   case "$rel" in
@@ -541,17 +563,34 @@ cmd_sd_file() {
 }
 
 ensure_fw_image() {
-  local id="$1" src
+  local id="$1" src newer ans
   src="$(fw_image "$id")"
-  if [ ! -f "$src" ] || [ "${CADV_SD_BUILD:-0}" = 1 ]; then
-    if [ -f "$src" ]; then
-      log_info "重编 $(fw_label "$id")（不烧进芯片）"
-    else
-      log_info "还没有 $(fw_label "$id") 的镜像，先编译（不烧进芯片）"
-    fi
+  if [ ! -f "$src" ]; then
+    log_info "还没有 $(fw_label "$id") 的镜像，先编译（不烧进芯片）"
+    build_fw_image "$id"
+  elif [ "${CADV_SD_BUILD:-ask}" = 1 ]; then
+    log_info "重编 $(fw_label "$id")（不烧进芯片）"
     build_fw_image "$id"
   else
-    log_info "用已有镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')。重编：CADV_SD_BUILD=1 ./do.sh sd fw $id"
+    newer="$(fw_image_newer_source "$id")"
+    if [ -z "$newer" ]; then
+      log_info "用已有镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')"
+    elif [ "${CADV_SD_BUILD:-ask}" = 0 ]; then
+      log_warn "$(fw_label "$id") 的源文件比镜像新（${newer}，镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')）。已跳过重编（CADV_SD_BUILD=0）"
+    elif [ -t 0 ] || [ -t 1 ]; then
+      read -r -p "$(fw_label "$id") 比镜像新（${newer}）。现在重编？ [Y/n] " ans </dev/tty || ans=n
+      case "${ans:-Y}" in
+        n|N|no|NO|否)
+          log_warn "已跳过，继续用 $(date -r "$src" '+%Y-%m-%d %H:%M') 的镜像"
+          ;;
+        *)
+          log_info "重编 $(fw_label "$id")（不烧进芯片）"
+          build_fw_image "$id"
+          ;;
+      esac
+    else
+      log_warn "$(fw_label "$id") 的源文件比镜像新（${newer}）。非交互已跳过；CADV_SD_BUILD=1 可自动重编"
+    fi
   fi
   src="$(fw_image "$id")"
   [ -f "$src" ] || log_die "编译后仍没有镜像：$src"

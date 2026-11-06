@@ -51,6 +51,8 @@ fw/新名字/
 
 字体过期会先问要不要生成。只有选中的固件用到 `wordbank.bin` 时才重做词库。`CADV_REFRESH=1` 直接生成，`CADV_REFRESH=0` 跳过。
 
+上传到 SD 卡时，镜像比 `fw/<id>` 或 `shared` 旧会先问要不要重编，回车即编。`CADV_SD_BUILD=1` 直接重编，`CADV_SD_BUILD=0` 仍用旧镜像。没有镜像时直接编译。这不烧进芯片。
+
 烧录前：电源 **OFF** → 按住 **G0** → 插 USB → 松开。烧完按 **RESET**。
 
 ## 首次使用
