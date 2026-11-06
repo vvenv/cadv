@@ -7,6 +7,7 @@ import {} from "piu/MC";
 import Timer from "timer";
 import { openInstaller, type Installer } from "boot";
 import { loadCatalog, openRead, type SdCatalog, type SdEntry } from "catalog";
+import { pollLink, setLinkBusy, type LinkEvent } from "link";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
@@ -16,7 +17,7 @@ import { asMenu } from "menu-view";
 import { contentByName, type AppHost } from "ui";
 import type { File } from "embedded:storage/files";
 
-type Mode = "list" | "help" | "arm" | "load";
+type Mode = "list" | "help" | "arm" | "load" | "recv";
 
 const ROW_CHARS = 18;
 const ERROR_CHARS = 16;
@@ -82,6 +83,9 @@ export class AppBehavior extends Behavior {
 	offset = 0;
 	loadSize = 0;
 	shownPct = -1;
+	linkName = "";
+	linkWait = 0;
+	linkArmed = false;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
@@ -91,9 +95,75 @@ export class AppBehavior extends Behavior {
 	}
 
 	onKeyboardTick(app: AppHost) {
+		this.onLink(app, false);
 		const stroke = this.kb?.poll();
 		if (stroke)
 			this.handleStroke(app, stroke);
+	}
+
+	armLink(app: AppHost) {
+		if (this.linkArmed || this.mode !== "recv")
+			return;
+		this.linkArmed = true;
+		Timer.set(() => {
+			this.linkArmed = false;
+			this.onLink(app, true);
+		}, 10);
+	}
+
+	onLink(app: AppHost, fromFast: boolean) {
+		if (this.mode === "load") {
+			try { pollLink(); } catch { /* the host is told this device is busy */ }
+			return;
+		}
+		if (this.scanning)
+			return;
+		let ev: LinkEvent | null = null;
+		try {
+			ev = pollLink();
+		}
+		catch {
+			ev = null;
+		}
+		if (!ev) {
+			if (this.mode !== "recv")
+				return;
+			if (fromFast)
+				this.linkWait += 1;
+			if (this.linkWait > 500) {
+				this.mode = "list";
+				this.note = "";
+				this.linkName = "";
+				this.paint(app);
+				return;
+			}
+			this.armLink(app);
+			return;
+		}
+		this.linkWait = 0;
+		if (ev.phase === "recv") {
+			const pct = ev.total ? Math.floor(ev.got * 100 / ev.total) : 100;
+			const note = "USB " + pct + "%";
+			const changed = this.mode !== "recv" || this.note !== note || this.linkName !== ev.name;
+			this.mode = "recv";
+			this.note = note;
+			this.linkName = ev.name;
+			if (changed)
+				this.paint(app);
+			this.armLink(app);
+			return;
+		}
+		if (ev.phase === "done") {
+			this.linkName = "";
+			this.mode = "list";
+			this.note = "";
+			this.startScan(app);
+			return;
+		}
+		this.mode = "list";
+		this.linkName = "";
+		this.note = ev.message === "nocard" ? "无卡" : "失败";
+		this.paint(app);
 	}
 
 	onKeyDown(content: unknown, key: string) {
@@ -132,6 +202,15 @@ export class AppBehavior extends Behavior {
 	handleStroke(app: AppHost, stroke: KeyStroke) {
 		if (this.scanning || this.mode === "load")
 			return;
+		if (this.mode === "recv") {
+			if (isBack(stroke)) {
+				this.mode = "list";
+				this.note = "";
+				this.linkName = "";
+				this.paint(app);
+			}
+			return;
+		}
 		if (isHelp(stroke) && this.mode !== "help") {
 			this.enterHelp(app);
 			return;
@@ -215,6 +294,7 @@ export class AppBehavior extends Behavior {
 		const root = this.catalog.root;
 		if (!root)
 			return;
+		setLinkBusy(true);
 		let installer: Installer | null = null;
 		let file: File | null = null;
 		try {
@@ -297,6 +377,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	failLoad(app: AppHost, message: string) {
+		setLinkBusy(false);
 		try { this.installer?.abort(); } catch { /* already closed */ }
 		this.installer = null;
 		this.closeFile();
@@ -335,6 +416,13 @@ export class AppBehavior extends Behavior {
 		const view = asMenu(port);
 		if (!view)
 			return;
+		if (this.mode === "recv") {
+			let text = this.linkName || "cadv";
+			if (text.length > ROW_CHARS)
+				text = "..." + text.slice(text.length - (ROW_CHARS - 3));
+			view.setList(port, this.note || "USB", [{ text, selected: true }], "");
+			return;
+		}
 		if (this.mode === "help") {
 			const page = helpFor();
 			const n = page.length;

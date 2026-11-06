@@ -16,11 +16,14 @@
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
 #   ./do.sh gen-words               # 从 ../alice/data 生成 fw/words/wordbank.bin
 #   ./do.sh clean                   # 清临时日志
-#   ./do.sh sd                      # 列出卡上的 cadv/（FAT / exFAT）
+#   ./do.sh sd                      # 列出卡上的 cadv/
 #   ./do.sh sd fw                  # 把除启动器以外的全部固件拷进 cadv/（不烧进芯片）
 #   ./do.sh sd fw clock             # 只拷一个：cadv/clock.bin 和一行名字
 #   ./do.sh sd file ./a.txt         # 把文件或目录拷进 cadv/
-#   多张卡或没自动认出来时：CADV_SD=/Volumes/名字。CADV_SD_BUILD=1 先重编再拷。
+#   卡插在电脑上时直接写卡。没插卡、板子用 USB 连着并且跑着启动器时，经串口写入板子上的卡。
+#   CADV_SD=/Volumes/名字 指定卡。CADV_PORT=/dev/cu.usbmodemXXX 指定串口。
+#   CADV_LINK=device 强制走板子；CADV_LINK=0 只认插在电脑上的卡。
+#   CADV_SD_BUILD=1 先重编再拷。启动器要先 ./do.sh flash，这一版才从 USB 收文件。
 #   ./do.sh help                    # 本说明
 set -euo pipefail
 
@@ -287,7 +290,7 @@ sd_root() {
   done < <(sd_candidates)
   case "${#vols[@]}" in
     0)
-      log_die "没有挂上 FAT/exFAT 的 SD 卡。把卡插到电脑，或 CADV_SD=/Volumes/名字"
+      return 2
       ;;
     1)
       printf '%s\n' "${vols[0]}"
@@ -306,12 +309,75 @@ sd_root() {
   esac
 }
 
-sd_take() {
-  local root
-  root="$(sd_root)" || return $?
-  [ -n "$root" ] || return 0
-  [ -w "$root" ] || log_die "SD 卡只读：$root"
-  printf '%s\n' "$root"
+# volume<TAB>path, or device<TAB>port. Empty stdout and 0 means the user cancelled.
+# sd_root status 2 means no FAT volume was found.
+sd_route() {
+  local root="" rc=0 port
+  if [ "${CADV_LINK:-}" = "device" ] && [ -z "${CADV_SD:-}" ]; then
+    rc=2
+  else
+    root="$(sd_root)" && rc=0 || rc=$?
+  fi
+  if [ "$rc" -eq 0 ]; then
+    if [ -n "$root" ]; then
+      [ -w "$root" ] || log_die "SD 卡只读：$root"
+      printf 'volume\t%s\n' "$root"
+    fi
+    return 0
+  fi
+  if [ "$rc" -ne 2 ]; then
+    return "$rc"
+  fi
+  if [ "${CADV_LINK:-}" = "0" ]; then
+    log_die "没有挂上 FAT/exFAT 的 SD 卡。把卡插到电脑，或 CADV_SD=/Volumes/名字"
+  fi
+  port="$(link_port)" || return $?
+  printf 'device\t%s\n' "$port"
+}
+
+link_python() {
+  if python3 -c 'import serial' >/dev/null 2>&1; then
+    command -v python3
+    return 0
+  fi
+  local env
+  env="$(ls -d "$HOME/.espressif/python_env"/idf*/bin/python 2>/dev/null | tail -1 || true)"
+  if [ -n "$env" ] && "$env" -c 'import serial' >/dev/null 2>&1; then
+    printf '%s\n' "$env"
+    return 0
+  fi
+  log_die "没有 pyserial。ESP-IDF 的 Python 环境里有，或 pip install pyserial"
+}
+
+link_port() {
+  local port
+  if [ -n "${CADV_PORT:-}" ]; then
+    [ -e "$CADV_PORT" ] || log_die "CADV_PORT 不是串口：$CADV_PORT"
+    printf '%s\n' "$CADV_PORT"
+    return 0
+  fi
+  port="$(detect_port)" || log_die "没有 FAT/exFAT 的卡，也没找到板子的串口。把卡插到电脑，或用 USB 连上板子（先 ./do.sh flash 启动器）。"
+  printf '%s\n' "$port"
+}
+
+link_ping() {
+  local py
+  py="$(link_python)"
+  "$py" "$ROOT/scripts/sd_link.py" ping "$1"
+}
+
+link_ls() {
+  local py
+  py="$(link_python)"
+  "$py" "$ROOT/scripts/sd_link.py" ls "$1"
+}
+
+link_put() {
+  local py port
+  py="$(link_python)"
+  port="$1"
+  shift
+  "$py" "$ROOT/scripts/sd_link.py" put "$port" "$@"
 }
 
 # The device only opens this directory. The rest of a large card is ignored.
@@ -322,10 +388,37 @@ fw_image() {
   printf '%s\n' "$MODDABLE/build/bin/esp32/esp32s3_cdc/debug/$1/xs_esp32.bin"
 }
 
+cmd_sd_ls_device() {
+  local port="$1" rel="${2:-.}" out size name shown=0
+  case "$rel" in
+    /* | .. | ../* | */.. | */../*) log_die "只列出 ${SD_DIR} 里的相对路径" ;;
+  esac
+  log_info "设备上的 ${SD_DIR}/（${port}）"
+  out="$(link_ls "$port")" || return $?
+  while IFS=$'\t' read -r size name; do
+    [ -n "${name:-}" ] || continue
+    if [ "$rel" != "." ]; then
+      case "$name" in
+        "$rel" | "$rel"/*) ;;
+        *) continue ;;
+      esac
+    fi
+    shown=1
+    printf '%s\t%s\n' "$name" "$(human_bytes "$size")"
+  done <<< "$out"
+  [ "$shown" -eq 1 ] || log_info "${SD_DIR} 是空的"
+}
+
 cmd_sd_ls() {
-  local root dir rel found=0 f base bytes
-  root="$(sd_take)" || return $?
-  [ -n "$root" ] || return 0
+  local route kind root dir rel found=0 f base bytes
+  route="$(sd_route)" || return $?
+  [ -n "$route" ] || return 0
+  kind="${route%%$'\t'*}"
+  root="${route#*$'\t'}"
+  if [ "$kind" = "device" ]; then
+    cmd_sd_ls_device "$root" "$@"
+    return 0
+  fi
   dir="$root/$SD_DIR"
   rel="${1:-.}"
   case "$rel" in
@@ -353,8 +446,47 @@ cmd_sd_ls() {
   [ "$found" -eq 1 ] || log_info "${SD_DIR} 是空的"
 }
 
+cmd_sd_file_device() {
+  local port="$1" src name f rel srcs=() dsts=() args=() i
+  shift
+  for src in "$@"; do
+    src="${src#\"}"
+    src="${src%\"}"
+    src="${src#\'}"
+    src="${src%\'}"
+    src="${src/#\~/$HOME}"
+    [ -e "$src" ] || log_die "没有这个路径：$src"
+    src="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
+    name="$(basename "$src")"
+    case "$name" in
+      "" | . | ..) log_die "路径不对：$src" ;;
+    esac
+    if [ -d "$src" ]; then
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        rel="${f#"$src"/}"
+        case "$rel" in
+          .* | */.*) continue ;;
+        esac
+        srcs+=("$f")
+        dsts+=("${name}/${rel}")
+      done < <(find "$src" -type f ! -name '.DS_Store' | sort)
+    else
+      srcs+=("$src")
+      dsts+=("$name")
+    fi
+  done
+  [ "${#srcs[@]}" -gt 0 ] || log_die "没有可上传的文件"
+  for i in "${!srcs[@]}"; do
+    args+=("${srcs[$i]}" "${dsts[$i]}")
+  done
+  log_info "经 USB 写入 ${SD_DIR}/（${port}）"
+  link_put "$port" "${args[@]}"
+  log_success "已写入 ${#srcs[@]} 个文件"
+}
+
 cmd_sd_file() {
-  local root src name dest
+  local route kind root src name dest
   if [ $# -eq 0 ]; then
     if [ -t 0 ]; then
       read -r -p "要拷到 SD 卡的文件或目录: " src </dev/tty || true
@@ -364,8 +496,14 @@ cmd_sd_file() {
       log_die "用法：./do.sh sd file <文件或目录>…"
     fi
   fi
-  root="$(sd_take)" || return $?
-  [ -n "$root" ] || return 0
+  route="$(sd_route)" || return $?
+  [ -n "$route" ] || return 0
+  kind="${route%%$'\t'*}"
+  root="${route#*$'\t'}"
+  if [ "$kind" = "device" ]; then
+    cmd_sd_file_device "$root" "$@"
+    return 0
+  fi
   mkdir -p "$root/$SD_DIR"
   for src in "$@"; do
     src="${src#\"}"
@@ -395,8 +533,49 @@ cmd_sd_file() {
   sync || true
 }
 
+ensure_fw_image() {
+  local id="$1" src
+  src="$(fw_image "$id")"
+  if [ ! -f "$src" ] || [ "${CADV_SD_BUILD:-0}" = 1 ]; then
+    if [ -f "$src" ]; then
+      log_info "重编 $(fw_label "$id")（不烧进芯片）"
+    else
+      log_info "还没有 $(fw_label "$id") 的镜像，先编译（不烧进芯片）"
+    fi
+    build_fw_image "$id"
+  else
+    log_info "用已有镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')。重编：CADV_SD_BUILD=1 ./do.sh sd fw $id"
+  fi
+  src="$(fw_image "$id")"
+  [ -f "$src" ] || log_die "编译后仍没有镜像：$src"
+}
+
+cmd_sd_fw_device() {
+  local port="$1" id src tmp rc=0 args=() tmps=()
+  shift
+  log_info "经 USB 写入卡上的 ${SD_DIR}/（${port}）"
+  link_ping "$port"
+  for id in "$@"; do
+    ensure_fw_image "$id"
+  done
+  for id in "$@"; do
+    src="$(fw_image "$id")"
+    tmp="$(mktemp "${TMPDIR:-/tmp}/cadv-label.XXXXXX")"
+    printf '%s\n' "$(fw_label "$id")" >"$tmp"
+    tmps+=("$tmp")
+    args+=("$src" "${id}.bin" "$tmp" "${id}.txt")
+  done
+  link_put "$port" "${args[@]}" || rc=$?
+  rm -f "${tmps[@]}"
+  [ "$rc" -eq 0 ] || return "$rc"
+  for id in "$@"; do
+    src="$(fw_image "$id")"
+    log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
+  done
+}
+
 cmd_sd_fw() {
-  local root id src dest home ids=()
+  local route kind root id src dest home ids=()
   if [ $# -eq 0 ] || [ "${1:-}" = "all" ]; then
     while IFS= read -r id; do
       [ -n "$id" ] || continue
@@ -414,23 +593,19 @@ cmd_sd_fw() {
     done
   fi
   [ "${#ids[@]}" -gt 0 ] || log_die "没有可上传的固件"
-  root="$(sd_take)" || return $?
-  [ -n "$root" ] || return 0
+  route="$(sd_route)" || return $?
+  [ -n "$route" ] || return 0
+  kind="${route%%$'\t'*}"
+  root="${route#*$'\t'}"
+  if [ "$kind" = "device" ]; then
+    cmd_sd_fw_device "$root" "${ids[@]}"
+    return 0
+  fi
   home="$root/$SD_DIR"
   mkdir -p "$home"
   for id in "${ids[@]}"; do
+    ensure_fw_image "$id"
     src="$(fw_image "$id")"
-    if [ ! -f "$src" ] || [ "${CADV_SD_BUILD:-0}" = 1 ]; then
-      if [ -f "$src" ]; then
-        log_info "重编 $(fw_label "$id")（不烧进芯片）"
-      else
-        log_info "还没有 $(fw_label "$id") 的镜像，先编译（不烧进芯片）"
-      fi
-      build_fw_image "$id"
-    else
-      log_info "用已有镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')。重编：CADV_SD_BUILD=1 ./do.sh sd fw $id"
-    fi
-    [ -f "$src" ] || log_die "编译后仍没有镜像：$src"
     dest="$home/${id}.bin"
     cp -X -f "$src" "$dest"
     printf '%s\n' "$(fw_label "$id")" > "$home/${id}.txt"
@@ -613,6 +788,16 @@ need_idf() {
   fi
 }
 
+# The launcher owns USB Serial/JTAG. A debug build's xsbug reader consumes
+# every byte on that port, so the host cannot upload through the device.
+esp_mc() {
+  if [ "${1:-}" = "sd" ]; then
+    ESP_MC=(-m -p esp32/esp32s3_cdc)
+  else
+    ESP_MC=(-d -m -dn -p esp32/esp32s3_cdc)
+  fi
+}
+
 # Compile the ESP32 image and stop before esptool. Same bin flash writes at 0x10000.
 build_fw_image() {
   local id="$1" want=0
@@ -628,10 +813,11 @@ build_fw_image() {
       [ -n "$line" ] && wifi_args+=("$line")
     done < <(ts_wifi_args "$id")
   fi
+  esp_mc "$id"
   if [ "${#wifi_args[@]}" -gt 0 ]; then
-    (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p esp32/esp32s3_cdc -t build "${wifi_args[@]}")
+    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}" -t build "${wifi_args[@]}")
   else
-    (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p esp32/esp32s3_cdc -t build)
+    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}" -t build)
   fi
 }
 
@@ -660,18 +846,20 @@ cmd_ts_flash() {
   fi
 
   log_info "烧录 $(fw_label "$id")（${id}）到 esp32/esp32s3_cdc"
+  esp_mc "$id"
   # -dn builds a debug image but does not launch xsbug. serial2xsbug then
   # exits non-zero after a successful flash. esptool 4 prints "Hash of data
   # verified"; esptool 5 prints "verified" and "Hard resetting via RTS pin".
+  # The launcher is not a debug image: its USB port carries file uploads.
   # bash 3.2 + set -u: empty "${arr[@]}" is "unbound variable" — branch instead.
   local log rc
   log="$(mktemp "${TMPDIR:-/tmp}/cadv-flash.XXXXXX")"
   set +e
   set +o pipefail
   if [ "${#wifi_args[@]}" -gt 0 ]; then
-    (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p esp32/esp32s3_cdc "${wifi_args[@]}") 2>&1 | tee "$log"
+    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}" "${wifi_args[@]}") 2>&1 | tee "$log"
   else
-    (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p esp32/esp32s3_cdc) 2>&1 | tee "$log"
+    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}") 2>&1 | tee "$log"
   fi
   rc=${PIPESTATUS[0]}
   set -o pipefail
@@ -686,6 +874,9 @@ cmd_ts_flash() {
     log_die "mcconfig 退出码 ${rc}"
   fi
   log_success "已烧录 $(fw_label "$id")。板子按 RESET。"
+  if [ "$id" = "sd" ]; then
+    log_info "上传固件可以不拔卡：USB 接着，等启动器菜单出来，再选上传。"
+  fi
 }
 
 run() {

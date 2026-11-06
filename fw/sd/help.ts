@@ -8,6 +8,7 @@ const LIST_HELP = Object.freeze([
 	"Fn+K/J 也是上下",
 	"Enter/空格 再按载入",
 	"BS Esc Fn+H 重扫",
+	"USB -> cadv",
 	"载入后 Fn+BS 回来",
 ]);
 
