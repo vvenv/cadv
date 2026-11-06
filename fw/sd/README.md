@@ -4,7 +4,7 @@
 
 卡是 Cardputer-Adv 侧面的 microSD，FAT。SPI2，和屏幕的 SPI3 分开：CS 12、MOSI 14、CLK 40、MISO 39。挂在 `/sdcard`，只打开 `cadv/`。读失败不会格式化卡。
 
-列表是 `cadv/*.bin`。旁边的 `cadv/<id>.txt` 是屏幕上的名字。子目录（例如拼写固件用的 `cadv/words/wordbank.bin`）不进列表。**Enter / 空格** 先问一次，再按才写入另一块闪存并重启。**BS / Esc / Fn+H** 取消或重新扫描。
+列表是 `cadv/*.bin`。旁边的 `cadv/<id>.txt` 是屏幕上的名字。子目录（例如拼写固件用的 `cadv/words/junior.bin`）不进列表。**K/J** 上下，**Enter** 先问一次，再按才写入另一块闪存并重启。**BS** 取消或重新扫描。
 
 载入之后，在那个固件里按 **Fn+BS** 回到这个启动器。
 

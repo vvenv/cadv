@@ -15,8 +15,8 @@
 #   ./do.sh port                    # 列出可用串口
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
 #   ./do.sh gen-words               # 从 ../alice/data 生成 fw/words/wordbank.bin
-#                                   # 并同步到 fw/words/sample/cadv/words/（模拟用）
-#   ./do.sh sd fw words             # 额外写入 cadv/words/wordbank.bin 供设备优先加载
+#                                   # 与 junior.bin；junior 同步到 sample（模拟用）
+#   ./do.sh sd fw words             # 额外写入 cadv/words/junior.bin（菜单里选「初中」）
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh sd                      # 列出卡上的 cadv/
 #   ./do.sh sd fw                  # 把除启动器以外的全部固件拷进 cadv/（不烧进芯片）
@@ -162,22 +162,29 @@ cmd_gen_words() {
   node "$ROOT/scripts/gen-wordbank.mjs"
 }
 
-# fw/words/wordbank.bin is older than the generator, 闽教版小学 lists,
+# fw/words/wordbank.bin or junior.bin is older than the generator, lists,
 # or the gloss and phonetic sources.
 wordbank_stale() {
   local out="$FW_ROOT/words/wordbank.bin"
+  local junior="$FW_ROOT/words/junior.bin"
   local alice="$ROOT/../alice"
   local hit meta csv
   [ -f "$out" ] || return 0
+  [ -f "$junior" ] || return 0
   [ "$ROOT/scripts/gen-wordbank.mjs" -nt "$out" ] && return 0
+  [ "$ROOT/scripts/gen-wordbank.mjs" -nt "$junior" ] && return 0
   for meta in "$alice/assets/data/library.json" "$alice/assets/data/ecdict-meta.json"; do
-    [ -f "$meta" ] && [ "$meta" -nt "$out" ] && return 0
+    [ -f "$meta" ] && { [ "$meta" -nt "$out" ] || [ "$meta" -nt "$junior" ]; } && return 0
   done
   for csv in "$ROOT/.cache/ecdict.csv" "$alice/.cache/ecdict.csv"; do
-    [ -f "$csv" ] && [ "$csv" -nt "$out" ] && return 0
+    [ -f "$csv" ] && { [ "$csv" -nt "$out" ] || [ "$csv" -nt "$junior" ]; } && return 0
   done
   if [ -d "$alice/data/闽教版小学" ]; then
-    hit="$(find "$alice/data/闽教版小学" -name '*.txt' -newer "$out" -print -quit)"
+    hit="$(find "$alice/data/闽教版小学" -name '*.txt' \( -newer "$out" -o -newer "$junior" \) -print -quit)"
+    [ -n "$hit" ] && return 0
+  fi
+  if [ -d "$alice/data/初中2182" ]; then
+    hit="$(find "$alice/data/初中2182" -name '*.txt' \( -newer "$out" -o -newer "$junior" \) -print -quit)"
     [ -n "$hit" ] && return 0
   fi
   return 1
@@ -398,26 +405,27 @@ fw_image() {
   printf '%s\n' "$MODDABLE/build/bin/esp32/esp32s3_cdc/debug/$1/xs_esp32.bin"
 }
 
-# Spelling lexicon override on the card. Kept under cadv/words/ so the
-# launcher does not treat wordbank.bin as a flashable firmware image.
-WORDS_BANK_REL="${SD_DIR}/words/wordbank.bin"
+# Optional junior pack on the card. Kept under cadv/words/ so the launcher
+# does not treat *.bin there as flashable firmware. Flash stays 闽教; device
+# menu picks 来源 among 内置 + these files (junior → 初中).
+WORDS_JUNIOR_REL="${SD_DIR}/words/junior.bin"
 
-words_bank_src() {
-  printf '%s\n' "$FW_ROOT/words/wordbank.bin"
+words_junior_src() {
+  printf '%s\n' "$FW_ROOT/words/junior.bin"
 }
 
-# Host-mounted card: copy the lexicon next to the words firmware image.
+# Host-mounted card: copy junior.bin for manual load (not an auto-override).
 sd_put_words_bank_host() {
   local home="$1" src dest
-  src="$(words_bank_src)"
+  src="$(words_junior_src)"
   [ -f "$src" ] || {
-    log_warn "没有词库 $src，跳过 ${WORDS_BANK_REL}"
+    log_warn "没有词库 $src，跳过 ${WORDS_JUNIOR_REL}"
     return 0
   }
-  dest="$home/words/wordbank.bin"
+  dest="$home/words/junior.bin"
   mkdir -p "$(dirname "$dest")"
   cp -X -f "$src" "$dest"
-  log_success "词库 → ${WORDS_BANK_REL}（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
+  log_success "词库 → ${WORDS_JUNIOR_REL}（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
 }
 
 # Newest fw/<id> or shared file newer than the image, relative to the repo.
@@ -635,11 +643,11 @@ cmd_sd_fw_device() {
     [ "$id" = "words" ] && want_bank=1
   done
   if [ "$want_bank" -eq 1 ]; then
-    src="$(words_bank_src)"
+    src="$(words_junior_src)"
     if [ -f "$src" ]; then
-      args+=("$src" "words/wordbank.bin")
+      args+=("$src" "words/junior.bin")
     else
-      log_warn "没有词库 $src，跳过 ${WORDS_BANK_REL}"
+      log_warn "没有词库 $src，跳过 ${WORDS_JUNIOR_REL}"
       want_bank=0
     fi
   fi
@@ -651,8 +659,8 @@ cmd_sd_fw_device() {
     log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
   done
   if [ "$want_bank" -eq 1 ]; then
-    src="$(words_bank_src)"
-    log_success "词库 → ${WORDS_BANK_REL}（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
+    src="$(words_junior_src)"
+    log_success "词库 → ${WORDS_JUNIOR_REL}（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
   fi
 }
 

@@ -1,18 +1,19 @@
 /*
 	Per-function help. `?` on a screen shows only that screen's lines.
 	Key left / action right on the 240px list.
+	One key (or paired opposite keys) per action.
 */
 
 export type HelpRow = { key: string; action: string };
 
 const CLOCK_HELP: HelpRow[] = [
-	{ key: "?/", action: "打开本页" },
-	{ key: "Enter/空格", action: "开列表" },
-	{ key: "BS/Esc/Fn+H", action: "关掉提示" },
+	{ key: "?", action: "打开本页" },
+	{ key: "Enter", action: "开列表" },
+	{ key: "BS", action: "关掉提示" },
 	{ key: "W", action: "重配 Wi-Fi" },
 	{ key: "配网+BS", action: "删一字" },
 	{ key: "配网+空格?/", action: "当字符" },
-	{ key: "配网+Esc/Fn+H", action: "取消" },
+	{ key: "配网+Esc", action: "取消" },
 	{ key: "S", action: "开关滴答" },
 	{ key: "H", action: "开关整点报" },
 	{ key: "-/=", action: "小声/大声" },
@@ -24,28 +25,27 @@ const CLOCK_HELP: HelpRow[] = [
 
 const MENU_HELP: HelpRow[] = [
 	{ key: "?", action: "打开本页" },
-	{ key: "j/k/,/.", action: "上下移动" },
-	{ key: "Fn+K/J", action: "上下移动" },
-	{ key: "Enter/空格", action: "确认选中" },
-	{ key: "BS/Esc/Fn+H", action: "回时钟" },
+	{ key: "K/J", action: "上下移动" },
+	{ key: "Enter", action: "确认选中" },
+	{ key: "BS", action: "回时钟" },
 ];
 
 const CD_HELP: HelpRow[] = [
 	{ key: "?", action: "打开本页" },
-	{ key: "Esc/Fn+H", action: "退出" },
+	{ key: "Esc", action: "退出" },
 	{ key: "BS", action: "删数字/回上格" },
 	{ key: "时位空+BS", action: "回时钟" },
-	{ key: "秒位+Enter/空格", action: "开始" },
-	{ key: "进行中+回退/确认", action: "停止" },
+	{ key: "秒位+Enter", action: "开始" },
+	{ key: "进行中+BS", action: "停止" },
 ];
 
 const AL_HELP: HelpRow[] = [
 	{ key: "?", action: "打开本页" },
-	{ key: "Esc/Fn+H", action: "退出" },
+	{ key: "Esc", action: "退出" },
 	{ key: "时满两位", action: "跳到分" },
-	{ key: "分位+Enter/空格", action: "保存" },
+	{ key: "分位+Enter", action: "保存" },
 	{ key: "时位空+BS", action: "关闹钟" },
-	{ key: "响铃+回退/确认", action: "停止" },
+	{ key: "响铃+BS", action: "停止" },
 ];
 
 /** Which page `?` opens for the screen you are on. */

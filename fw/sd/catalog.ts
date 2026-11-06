@@ -98,7 +98,7 @@ function ensureHome(volume: Directory): Directory {
 		isDir = false;
 	}
 	if (isFile)
-		throw new Error("cadv 不是目录");
+		throw new Error(`${CARD_DIR} 不是目录`);
 	if (!isDir)
 		volume.createDirectory(CARD_DIR);
 	return volume.openDirectory({ path: CARD_DIR });

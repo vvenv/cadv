@@ -20,7 +20,8 @@ import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from 
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { FONT_UI, FONT_WORD, INK, ON } from "ink";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
-import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, puzzleCorrect, quizOrder, renderPuzzle, wordAt, wordCount } from "words";
+import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, listWordSources, puzzleCorrect, quizOrder, renderPuzzle, selectWordSource, wordAt, wordCount, wordSourceId } from "words";
+import { SOURCE_FLASH } from "wordbank";
 
 type Mode = "play" | "menu" | "help";
 
@@ -63,6 +64,7 @@ export class AppBehavior extends Behavior {
 		volume: 6,
 		wordLevel: 0,
 		wordBank: 0,
+		wordSource: SOURCE_FLASH,
 		shuffle: false,
 		phone: true,
 	};
@@ -88,6 +90,14 @@ export class AppBehavior extends Behavior {
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
 		this.settings = loadSettings();
+		const wantSource = this.settings.wordSource;
+		if (!selectWordSource(wantSource))
+			selectWordSource(SOURCE_FLASH);
+		this.settings.wordSource = wordSourceId();
+		if (this.settings.wordSource !== wantSource) {
+			this.settings.wordBank = 0;
+			saveSettings(this.settings);
+		}
 		this.kb = new CardputerKeyboard();
 		this.sound = new ClockSound();
 		this.sound.setVolume(this.settings.volume);
@@ -101,7 +111,7 @@ export class AppBehavior extends Behavior {
 
 	menuList() {
 		const s = this.settings;
-		return menuItems(s.sound, s.wordLevel, s.wordBank, s.shuffle, s.phone);
+		return menuItems(s.sound, s.wordLevel, s.wordBank, s.wordSource, s.shuffle, s.phone);
 	}
 
 	lexIndex(): number {
@@ -326,6 +336,10 @@ export class AppBehavior extends Behavior {
 		const items = this.menuList();
 		const id = items[this.menuIndex] ? items[this.menuIndex].id : "";
 		this.maybeBeep();
+		if (id === "source") {
+			this.cycleWordSource(app);
+			return;
+		}
 		if (id === "level") {
 			this.setWordLevel(app, this.settings.wordLevel + 1);
 			return;
@@ -352,6 +366,37 @@ export class AppBehavior extends Behavior {
 			saveSettings(this.settings);
 			this.paintMenu(app);
 		}
+	}
+
+	cycleWordSource(app: AppHost) {
+		const sources = listWordSources();
+		if (sources.length <= 0)
+			return;
+		const cur = wordSourceId();
+		let at = 0;
+		for (let i = 0; i < sources.length; i++) {
+			if (sources[i].id === cur) {
+				at = i;
+				break;
+			}
+		}
+		const next = sources[(at + 1) % sources.length];
+		if (!selectWordSource(next.id))
+			return;
+		this.settings.wordSource = wordSourceId();
+		this.settings.wordBank = 0;
+		saveSettings(this.settings);
+		this.rebuildOrder();
+		this.wordAdvance = false;
+		this.wordNote = "";
+		this.wordHidden = [];
+		this.wordMaskLevel = -1;
+		if (this.mode === "play") {
+			this.loadWord();
+			this.paintWord(app);
+			return;
+		}
+		this.paintMenu(app);
 	}
 
 	loadWord() {

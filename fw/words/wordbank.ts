@@ -1,5 +1,5 @@
 /*
-	Lexicon: prefer SD card cadv/words/wordbank.bin, else flash Resource.
+	Lexicon: flash Resource by default; optional SD packs under cadv/words/*.bin.
 	Headword, Chinese gloss, phonetic. The ESP32 XS heap is 4928 slots and
 	77KB; materializing the lists as JS arrays aborts before the first frame,
 	so the backlight stays off. Reads below copy only a few bytes. Generated
@@ -7,6 +7,7 @@
 */
 
 import Modules from "modules";
+import Preference from "preference";
 import Resource from "Resource";
 import type { Directory, File } from "embedded:storage/files";
 
@@ -16,7 +17,13 @@ const HEADER = 16;
 const MAGIC = 0x314b4257;
 const SD_HOME = "cadv";
 const SD_WORDS = "words";
-const SD_BANK = "wordbank.bin";
+const PREF = "words";
+const PREF_SOURCE = "wordSource";
+
+/** Built-in flash pack (闽教版小学). */
+export const SOURCE_FLASH = "flash";
+
+export type WordSource = { id: string; label: string };
 
 type Src = {
 	readBytes(off: number, len: number): ArrayBuffer;
@@ -27,6 +34,12 @@ type BankFile = {
 	banks: number;
 	lex: number;
 	lexAt: number;
+};
+
+type OpenState = {
+	id: string;
+	bank: BankFile;
+	file: File | null;
 };
 
 function u16(b: Uint8Array): number {
@@ -80,34 +93,89 @@ function closeQuiet(dir: Directory | File | null): void {
 	}
 }
 
-function loadSd(): BankFile | null {
-	let volume: Directory;
+function labelFor(id: string): string {
+	if (!id || id === SOURCE_FLASH)
+		return "内置";
+	if (id === "junior")
+		return "初中";
+	return id;
+}
+
+function readPrefSource(): string {
 	try {
-		volume = Modules.importNow<Directory>("embedded:storage/files");
+		const v = Preference.get(PREF, PREF_SOURCE);
+		if (typeof v === "string" && v.length > 0)
+			return v;
+	}
+	catch {
+		/* */
+	}
+	return SOURCE_FLASH;
+}
+
+function writePrefSource(id: string): void {
+	try {
+		Preference.set(PREF, PREF_SOURCE, id);
+	}
+	catch {
+		/* */
+	}
+}
+
+function byName(a: string, b: string): number {
+	if (a < b)
+		return -1;
+	if (a > b)
+		return 1;
+	return 0;
+}
+
+function openVolume(): Directory | null {
+	try {
+		return Modules.importNow<Directory>("embedded:storage/files");
 	}
 	catch {
 		return null;
 	}
+}
+
+function tryOpenFlash(): OpenState | null {
+	try {
+		const bank = parse(fromResource(new Resource("wordbank.bin")));
+		if (!bank)
+			return null;
+		return { id: SOURCE_FLASH, bank, file: null };
+	}
+	catch {
+		return null;
+	}
+}
+
+function tryOpenSd(id: string): OpenState | null {
+	if (!id || id === SOURCE_FLASH)
+		return null;
+	const volume = openVolume();
+	if (!volume)
+		return null;
 	let home: Directory | null = null;
 	let words: Directory | null = null;
 	let file: File | null = null;
 	try {
 		home = volume.openDirectory({ path: SD_HOME });
 		words = home.openDirectory({ path: SD_WORDS });
-		file = words.openFile({ path: SD_BANK, mode: "r" });
+		file = words.openFile({ path: id + ".bin", mode: "r" });
 		const bank = parse(fromFile(file));
 		if (!bank) {
 			closeQuiet(file);
-			file = null;
 			return null;
 		}
-		// Keep the file open for the process; directory fds are independent.
+		// Keep the file open for slice reads; directory fds are independent.
+		const kept = file;
 		file = null;
-		return bank;
+		return { id, bank, file: kept };
 	}
 	catch {
 		closeQuiet(file);
-		file = null;
 		return null;
 	}
 	finally {
@@ -116,31 +184,102 @@ function loadSd(): BankFile | null {
 	}
 }
 
-function loadFlash(): BankFile | null {
-	try {
-		return parse(fromResource(new Resource("wordbank.bin")));
-	}
-	catch {
-		return null;
-	}
-}
-
-function load(): BankFile | null {
-	return loadSd() || loadFlash();
+function tryOpen(id: string): OpenState | null {
+	if (!id || id === SOURCE_FLASH)
+		return tryOpenFlash();
+	return tryOpenSd(id);
 }
 
 /*
 	xsl preloads this module and runs its top level. Native constructors are
 	stubs there ("link: unavailable function"), and the resulting slots are
 	what the device runs. Opening the resource at import time freezes an
-	empty bank into the image, so the screen stays on 无词库. Open on first use.
+	empty bank into the image, so the screen stays on 无词库. Open on first use;
+	reopen the Preference wordSource then.
 */
-let loaded: BankFile | null | undefined;
+let state: OpenState | null | undefined;
+
+function adopt(next: OpenState | null): boolean {
+	if (!next)
+		return false;
+	if (state && state.file)
+		closeQuiet(state.file);
+	state = next;
+	return true;
+}
+
+function ensureOpen(): void {
+	if (state !== undefined)
+		return;
+	state = null;
+	const want = readPrefSource();
+	if (adopt(tryOpen(want)))
+		return;
+	if (want !== SOURCE_FLASH && adopt(tryOpen(SOURCE_FLASH))) {
+		writePrefSource(SOURCE_FLASH);
+		return;
+	}
+}
 
 function openBank(): BankFile | null {
-	if (loaded === undefined)
-		loaded = load();
-	return loaded;
+	ensureOpen();
+	return state ? state.bank : null;
+}
+
+export function wordSourceId(): string {
+	ensureOpen();
+	return state ? state.id : SOURCE_FLASH;
+}
+
+export function wordSourceLabel(id?: string): string {
+	if (id !== undefined)
+		return labelFor(id);
+	return labelFor(wordSourceId());
+}
+
+/** 内置 first, then each cadv/words/*.bin (basename without .bin). */
+export function listWordSources(): WordSource[] {
+	const out: WordSource[] = [{ id: SOURCE_FLASH, label: labelFor(SOURCE_FLASH) }];
+	const volume = openVolume();
+	if (!volume)
+		return out;
+	let home: Directory | null = null;
+	let words: Directory | null = null;
+	try {
+		home = volume.openDirectory({ path: SD_HOME });
+		words = home.openDirectory({ path: SD_WORDS });
+		if (!words || typeof words.scan !== "function")
+			return out;
+		const names: string[] = [];
+		for (const name of words.scan()) {
+			if (name.length > 4 && name.endsWith(".bin") && name.indexOf("/") < 0)
+				names.push(name.slice(0, -4));
+		}
+		names.sort(byName);
+		for (let i = 0; i < names.length; i++)
+			out.push({ id: names[i], label: labelFor(names[i]) });
+	}
+	catch {
+		/* */
+	}
+	finally {
+		closeQuiet(words);
+		closeQuiet(home);
+	}
+	return out;
+}
+
+/** Switch pack. Closes the previous SD File. Persists wordSource. */
+export function selectWordSource(id: string): boolean {
+	ensureOpen();
+	const want = !id ? SOURCE_FLASH : id;
+	if (state && state.id === want)
+		return true;
+	const next = tryOpen(want);
+	if (!adopt(next))
+		return false;
+	writePrefSource(want);
+	return true;
 }
 
 function text(off: number, len: number): string {

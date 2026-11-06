@@ -1,11 +1,25 @@
 /*
-	Fill-in-the-blank English words. The lists live in wordbank.bin
-	(SD cadv/words/ first, else flash), generated from ../../alice/data.
-	Glosses prefer library.json, then ecdict-meta.json. Phonetics come
-	from ECDICT.
+	Fill-in-the-blank English words. Flash wordbank.bin by default;
+	optional SD packs under cadv/words/*.bin (e.g. junior.bin). Generated
+	from ../../alice/data. Glosses prefer library.json, then
+	ecdict-meta.json. Phonetics come from ECDICT.
 */
 
-import { storedBankCount, storedBankName, storedBankSize, storedLexGloss, storedLexId, storedLexPhone, storedLexWord } from "wordbank";
+import {
+	listWordSources,
+	selectWordSource,
+	storedBankCount,
+	storedBankName,
+	storedBankSize,
+	storedLexGloss,
+	storedLexId,
+	storedLexPhone,
+	storedLexWord,
+	wordSourceId,
+	wordSourceLabel,
+} from "wordbank";
+
+export { listWordSources, selectWordSource, wordSourceId, wordSourceLabel };
 
 export type WordEntry = { word: string; gloss: string; phone: string };
 

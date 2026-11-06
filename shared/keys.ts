@@ -1,10 +1,13 @@
 /*
 	One key contract for every firmware.
 
-	Back: BS, Esc, ←. ← is the simulator left arrow, or Fn+H on the board.
-	Confirm: Enter or Space.
-	Move: ↑↓ (simulator, or Fn+K / Fn+J), also j/k and ,/.
-	Help: ? or /. Volume: - and =.
+	Help screens document one primary key per action. The handlers still
+	accept the aliases below so the simulator and old habits keep working.
+
+	Back (primary BS): also Esc, ←. ← is the simulator left arrow, or Fn+H.
+	Confirm (primary Enter): also Space.
+	Move (primary K/J): also Fn+K/J, ↑↓, ,/.
+	Help (primary ?): also /. Volume: - and =.
 	Launcher: Fn+BS, from an app that was loaded off the card.
 
 	Wi-Fi fields keep Space as a character; Enter still confirms.

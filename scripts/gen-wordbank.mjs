@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /**
- * Build fw/words/wordbank.bin from elementary lists in ../alice/data.
+ * Build word packs from ../alice/data.
  * The device XS heap cannot hold the lexicon as live string arrays.
  *
- * Only 闽教版小学 under ../alice/data is included.
+ * Pack A — 闽教版小学 (merged) → fw/words/wordbank.bin (flash Resource).
+ * Pack B — 初中2182 (one bank per .txt) → fw/words/junior.bin and
+ *          fw/words/sample/cadv/words/junior.bin (manual SD load).
  *
  * Chinese gloss: a `word | pos | meaning` line in
  * ../alice/assets/data/library.json when one exists, otherwise the first
  * sense of ../alice/assets/data/ecdict-meta.json. Capped at 8 characters.
  *
  * Phonetic: ECDICT `phonetic` column (cadv/.cache/ecdict.csv, else alice's
- * cache; downloaded only when neither exists). Shown on device only at
- * difficulty 易. Characters Arial Bold cannot draw are dropped.
+ * cache; downloaded only when neither exists). Characters Arial Bold cannot
+ * draw are dropped. Han/IPA glyph sets are the union of both packs.
  *
  * Line format matches alice scripts/generate-library.ts:
  * `word` or `word | pos | meaning` (the list meaning is not the gloss).
@@ -30,21 +32,21 @@ const DATA = path.join(ALICE, "data");
 const META_JSON = path.join(ALICE, "assets/data/ecdict-meta.json");
 const LIBRARY_JSON = path.join(ALICE, "assets/data/library.json");
 const OUT_BIN = path.join(ROOT, "fw/words/wordbank.bin");
+const OUT_JUNIOR = path.join(ROOT, "fw/words/junior.bin");
 const OUT_CHARS = path.join(ROOT, "fw/words/wordbank-chars.txt");
 const OUT_PHONE = path.join(ROOT, "fw/words/phone-chars.txt");
-/** Desktop sim / host copy target: mounted as the card root under cadv/words/. */
-const OUT_SD_BIN = path.join(ROOT, "fw/words/sample/cadv/words/wordbank.bin");
+/** Desktop sim host copy: cadv/words/junior.bin (manual SD source). */
+const OUT_SD_JUNIOR = path.join(ROOT, "fw/words/sample/cadv/words/junior.bin");
+/** Legacy auto-override path; removed so flash stays the default. */
+const LEGACY_SD_BIN = path.join(ROOT, "fw/words/sample/cadv/words/wordbank.bin");
 const ECDICT_URL = "https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv";
 
 const GLOSS_CAP = 8;
 const PHONE_CAP = 24;
 
-/** Short on-screen names. Only listed directories are packed. */
-const BANK_LABEL = {
-	"闽教版小学": "闽教小",
-};
-
-const BANK_ORDER = Object.keys(BANK_LABEL);
+const PRIMARY_DIR = "闽教版小学";
+const PRIMARY_LABEL = "闽教小";
+const JUNIOR_DIR = "初中2182";
 
 const GRADE_RANK = { 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
 const TERM_RANK = { 上: 0, 下: 1, 全: 2 };
@@ -96,30 +98,45 @@ function headword(line) {
 	return word;
 }
 
-function collectFiles() {
-	if (!fs.existsSync(DATA))
-		throw new Error(`missing ${DATA}`);
-	const present = new Set(
-		fs.readdirSync(DATA, { withFileTypes: true })
-			.filter((d) => d.isDirectory())
-			.map((d) => d.name),
-	);
+/** Short on-screen bank name: 第一册 常见 → 一常. */
+function juniorBankLabel(base) {
+	const m = base.match(/^第([一二三四五六七八九十]+)册\s*(常见|生僻)$/);
+	if (m)
+		return m[1] + m[2].charAt(0);
+	return base.slice(0, 4);
+}
+
+function collectPrimary() {
+	const dir = path.join(DATA, PRIMARY_DIR);
+	if (!fs.existsSync(dir))
+		return [];
+	const files = fs.readdirSync(dir)
+		.filter((f) => f.endsWith(".txt"))
+		.sort(compareLabels);
+	const lines = [];
+	for (const file of files) {
+		const text = fs.readFileSync(path.join(dir, file), "utf8");
+		for (const line of text.split(/\r?\n/))
+			lines.push(line);
+	}
+	if (lines.length === 0)
+		return [];
+	return [{ label: PRIMARY_LABEL, lines }];
+}
+
+function collectJunior() {
+	const dir = path.join(DATA, JUNIOR_DIR);
+	if (!fs.existsSync(dir))
+		return [];
+	const files = fs.readdirSync(dir)
+		.filter((f) => f.endsWith(".txt"))
+		.sort(compareLabels);
 	const banks = [];
-	for (const dir of BANK_ORDER) {
-		if (!present.has(dir))
-			continue;
-		const files = fs.readdirSync(path.join(DATA, dir))
-			.filter((f) => f.endsWith(".txt"))
-			.sort(compareLabels);
-		const lines = [];
-		for (const file of files) {
-			const text = fs.readFileSync(path.join(DATA, dir, file), "utf8");
-			for (const line of text.split(/\r?\n/))
-				lines.push(line);
-		}
-		if (lines.length === 0)
-			continue;
-		banks.push({ dir, label: BANK_LABEL[dir], lines });
+	for (const file of files) {
+		const text = fs.readFileSync(path.join(dir, file), "utf8");
+		const lines = text.split(/\r?\n/);
+		const label = juniorBankLabel(file.replace(/\.txt$/i, ""));
+		banks.push({ label, lines });
 	}
 	return banks;
 }
@@ -320,8 +337,21 @@ function filterPhones(phones) {
 	return [...ok].sort((a, b) => a.codePointAt(0) - b.codePointAt(0)).join("");
 }
 
-function build() {
-	const banks = collectFiles();
+function gatherNeed(bankGroups) {
+	const need = new Set();
+	for (const banks of bankGroups) {
+		for (const bank of banks) {
+			for (const line of bank.lines) {
+				const word = headword(line);
+				if (word)
+					need.add(word);
+			}
+		}
+	}
+	return need;
+}
+
+function materialize(banks, library, meta, phones) {
 	const lexWord = [];
 	const indexOf = new Map();
 	const bankAt = [];
@@ -356,12 +386,10 @@ function build() {
 	}
 
 	if (bankName.length === 0)
-		throw new Error("no 闽教版小学 word lists under ../alice/data");
+		return null;
 	if (lexWord.length > 65535)
 		throw new Error(`lexicon ${lexWord.length} does not fit in u16 ids`);
 
-	const library = loadLibraryGloss();
-	const meta = loadMeta();
 	const lexGloss = [];
 	let fromLib = 0;
 	let fromMeta = 0;
@@ -375,8 +403,6 @@ function build() {
 		lexGloss.push(gloss);
 	}
 
-	const phones = loadPhones(new Set(lexWord));
-	const phoneChars = filterPhones(phones);
 	const lexPhone = lexWord.map((word) => phones.get(word) || "");
 
 	const han = new Set();
@@ -392,28 +418,78 @@ function build() {
 	}
 
 	const bin = packBank(bankName, lexWord, lexGloss, lexPhone, bankAt);
-	fs.writeFileSync(OUT_BIN, bin);
-	fs.mkdirSync(path.dirname(OUT_SD_BIN), { recursive: true });
-	fs.writeFileSync(OUT_SD_BIN, bin);
+	verifyBank(bin, bankName, lexWord, lexGloss, lexPhone, bankAt);
+	return {
+		bin,
+		bankName,
+		lexWord,
+		lexGloss,
+		lexPhone,
+		bankAt,
+		indexOf,
+		han,
+		dropped,
+		fromLib,
+		fromMeta,
+	};
+}
+
+function reportPack(tag, outPath, pack) {
+	const counts = pack.bankName.map((name, i) => `${name} ${pack.bankAt[i].length}`).join(", ");
+	const withPhone = pack.lexPhone.filter(Boolean).length;
+	console.log(`wrote ${path.relative(ROOT, outPath)} (${pack.bin.length} bytes)`);
+	console.log(`${tag} lexicon ${pack.lexWord.length}, dropped ${pack.dropped}`);
+	console.log(`${tag} gloss library ${pack.fromLib}, meta ${pack.fromMeta}, empty ${pack.lexWord.length - pack.fromLib - pack.fromMeta}`);
+	console.log(`${tag} phones ${withPhone}`);
+	console.log(`${tag} banks: ${counts}`);
+}
+
+function build() {
+	if (!fs.existsSync(DATA))
+		throw new Error(`missing ${DATA}`);
+
+	const primary = collectPrimary();
+	const junior = collectJunior();
+	if (primary.length === 0)
+		throw new Error("no 闽教版小学 word lists under ../alice/data");
+	if (junior.length === 0)
+		throw new Error("no 初中2182 word lists under ../alice/data");
+
+	const library = loadLibraryGloss();
+	const meta = loadMeta();
+	const phones = loadPhones(gatherNeed([primary, junior]));
+	const phoneChars = filterPhones(phones);
+
+	const packA = materialize(primary, library, meta, phones);
+	const packB = materialize(junior, library, meta, phones);
+	if (!packA)
+		throw new Error("闽教版小学 produced no banks");
+	if (!packB)
+		throw new Error("初中2182 produced no banks");
+
+	fs.writeFileSync(OUT_BIN, packA.bin);
+	fs.writeFileSync(OUT_JUNIOR, packB.bin);
+	fs.mkdirSync(path.dirname(OUT_SD_JUNIOR), { recursive: true });
+	fs.writeFileSync(OUT_SD_JUNIOR, packB.bin);
+	if (fs.existsSync(LEGACY_SD_BIN))
+		fs.unlinkSync(LEGACY_SD_BIN);
+
+	const han = new Set([...packA.han, ...packB.han]);
 	const chars = [...han].sort((a, b) => a.codePointAt(0) - b.codePointAt(0)).join("");
 	fs.writeFileSync(OUT_CHARS, chars + "\n");
 	fs.writeFileSync(OUT_PHONE, phoneChars + "\n");
-	verifyBank(bin, bankName, lexWord, lexGloss, lexPhone, bankAt);
-	const counts = bankName.map((name, i) => `${name} ${bankAt[i].length}`).join(", ");
-	const withPhone = lexPhone.filter(Boolean).length;
-	console.log(`wrote ${path.relative(ROOT, OUT_BIN)} (${bin.length} bytes)`);
-	console.log(`wrote ${path.relative(ROOT, OUT_SD_BIN)}`);
+
+	reportPack("flash", OUT_BIN, packA);
+	reportPack("junior", OUT_JUNIOR, packB);
+	console.log(`wrote ${path.relative(ROOT, OUT_SD_JUNIOR)}`);
 	console.log(`wrote ${path.relative(ROOT, OUT_CHARS)} (${han.size} chars)`);
 	console.log(`wrote ${path.relative(ROOT, OUT_PHONE)} (${[...phoneChars].length} chars)`);
-	console.log(`lexicon ${lexWord.length}, dropped ${dropped}`);
-	console.log(`gloss library ${fromLib}, meta ${fromMeta}, empty ${lexWord.length - fromLib - fromMeta}`);
-	console.log(`phones ${withPhone}`);
-	console.log(`banks: ${counts}`);
-	for (const sample of ["ruler", "book", "are", "can", "pen"]) {
-		const id = indexOf.get(sample);
-		if (id === undefined)
+	for (const sample of ["ruler", "book", "are", "can", "pen", "what", "name"]) {
+		const id = packA.indexOf.get(sample) ?? packB.indexOf.get(sample);
+		const pack = packA.indexOf.has(sample) ? packA : packB.indexOf.has(sample) ? packB : null;
+		if (!pack || id === undefined)
 			continue;
-		console.log(`sample ${sample} ${lexGloss[id]} ${lexPhone[id]}`);
+		console.log(`sample ${sample} ${pack.lexGloss[id]} ${pack.lexPhone[id]}`);
 	}
 }
 

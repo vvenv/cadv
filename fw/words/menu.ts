@@ -3,8 +3,9 @@
 */
 
 import { WORD_LEVEL_NAME, bankName, clampWordLevel } from "words";
+import { wordSourceLabel } from "wordbank";
 
-export type MenuId = "level" | "bank" | "shuffle" | "phone" | "snd";
+export type MenuId = "source" | "level" | "bank" | "shuffle" | "phone" | "snd";
 
 export type MenuItem = { id: MenuId; label: string };
 
@@ -12,11 +13,13 @@ export function menuItems(
 	sound: boolean,
 	wordLevel: number,
 	wordBank: number,
+	wordSource: string,
 	shuffle: boolean,
 	phone: boolean,
 ): MenuItem[] {
 	const level = WORD_LEVEL_NAME[clampWordLevel(wordLevel)];
 	return [
+		{ id: "source", label: `来源 ${wordSourceLabel(wordSource)}` },
 		{ id: "level", label: `难度 ${level}` },
 		{ id: "bank", label: `词库 ${bankName(wordBank)}` },
 		{ id: "shuffle", label: shuffle ? "乱序 开" : "乱序 关" },

@@ -4,6 +4,7 @@
 
 import Preference from "preference";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
+import { SOURCE_FLASH } from "wordbank";
 
 const PREF = "words";
 export { VOL_DEFAULT, VOL_MAX, VOL_MIN };
@@ -15,6 +16,8 @@ export type WordSettings = {
 	wordLevel: number;
 	/** Index into the elementary word banks. */
 	wordBank: number;
+	/** Lexicon pack id: flash or cadv/words/<id>.bin basename. */
+	wordSource: string;
 	/** Quiz order is shuffled when true. */
 	shuffle: boolean;
 	/** Show IPA in the bottom bar when true. */
@@ -58,12 +61,25 @@ function readInt(name: string, fallback: number, min: number, max: number): numb
 	}
 }
 
+function readString(name: string, fallback: string): string {
+	try {
+		const v = Preference.get(PREF, name);
+		if (typeof v === "string" && v.length > 0)
+			return v;
+	}
+	catch {
+		/* */
+	}
+	return fallback;
+}
+
 export function loadSettings(): WordSettings {
 	return {
 		sound: readBool("sound", true),
 		volume: readInt("volume", VOL_DEFAULT, VOL_MIN, VOL_MAX),
 		wordLevel: readInt("wordLevel", 0, 0, 2),
 		wordBank: readInt("wordBank", 0, 0, 15),
+		wordSource: readString("wordSource", SOURCE_FLASH),
 		shuffle: readBool("shuffle", false),
 		phone: readBool("phone", true),
 	};
@@ -74,6 +90,7 @@ export function saveSettings(s: WordSettings) {
 	Preference.set(PREF, "volume", s.volume);
 	Preference.set(PREF, "wordLevel", s.wordLevel);
 	Preference.set(PREF, "wordBank", s.wordBank);
+	Preference.set(PREF, "wordSource", s.wordSource || SOURCE_FLASH);
 	Preference.set(PREF, "shuffle", s.shuffle ? 1 : 0);
 	Preference.set(PREF, "phone", s.phone ? 1 : 0);
 }
