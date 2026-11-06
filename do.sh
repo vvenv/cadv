@@ -740,10 +740,13 @@ cmd_sd_fw_device() {
     src="$(fw_image "$id")"
     log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
   done
-  for id in "${packs[@]}"; do
-    src="$(words_pack_src "$id")"
-    log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
-  done
+  # bash 3.2 + set -u: empty "${packs[@]}" is unbound. No extra packs is normal.
+  if [ "${#packs[@]}" -gt 0 ]; then
+    for id in "${packs[@]}"; do
+      src="$(words_pack_src "$id")"
+      log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
+    done
+  fi
 }
 
 cmd_sd_fw() {
