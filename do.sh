@@ -599,11 +599,9 @@ ensure_fw_image() {
 cmd_sd_fw_device() {
   local port="$1" id src tmp rc=0 args=() tmps=()
   shift
+  # Images are already built by cmd_sd_fw. Ping only gates the USB write.
   log_info "经 USB 写入卡上的 ${SD_DIR}/（${port}）"
   link_ping "$port"
-  for id in "$@"; do
-    ensure_fw_image "$id"
-  done
   for id in "$@"; do
     src="$(fw_image "$id")"
     tmp="$(mktemp "${TMPDIR:-/tmp}/cadv-label.XXXXXX")"
@@ -639,6 +637,10 @@ cmd_sd_fw() {
     done
   fi
   [ "${#ids[@]}" -gt 0 ] || log_die "没有可上传的固件"
+  # Build before touching the card/port so a dead launcher still leaves fresh bins.
+  for id in "${ids[@]}"; do
+    ensure_fw_image "$id"
+  done
   route="$(sd_route)" || return $?
   [ -n "$route" ] || return 0
   kind="${route%%$'\t'*}"
@@ -650,7 +652,6 @@ cmd_sd_fw() {
   home="$root/$SD_DIR"
   mkdir -p "$home"
   for id in "${ids[@]}"; do
-    ensure_fw_image "$id"
     src="$(fw_image "$id")"
     dest="$home/${id}.bin"
     cp -X -f "$src" "$dest"
@@ -817,8 +818,6 @@ cmd_ts_sim() {
 }
 
 need_idf() {
-  # Prefer brew python@3.12 — system/homebrew python3 may be 3.14 and break IDF venv
-  export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/opt/python@3.12/bin:$PATH"
   export IDF_GITHUB_ASSETS="${IDF_GITHUB_ASSETS:-dl.espressif.com/github_assets}"
   if [ -z "${IDF_PATH:-}" ] || [ ! -f "${IDF_PATH}/export.sh" ]; then
     export IDF_PATH="${HOME}/esp32/esp-idf-v6.1"
@@ -828,6 +827,9 @@ need_idf() {
   [ -d "$HOME/.espressif/tools/riscv32-esp-elf" ] || log_die "Espressif 工具未装完（缺 riscv32-esp-elf）。等 install 结束后再试"
   ls -d "$HOME/.espressif/python_env"/idf* >/dev/null 2>&1 || log_die "IDF python_env 未就绪。等 install-python-env 结束后再试"
   if [ -z "${CADV_IDF_READY:-}" ]; then
+    # Prefer brew python@3.12 only before export — system/homebrew python3 may be 3.14.
+    # Re-prepending after export.sh would hide the IDF venv and break idf.py (no rich_click).
+    export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/opt/python@3.12/bin:$PATH"
     # shellcheck disable=SC1091
     source "$IDF_PATH/export.sh"
     CADV_IDF_READY=1

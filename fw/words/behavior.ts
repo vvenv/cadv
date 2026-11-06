@@ -20,7 +20,7 @@ import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from 
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { FONT_UI, FONT_WORD, INK, ON } from "ink";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
-import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, puzzleCorrect, renderPuzzle, wordAt, wordCount } from "words";
+import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, puzzleCorrect, quizOrder, renderPuzzle, wordAt, wordCount } from "words";
 
 type Mode = "play" | "menu" | "help";
 
@@ -58,7 +58,14 @@ export class AppBehavior extends Behavior {
 	mode: Mode = "play";
 	kb: CardputerKeyboard | null = null;
 	sound: ClockSound | null = null;
-	settings: WordSettings = { sound: true, volume: 6, wordLevel: 0, wordBank: 0 };
+	settings: WordSettings = {
+		sound: true,
+		volume: 6,
+		wordLevel: 0,
+		wordBank: 0,
+		shuffle: false,
+		phone: true,
+	};
 	kbTimer: unknown = null;
 	tickTimer: unknown = null;
 	marqueeTimer: unknown = null;
@@ -66,7 +73,10 @@ export class AppBehavior extends Behavior {
 	helpIndex = 0;
 	helpTopicId = "play";
 	helpFrom: Mode = "play";
+	/** Position in the current quiz sequence. */
 	wordIndex = 0;
+	/** Lex indexes for the current bank / shuffle setting. */
+	wordOrder: number[] = [];
 	wordTyped = "";
 	wordHidden: number[] = [];
 	wordMaskLevel = -1;
@@ -84,8 +94,36 @@ export class AppBehavior extends Behavior {
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		this.tickTimer = Timer.repeat(() => this.onTick(app), 250);
 		this.marqueeTimer = Timer.repeat(() => this.tickMarquees(app), MARQUEE_MS);
+		this.rebuildOrder();
 		this.loadWord();
 		this.showPlay(app);
+	}
+
+	menuList() {
+		const s = this.settings;
+		return menuItems(s.sound, s.wordLevel, s.wordBank, s.shuffle, s.phone);
+	}
+
+	lexIndex(): number {
+		const order = this.wordOrder;
+		if (this.wordIndex >= 0 && this.wordIndex < order.length)
+			return order[this.wordIndex];
+		return 0;
+	}
+
+	rebuildOrder(keepLex = -1) {
+		const n = wordCount(this.settings.wordBank);
+		const salt = Date.now() + this.settings.wordBank * 131 + (this.settings.shuffle ? 1 : 0);
+		this.wordOrder = quizOrder(n, this.settings.shuffle, salt);
+		if (keepLex >= 0 && n > 0) {
+			for (let i = 0; i < this.wordOrder.length; i++) {
+				if (this.wordOrder[i] === keepLex) {
+					this.wordIndex = i;
+					return;
+				}
+			}
+		}
+		this.wordIndex = 0;
 	}
 
 	onKeyboardTick(app: AppHost) {
@@ -155,7 +193,7 @@ export class AppBehavior extends Behavior {
 			}
 			const dir = navDir(stroke);
 			if (dir !== 0) {
-				const n = menuItems(this.settings.sound, this.settings.wordLevel, this.settings.wordBank).length;
+				const n = this.menuList().length;
 				this.menuIndex = menuStep(this.menuIndex, n, dir);
 				this.paintMenu(app);
 				this.maybeBeep();
@@ -228,7 +266,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	paintMenu(app: AppHost) {
-		const items = menuItems(this.settings.sound, this.settings.wordLevel, this.settings.wordBank);
+		const items = this.menuList();
 		if (this.menuIndex < 0 || this.menuIndex >= items.length)
 			this.menuIndex = 0;
 		const lines = [];
@@ -285,7 +323,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	activateMenu(app: AppHost) {
-		const items = menuItems(this.settings.sound, this.settings.wordLevel, this.settings.wordBank);
+		const items = this.menuList();
 		const id = items[this.menuIndex] ? items[this.menuIndex].id : "";
 		this.maybeBeep();
 		if (id === "level") {
@@ -294,6 +332,19 @@ export class AppBehavior extends Behavior {
 		}
 		if (id === "bank") {
 			this.setWordBank(app, this.settings.wordBank + 1);
+			return;
+		}
+		if (id === "shuffle") {
+			this.settings.shuffle = !this.settings.shuffle;
+			saveSettings(this.settings);
+			this.rebuildOrder(this.lexIndex());
+			this.paintMenu(app);
+			return;
+		}
+		if (id === "phone") {
+			this.settings.phone = !this.settings.phone;
+			saveSettings(this.settings);
+			this.paintMenu(app);
 			return;
 		}
 		if (id === "snd") {
@@ -310,11 +361,14 @@ export class AppBehavior extends Behavior {
 			this.wordTyped = "";
 			return;
 		}
+		if (this.wordOrder.length !== n)
+			this.rebuildOrder();
 		if (this.wordIndex < 0 || this.wordIndex >= n)
 			this.wordIndex = 0;
-		const entry = wordAt(this.settings.wordBank, this.wordIndex);
+		const lex = this.lexIndex();
+		const entry = wordAt(this.settings.wordBank, lex);
 		this.wordMaskLevel = clampWordLevel(this.settings.wordLevel);
-		this.wordHidden = hiddenIndices(entry.word, this.wordIndex, this.wordMaskLevel);
+		this.wordHidden = hiddenIndices(entry.word, lex, this.wordMaskLevel);
 		this.wordTyped = "";
 	}
 
@@ -327,7 +381,7 @@ export class AppBehavior extends Behavior {
 			b += count;
 		this.settings.wordBank = b;
 		saveSettings(this.settings);
-		this.wordIndex = 0;
+		this.rebuildOrder();
 		this.wordAdvance = false;
 		this.wordNote = "";
 		this.wordHidden = [];
@@ -370,11 +424,10 @@ export class AppBehavior extends Behavior {
 	}
 
 	paintWord(app: AppHost) {
-		const entry = wordAt(this.settings.wordBank, this.wordIndex);
+		const entry = wordAt(this.settings.wordBank, this.lexIndex());
 		const note = this.wordNote && Date.now() < this.wordNoteUntil ? this.wordNote : "";
 		const top = !entry.word ? "无词库" : (note || entry.gloss);
-		const easy = clampWordLevel(this.settings.wordLevel) === 0;
-		const bottom = entry.word && easy ? entry.phone : "";
+		const bottom = entry.word && this.settings.phone ? entry.phone : "";
 		this.setLabels(app, top, bottom);
 		const value = contentByName(app, "valueLabel");
 		if (hasStyle(value))
@@ -422,7 +475,7 @@ export class AppBehavior extends Behavior {
 			this.stepWord(app, 1);
 			return;
 		}
-		const entry = wordAt(this.settings.wordBank, this.wordIndex);
+		const entry = wordAt(this.settings.wordBank, this.lexIndex());
 		if (!entry.word) {
 			if (isConfirm(stroke))
 				this.enterMenu(app);

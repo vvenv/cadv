@@ -15,6 +15,10 @@ export type WordSettings = {
 	wordLevel: number;
 	/** Index into the elementary word banks. */
 	wordBank: number;
+	/** Quiz order is shuffled when true. */
+	shuffle: boolean;
+	/** Show IPA in the bottom bar when true. */
+	phone: boolean;
 };
 
 function readBool(name: string, fallback: boolean): boolean {
@@ -60,6 +64,8 @@ export function loadSettings(): WordSettings {
 		volume: readInt("volume", VOL_DEFAULT, VOL_MIN, VOL_MAX),
 		wordLevel: readInt("wordLevel", 0, 0, 2),
 		wordBank: readInt("wordBank", 0, 0, 15),
+		shuffle: readBool("shuffle", false),
+		phone: readBool("phone", true),
 	};
 }
 
@@ -68,4 +74,6 @@ export function saveSettings(s: WordSettings) {
 	Preference.set(PREF, "volume", s.volume);
 	Preference.set(PREF, "wordLevel", s.wordLevel);
 	Preference.set(PREF, "wordBank", s.wordBank);
+	Preference.set(PREF, "shuffle", s.shuffle ? 1 : 0);
+	Preference.set(PREF, "phone", s.phone ? 1 : 0);
 }

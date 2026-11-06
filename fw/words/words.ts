@@ -88,6 +88,26 @@ function nextRand(state: number): number {
 	return x > 0 ? x : 1;
 }
 
+/** Lex indexes in quiz order. Identity when shuffle is off. */
+export function quizOrder(count: number, shuffle: boolean, salt: number): number[] {
+	const order: number[] = [];
+	for (let i = 0; i < count; i++)
+		order.push(i);
+	if (!shuffle || count <= 1)
+		return order;
+	let state = Math.abs(salt | 0) % 2147483647;
+	if (state <= 0)
+		state = 1;
+	for (let i = order.length - 1; i > 0; i--) {
+		state = nextRand(state);
+		const j = state % (i + 1);
+		const tmp = order[i];
+		order[i] = order[j];
+		order[j] = tmp;
+	}
+	return order;
+}
+
 /** Sorted indexes to blank. Stable for the same word index and level. */
 export function hiddenIndices(word: string, salt: number, level: number): number[] {
 	const n = word.length;
