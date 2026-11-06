@@ -160,7 +160,7 @@ cmd_gen_words() {
   node "$ROOT/scripts/gen-wordbank.mjs"
 }
 
-# fw/words/wordbank.bin is older than the generator, the elementary lists,
+# fw/words/wordbank.bin is older than the generator, 闽教版小学 lists,
 # or the gloss and phonetic sources.
 wordbank_stale() {
   local out="$FW_ROOT/words/wordbank.bin"
@@ -174,8 +174,8 @@ wordbank_stale() {
   for csv in "$ROOT/.cache/ecdict.csv" "$alice/.cache/ecdict.csv"; do
     [ -f "$csv" ] && [ "$csv" -nt "$out" ] && return 0
   done
-  if [ -d "$alice/data" ]; then
-    hit="$(find "$alice/data" -path '*小学*/*.txt' -newer "$out" -print -quit)"
+  if [ -d "$alice/data/闽教版小学" ]; then
+    hit="$(find "$alice/data/闽教版小学" -name '*.txt' -newer "$out" -print -quit)"
     [ -n "$hit" ] && return 0
   fi
   return 1

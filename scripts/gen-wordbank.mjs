@@ -3,8 +3,7 @@
  * Build fw/words/wordbank.bin from elementary lists in ../alice/data.
  * The device XS heap cannot hold the lexicon as live string arrays.
  *
- * Only directories whose names contain 小学 are included (人教版小学,
- * 闽教版小学).
+ * Only 闽教版小学 under ../alice/data is included.
  *
  * Chinese gloss: a `word | pos | meaning` line in
  * ../alice/assets/data/library.json when one exists, otherwise the first
@@ -38,9 +37,8 @@ const ECDICT_URL = "https://raw.githubusercontent.com/skywind3000/ECDICT/master/
 const GLOSS_CAP = 8;
 const PHONE_CAP = 24;
 
-/** Short on-screen names. Unknown elementary folders keep the directory name. */
+/** Short on-screen names. Only listed directories are packed. */
 const BANK_LABEL = {
-	"人教版小学": "人教小",
 	"闽教版小学": "闽教小",
 };
 
@@ -99,18 +97,15 @@ function headword(line) {
 function collectFiles() {
 	if (!fs.existsSync(DATA))
 		throw new Error(`missing ${DATA}`);
-	const dirs = fs.readdirSync(DATA, { withFileTypes: true })
-		.filter((d) => d.isDirectory() && d.name.includes("小学"))
-		.map((d) => d.name);
-	dirs.sort((a, b) => {
-		const ia = BANK_ORDER.indexOf(a);
-		const ib = BANK_ORDER.indexOf(b);
-		if (ia !== -1 || ib !== -1)
-			return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-		return compareLabels(a, b);
-	});
+	const present = new Set(
+		fs.readdirSync(DATA, { withFileTypes: true })
+			.filter((d) => d.isDirectory())
+			.map((d) => d.name),
+	);
 	const banks = [];
-	for (const dir of dirs) {
+	for (const dir of BANK_ORDER) {
+		if (!present.has(dir))
+			continue;
 		const files = fs.readdirSync(path.join(DATA, dir))
 			.filter((f) => f.endsWith(".txt"))
 			.sort(compareLabels);
@@ -122,8 +117,7 @@ function collectFiles() {
 		}
 		if (lines.length === 0)
 			continue;
-		const label = BANK_LABEL[dir] ?? [...dir].slice(0, 4).join("");
-		banks.push({ dir, label, lines });
+		banks.push({ dir, label: BANK_LABEL[dir], lines });
 	}
 	return banks;
 }
@@ -360,7 +354,7 @@ function build() {
 	}
 
 	if (bankName.length === 0)
-		throw new Error("no elementary word lists under ../alice/data");
+		throw new Error("no 闽教版小学 word lists under ../alice/data");
 	if (lexWord.length > 65535)
 		throw new Error(`lexicon ${lexWord.length} does not fit in u16 ids`);
 
