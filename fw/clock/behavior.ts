@@ -9,7 +9,8 @@ import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { asMenu } from "menu-view";
 import { helpFor, helpTitle, helpTopic } from "help";
-import { MENU_VISIBLE, menuDirFromChars, menuStep } from "list";
+import { isBack, isConfirm, isHelp, isPageBack, navDir, volumeDelta } from "keys";
+import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
 import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
 import { ClockSound } from "sound";
@@ -192,8 +193,7 @@ export class AppBehavior extends Behavior {
 
 	handleStroke(app: AppHost, stroke: KeyStroke) {
 		const chars = stroke.chars;
-		const wantHelp = chars.some(ch => ch === "?");
-		if (wantHelp && this.mode !== "ssid" && this.mode !== "pass" && this.mode !== "help") {
+		if (isHelp(stroke) && this.mode !== "ssid" && this.mode !== "pass" && this.mode !== "help") {
 			this.enterHelp(app);
 			this.maybeBeep();
 			return;
@@ -207,16 +207,12 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "help") {
-			if (stroke.esc || stroke.enter || stroke.del) {
+			if (isBack(stroke) || isConfirm(stroke)) {
 				this.exitHelp(app);
 				this.maybeBeep();
 				return;
 			}
-			let dir: -1 | 0 | 1 = menuDirFromChars(chars);
-			if (stroke.up)
-				dir = -1;
-			if (stroke.down)
-				dir = 1;
+			const dir = navDir(stroke);
 			if (dir !== 0) {
 				const max = helpFor(this.helpTopicId).length - MENU_VISIBLE;
 				let next = this.helpIndex + dir;
@@ -236,16 +232,12 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "menu") {
-			if (stroke.esc || stroke.del) {
+			if (isBack(stroke)) {
 				this.resumeClock(app);
 				this.maybeBeep();
 				return;
 			}
-			let dir: -1 | 0 | 1 = menuDirFromChars(chars);
-			if (stroke.up)
-				dir = -1;
-			if (stroke.down)
-				dir = 1;
+			const dir = navDir(stroke);
 			if (dir !== 0) {
 				const n = menuItems(this.settings.sound, this.settings.hourly).length;
 				this.menuIndex = menuStep(this.menuIndex, n, dir);
@@ -253,13 +245,13 @@ export class AppBehavior extends Behavior {
 				this.maybeBeep();
 				return;
 			}
-			if (stroke.enter)
+			if (isConfirm(stroke))
 				this.activateMenu(app);
 			return;
 		}
 
 		if (this.mode === "cd_run" || this.mode === "cd_done") {
-			if (stroke.esc || stroke.del || chars.some(ch => ch === "c" || ch === "C")) {
+			if (isBack(stroke) || isConfirm(stroke) || chars.some(ch => ch === "c" || ch === "C")) {
 				this.resumeClock(app);
 				this.maybeBeep();
 			}
@@ -267,7 +259,7 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "al_ring") {
-			if (stroke.esc || stroke.enter || stroke.del || chars.some(ch => ch === "a" || ch === "A")) {
+			if (isBack(stroke) || isConfirm(stroke) || chars.some(ch => ch === "a" || ch === "A")) {
 				this.resumeClock(app);
 				this.maybeBeep();
 			}
@@ -275,7 +267,7 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "al_edit") {
-			if (stroke.esc) {
+			if (isPageBack(stroke)) {
 				this.resumeClock(app);
 				this.maybeBeep();
 				return;
@@ -297,7 +289,7 @@ export class AppBehavior extends Behavior {
 						this.prompt = "";
 				}
 				else {
-					// Del on empty hour → clear saved alarm
+					// BS on empty hour → clear saved alarm
 					this.settings.alarmOn = false;
 					saveSettings(this.settings);
 					this.resumeClock(app);
@@ -310,7 +302,7 @@ export class AppBehavior extends Behavior {
 				this.commitAlarmField(app);
 				return;
 			}
-			if (stroke.enter) {
+			if (isConfirm(stroke)) {
 				this.commitAlarmField(app);
 				return;
 			}
@@ -319,7 +311,7 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "cd_edit") {
-			if (stroke.esc) {
+			if (isPageBack(stroke)) {
 				this.resumeClock(app);
 				this.maybeBeep();
 				return;
@@ -353,7 +345,7 @@ export class AppBehavior extends Behavior {
 				this.commitCdField(app);
 				return;
 			}
-			if (stroke.enter) {
+			if (isConfirm(stroke)) {
 				this.commitCdField(app);
 				return;
 			}
@@ -362,12 +354,12 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "clock" || this.mode === "busy") {
-			// Esc / BS dismisses Sound/Hourly/Vol status overlay → clock labels
-			if (stroke.esc || stroke.del) {
+			// Back dismisses Sound/Hourly/Vol status overlay → clock labels
+			if (isBack(stroke)) {
 				this.resumeClock(app);
 				return;
 			}
-			if (this.mode === "clock" && stroke.enter) {
+			if (this.mode === "clock" && isConfirm(stroke)) {
 				this.enterMenu(app);
 				return;
 			}
@@ -395,11 +387,9 @@ export class AppBehavior extends Behavior {
 				this.maybeBeep();
 				return;
 			}
-			// - / = (and +) adjust volume 0..10
-			const volDown = chars.some(ch => ch === "-");
-			const volUp = chars.some(ch => ch === "=" || ch === "+");
-			if (volDown || volUp) {
-				let v = this.settings.volume + (volUp ? 1 : -1);
+			const vol = volumeDelta(chars);
+			if (vol !== 0) {
+				let v = this.settings.volume + vol;
 				if (v < VOL_MIN)
 					v = VOL_MIN;
 				if (v > VOL_MAX)
@@ -422,7 +412,7 @@ export class AppBehavior extends Behavior {
 		if (this.mode !== "ssid" && this.mode !== "pass")
 			return;
 
-		if (stroke.esc) {
+		if (isPageBack(stroke)) {
 			this.exitWifiPrompt(app);
 			return;
 		}

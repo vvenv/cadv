@@ -1,10 +1,14 @@
 # Cardputer ADV（TypeScript）
 
-在 M5Stack Cardputer-Adv 上用 **Moddable + TypeScript** 跑固件。一次只烧一个固件：时间天气是一个，单词拼写是另一个。板子上的程序互相独立，设置也分开存。
+在 M5Stack Cardputer-Adv 上用 **Moddable + TypeScript** 跑固件。一次只烧一个固件：时间天气、单词拼写、SD 卡各是一个。板子上的程序互相独立，设置也分开存。
 
-时间天气：Wi-Fi NTP 校时（默认中国时区 `CST-8`）、键盘配网、天气、闹钟、倒计时、整点报时。时钟界面 **Enter** 打开功能列表。Cardputer-Adv **没有独立 RTC**，断电后要重新对时。
+时间天气：Wi-Fi NTP 校时（默认中国时区 `CST-8`）、键盘配网、天气、闹钟、倒计时、整点报时。时钟界面 **Enter / 空格** 打开功能列表。Cardputer-Adv **没有独立 RTC**，断电后要重新对时。
 
-单词拼写：用 `../alice/data` 的小学词库（人教版小学、闽教版小学），不带中文释义。开机就是填空，**Esc** 打开功能列表。
+单词拼写：用 `../alice/data` 的小学词库（人教版小学、闽教版小学），不带中文释义。开机就是填空。没在填字时 **Enter / 空格** 打开功能列表；正在填则交卷。
+
+时间天气和单词拼写按键相同：`BS` / `Esc` / `←` 回退，`Enter` / 空格确认，`j` `k` 或 `,` `.` 上下，`?` 或 `/` 帮助，`-` `=` 音量。板子没有方向键：`Fn`+`H`/`J`/`K`/`L` 是 ←↓↑→。配网时空格仍是字符。
+
+SD 卡：开机列出卡上的目录和文件，并打开每个文件读开头。**Enter** 按块读出选中的那一个，**Esc** 重新扫描。后面从卡上加载固件就用这套读取。卡槽是板载 microSD。
 
 ## 目录
 
@@ -16,7 +20,7 @@
 | `scripts/` | 词库和字体生成 |
 | `third_party/moddable` | 本机 Moddable SDK（gitignore） |
 
-现在有 `fw/clock`（时间天气）和 `fw/words`（单词拼写）。
+现在有 `fw/clock`（时间天气）、`fw/words`（单词拼写）和 `fw/sd`（SD 卡）。
 
 ## 再加一个固件
 
@@ -37,6 +41,7 @@ fw/新名字/
 ./do.sh                 # 交互菜单。Esc、← 或 BS 返回上一级；烧录和模拟会再让你选固件
 ./do.sh flash clock     # 烧时间天气
 ./do.sh flash words     # 烧单词拼写
+./do.sh flash sd        # 烧 SD 卡
 ./do.sh sim clock       # 桌面模拟某一个
 ./do.sh ts-check        # Moddable + ESP-IDF 是否就绪
 ./do.sh help

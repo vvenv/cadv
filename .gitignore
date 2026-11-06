@@ -1,6 +1,7 @@
 # Build outputs
 *.elf
 *.bin
+!fw/sd/sample/**/*.bin
 *.hex
 *.map
 *.o

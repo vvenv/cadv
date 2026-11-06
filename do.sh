@@ -6,6 +6,7 @@
 #   ./do.sh flash clock             # 烧「时间天气」
 #   ./do.sh flash words             # 烧「单词拼写」
 #   ./do.sh sim clock               # 桌面模拟某一个固件
+#   fw/<id>/sample 存在时，模拟把文件根指到该目录。
 #   菜单里 Esc、← 或 BS 返回上一级。主菜单再按一次即退出。
 #   不写 id 且当前是终端时，会列出 fw/*/label 让你选。取消则什么都不做。
 #   字体比源文件旧时会先问要不要生成。选中的固件用到 wordbank.bin 时才重做词库。
@@ -315,8 +316,13 @@ cmd_ts_sim() {
   fi
   refresh_generated "$want"
   need_moddable
+  local mc_args=(-d -m -dn -p mac)
+  if [ -d "$FW_ROOT/$id/sample" ]; then
+    mc_args+=("files=$FW_ROOT/$id/sample")
+    log_info "模拟文件根：fw/${id}/sample"
+  fi
   log_info "桌面模拟 $(fw_label "$id")（${id}，-dn 不弹 xsbug）"
-  (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p mac)
+  (cd "$FW_ROOT/$id" && mcconfig "${mc_args[@]}")
 }
 
 cmd_ts_flash() {

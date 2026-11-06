@@ -1,0 +1,56 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json",
+		"$(MODDABLE)/modules/io/files/posix/manifest.json",
+		"$(MODDABLE)/modules/io/files/esp32/manifest_sdspi.json"
+	],
+	"modules": {
+		"*": [
+			"./main",
+			"./behavior",
+			"./catalog",
+			"./help"
+		]
+	},
+	"preload": [
+		"behavior",
+		"catalog",
+		"help"
+	],
+	"platforms": {
+		"esp32": {
+			"defines": {
+				"sdcard": {
+					"cs": 12,
+					"mosi": 14,
+					"miso": 39,
+					"sck": 40,
+					"hz": 20000000,
+					"spi_port": "SPI2_HOST"
+				},
+				"file": {
+					"root": "#/sdcard",
+					"maxOpen": 8,
+					"format": 0
+				}
+			},
+			"esp32Config": {
+				"CONFIG_FATFS_LFN_HEAP": "y",
+				"CONFIG_FATFS_API_ENCODING_UTF_8": "y"
+			}
+		},
+		"mac": {
+			"config": {
+				"files": "/sdcard-sim-sample"
+			}
+		},
+		"lin": {
+			"config": {
+				"files": "/sdcard-sim-sample"
+			}
+		}
+	}
+}

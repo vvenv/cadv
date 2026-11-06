@@ -72,6 +72,10 @@ export type KeyStroke = {
 	esc: boolean;
 	up: boolean;
 	down: boolean;
+	/** Simulator ←, or Fn+H on the board. */
+	left: boolean;
+	/** Simulator →, or Fn+L on the board. */
+	right: boolean;
 };
 
 type KbConfig = { sda: number; scl: number; address: number };
@@ -219,6 +223,10 @@ export class CardputerKeyboard {
 		let enter = false;
 		let del = false;
 		let esc = false;
+		let up = false;
+		let down = false;
+		let left = false;
+		let right = false;
 		const fn = mods.has(KEY_FN);
 		const ctrl = mods.has(KEY_LEFT_CTRL);
 		for (const { x, y } of this.#pressed.values()) {
@@ -233,15 +241,32 @@ export class CardputerKeyboard {
 					del = true;
 				continue;
 			}
-			// Esc layer: Fn+` (silk Esc) or Ctrl+[
+			// Esc: Fn+` (silk Esc) or Ctrl+[
 			if ((fn && code === "`") || (ctrl && code === "[")) {
 				esc = true;
+				continue;
+			}
+			// Arrow pad: Fn+H/J/K/L = ←↓↑→. The board has no arrow keys.
+			if (fn && code === "h") {
+				left = true;
+				continue;
+			}
+			if (fn && code === "j") {
+				down = true;
+				continue;
+			}
+			if (fn && code === "k") {
+				up = true;
+				continue;
+			}
+			if (fn && code === "l") {
+				right = true;
 				continue;
 			}
 			if (fn || ctrl || mods.has(KEY_LEFT_ALT) || mods.has(KEY_OPT))
 				continue;
 			chars.push(shift ? String(cell.b) : String(cell.a));
 		}
-		return { chars, enter, del, shift, esc, up: false, down: false };
+		return { chars, enter, del, shift, esc, up, down, left, right };
 	}
 }

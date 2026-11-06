@@ -1,5 +1,7 @@
 /*
-	Word-quiz behavior. Boots into the puzzle. Esc opens the function list.
+	Word-quiz behavior. Boots into the puzzle.
+	Empty Enter/Space opens the function list. A partial answer confirms with Enter/Space.
+	BS, Esc, and ← delete one letter.
 */
 
 import {} from "piu/MC";
@@ -9,7 +11,8 @@ import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { asMenu } from "menu-view";
 import { helpFor, helpTitle, helpTopic } from "help";
-import { MENU_VISIBLE, menuDirFromChars, menuStep } from "list";
+import { isBack, isConfirm, isHelp, isPageBack, navDir, volumeDelta } from "keys";
+import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
 import { ClockSound } from "sound";
 import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from "settings";
@@ -100,23 +103,18 @@ export class AppBehavior extends Behavior {
 	}
 
 	handleStroke(app: AppHost, stroke: KeyStroke) {
-		const chars = stroke.chars;
-		if (chars.some(ch => ch === "?" || ch === "/")) {
-			if (this.mode !== "help")
-				this.enterHelp(app);
+		if (isHelp(stroke) && this.mode !== "help") {
+			this.enterHelp(app);
+			this.maybeBeep();
 			return;
 		}
 		if (this.mode === "help") {
-			if (stroke.esc || stroke.del) {
+			if (isBack(stroke) || isConfirm(stroke)) {
 				this.exitHelp(app);
 				this.maybeBeep();
 				return;
 			}
-			let dir: -1 | 0 | 1 = menuDirFromChars(chars);
-			if (stroke.up)
-				dir = -1;
-			if (stroke.down)
-				dir = 1;
+			const dir = navDir(stroke);
 			if (dir !== 0) {
 				const max = helpFor(this.helpTopicId).length - MENU_VISIBLE;
 				let next = this.helpIndex + dir;
@@ -135,16 +133,12 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (this.mode === "menu") {
-			if (stroke.esc || stroke.del) {
+			if (isBack(stroke)) {
 				this.showPlay(app);
 				this.maybeBeep();
 				return;
 			}
-			let dir: -1 | 0 | 1 = menuDirFromChars(chars);
-			if (stroke.up)
-				dir = -1;
-			if (stroke.down)
-				dir = 1;
+			const dir = navDir(stroke);
 			if (dir !== 0) {
 				const n = menuItems(this.settings.sound, this.settings.wordLevel, this.settings.wordBank).length;
 				this.menuIndex = menuStep(this.menuIndex, n, dir);
@@ -152,16 +146,13 @@ export class AppBehavior extends Behavior {
 				this.maybeBeep();
 				return;
 			}
-			if (stroke.enter)
+			if (isConfirm(stroke))
 				this.activateMenu(app);
 			return;
 		}
-		if (chars.some(ch => ch === "-" || ch === "_")) {
-			this.nudgeVolume(app, -1);
-			return;
-		}
-		if (chars.some(ch => ch === "=" || ch === "+")) {
-			this.nudgeVolume(app, 1);
+		const vol = volumeDelta(stroke.chars);
+		if (vol !== 0) {
+			this.nudgeVolume(app, vol);
 			return;
 		}
 		this.onWordStroke(app, stroke);
@@ -381,20 +372,22 @@ export class AppBehavior extends Behavior {
 		setStringProp(contentByName(app, "valueLabel"), view);
 	}
 
+	advanceSolved(app: AppHost) {
+		this.wordAdvance = false;
+		this.wordNote = "";
+		const n = wordCount(this.settings.wordBank);
+		this.wordIndex = n > 0 ? (this.wordIndex + 1) % n : 0;
+		this.loadWord();
+		this.paintWord(app);
+	}
+
 	onWordStroke(app: AppHost, stroke: KeyStroke) {
 		const chars = stroke.chars;
-		if (stroke.esc) {
-			if (this.wordAdvance) {
-				this.wordAdvance = false;
-				const n = wordCount(this.settings.wordBank);
-				this.wordIndex = n > 0 ? (this.wordIndex + 1) % n : 0;
-				this.loadWord();
-			}
-			this.enterMenu(app);
+		if (this.wordAdvance) {
+			if (isBack(stroke) || isConfirm(stroke))
+				this.advanceSolved(app);
 			return;
 		}
-		if (this.wordAdvance)
-			return;
 		if (chars.some(ch => ch === "[" || ch === "{")) {
 			this.setWordLevel(app, this.settings.wordLevel - 1);
 			this.maybeBeep();
@@ -419,8 +412,11 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		const entry = wordAt(this.settings.wordBank, this.wordIndex);
-		if (!entry.word)
+		if (!entry.word) {
+			if (isConfirm(stroke))
+				this.enterMenu(app);
 			return;
+		}
 		let typed = false;
 		for (const ch of chars) {
 			const c = ch.toLowerCase();
@@ -431,12 +427,16 @@ export class AppBehavior extends Behavior {
 			this.wordTyped += c;
 			typed = true;
 		}
-		if (stroke.del && this.wordTyped.length > 0) {
+		if ((stroke.del || isPageBack(stroke)) && this.wordTyped.length > 0) {
 			this.wordTyped = this.wordTyped.slice(0, -1);
 			typed = true;
 		}
 		const filled = typed && this.wordTyped.length === this.wordHidden.length && this.wordHidden.length > 0;
-		if (stroke.enter || filled) {
+		if (isConfirm(stroke) || filled) {
+			if (this.wordTyped.length === 0) {
+				this.enterMenu(app);
+				return;
+			}
 			if (puzzleCorrect(entry.word, this.wordHidden, this.wordTyped)) {
 				this.wordNote = "正确";
 				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
@@ -463,12 +463,7 @@ export class AppBehavior extends Behavior {
 		if (!this.wordNote || Date.now() < this.wordNoteUntil)
 			return;
 		if (this.wordAdvance) {
-			this.wordAdvance = false;
-			this.wordNote = "";
-			const n = wordCount(this.settings.wordBank);
-			this.wordIndex = n > 0 ? (this.wordIndex + 1) % n : 0;
-			this.loadWord();
-			this.paintWord(app);
+			this.advanceSolved(app);
 			return;
 		}
 		this.wordNote = "";

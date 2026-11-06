@@ -4,6 +4,7 @@
 			"./marquee",
 			"./menu-view",
 			"./list",
+			"./keys",
 			"./ui",
 			"./hostkey",
 			"./volume"
@@ -13,6 +14,7 @@
 		"marquee",
 		"menu-view",
 		"list",
+		"keys",
 		"ui",
 		"hostkey",
 		"volume",
