@@ -12,8 +12,9 @@
  * sense of ../alice/assets/data/ecdict-meta.json. Capped at 8 characters.
  *
  * Phonetic: ECDICT `phonetic` column (cadv/.cache/ecdict.csv, else alice's
- * cache; downloaded only when neither exists). Characters Arial Bold cannot
- * draw are dropped. Han/IPA glyph sets are the union of both packs.
+ * cache; downloaded only when neither exists). ECDICT's ASCII `^` is mapped
+ * to IPA ɡ. Characters Arial Bold cannot draw are dropped. Han/IPA glyph
+ * sets are the union of both packs.
  *
  * Line format matches alice scripts/generate-library.ts:
  * `word` or `word | pos | meaning` (the list meaning is not the gloss).
@@ -257,6 +258,8 @@ function cleanPhone(raw) {
 	s = s.replace(/^[\/\[]+/, "").replace(/[\/\]]+$/, "");
 	s = s.replace(/\s+/g, "");
 	s = s.replace(/[\u4e00-\u9fff]/g, "");
+	// ECDICT uses ASCII ^ as a stand-in for IPA ɡ (U+0261).
+	s = s.replace(/\^/g, "\u0261");
 	if ([...s].length > PHONE_CAP)
 		s = [...s].slice(0, PHONE_CAP).join("");
 	return s;

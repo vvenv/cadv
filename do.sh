@@ -16,7 +16,8 @@
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
 #   ./do.sh gen-words               # 从 ../alice/data 生成 fw/words/wordbank.bin
 #                                   # 与 junior.bin；junior 同步到 sample（模拟用）
-#   ./do.sh sd fw words             # 额外写入 cadv/words/junior.bin（菜单里选「初中」）
+#   ./do.sh sd fw words             # 固件镜像 + fw/words 下可选词库（*.bin，不含内置 wordbank）
+#   ./do.sh sd bank                 # 只传词库到 cadv/words/，不传固件（可再跟名字或 all）
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh sd                      # 列出卡上的 cadv/
 #   ./do.sh sd fw                  # 把除启动器以外的全部固件拷进 cadv/（不烧进芯片）
@@ -405,27 +406,111 @@ fw_image() {
   printf '%s\n' "$MODDABLE/build/bin/esp32/esp32s3_cdc/debug/$1/xs_esp32.bin"
 }
 
-# Optional junior pack on the card. Kept under cadv/words/ so the launcher
-# does not treat *.bin there as flashable firmware. Flash stays 闽教; device
-# menu picks 来源 among 内置 + these files (junior → 初中).
-WORDS_JUNIOR_REL="${SD_DIR}/words/junior.bin"
+# Optional SD word packs: fw/words/<id>.bin except the flash-embedded
+# wordbank.bin. Live under cadv/words/ so the launcher does not treat them
+# as firmware. Device 来源 menu lists 内置 + these file stems.
+WORDS_BANK_DIR="${SD_DIR}/words"
 
-words_junior_src() {
-  printf '%s\n' "$FW_ROOT/words/junior.bin"
+words_pack_ids() {
+  local f base
+  for f in "$FW_ROOT/words"/*.bin; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f" .bin)"
+    [ "$base" = "wordbank" ] && continue
+    printf '%s\n' "$base"
+  done | sort
 }
 
-# Host-mounted card: copy junior.bin for manual load (not an auto-override).
-sd_put_words_bank_host() {
-  local home="$1" src dest
-  src="$(words_junior_src)"
-  [ -f "$src" ] || {
-    log_warn "没有词库 $src，跳过 ${WORDS_JUNIOR_REL}"
+words_pack_src() {
+  printf '%s\n' "$FW_ROOT/words/$1.bin"
+}
+
+words_pack_exists() {
+  [ -n "${1:-}" ] && [ -f "$(words_pack_src "$1")" ]
+}
+
+pick_words_pack() {
+  local title="$1" id opts=()
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    opts+=("$id:${id}.bin → ${WORDS_BANK_DIR}/")
+  done < <(words_pack_ids)
+  [ "${#opts[@]}" -gt 0 ] || log_die "fw/words/ 下没有可选词库（*.bin，不含 wordbank）。先 ./do.sh gen-words"
+  prompt_menu "$title" --back "${opts[@]}"
+}
+
+# Resolve pack ids from args: none / all → every pack; else validate each.
+# Empty stdout + return 0 means the interactive pick was cancelled.
+require_words_packs() {
+  local id ids=()
+  if [ $# -eq 0 ] || [ "${1:-}" = "all" ]; then
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      ids+=("$id")
+    done < <(words_pack_ids)
+    [ "${#ids[@]}" -gt 0 ] || log_die "fw/words/ 下没有可选词库（*.bin，不含 wordbank）。先 ./do.sh gen-words"
+  else
+    for id in "$@"; do
+      words_pack_exists "$id" || log_die "没有词库：$id（可选：$(words_pack_ids | tr '\n' ' ')）"
+      ids+=("$id")
+    done
+  fi
+  printf '%s\n' "${ids[@]}"
+}
+
+# Host-mounted card: copy named packs under cadv/words/ (not auto-override).
+sd_put_words_packs_host() {
+  local home="$1" id src dest
+  shift
+  [ $# -gt 0 ] || return 0
+  mkdir -p "$home/words"
+  for id in "$@"; do
+    src="$(words_pack_src "$id")"
+    if [ ! -f "$src" ]; then
+      log_warn "没有词库 $src，跳过 ${WORDS_BANK_DIR}/${id}.bin"
+      continue
+    fi
+    dest="$home/words/${id}.bin"
+    cp -X -f "$src" "$dest"
+    log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
+  done
+}
+
+# Only word packs — no firmware image. Host mount or USB link.
+cmd_sd_bank() {
+  local route kind root id src ids=() args=()
+  if [ $# -eq 0 ] && [ -t 0 ]; then
+    id="$(pick_words_pack "上传哪个词库")"
+    [ -n "$id" ] || return 0
+    ids=("$id")
+  else
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      ids+=("$id")
+    done < <(require_words_packs "$@")
+    [ "${#ids[@]}" -gt 0 ] || return 0
+  fi
+  route="$(sd_route)" || return $?
+  [ -n "$route" ] || return 0
+  kind="${route%%$'\t'*}"
+  root="${route#*$'\t'}"
+  if [ "$kind" = "device" ]; then
+    log_info "经 USB 写入 ${WORDS_BANK_DIR}/（${root}）"
+    link_ping "$root"
+    for id in "${ids[@]}"; do
+      src="$(words_pack_src "$id")"
+      args+=("$src" "words/${id}.bin")
+    done
+    link_put "$root" "${args[@]}"
+    for id in "${ids[@]}"; do
+      src="$(words_pack_src "$id")"
+      log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
+    done
     return 0
-  }
-  dest="$home/words/junior.bin"
-  mkdir -p "$(dirname "$dest")"
-  cp -X -f "$src" "$dest"
-  log_success "词库 → ${WORDS_JUNIOR_REL}（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
+  fi
+  mkdir -p "$root/$SD_DIR"
+  sd_put_words_packs_host "$root/$SD_DIR" "${ids[@]}"
+  sync || true
 }
 
 # Newest fw/<id> or shared file newer than the image, relative to the repo.
@@ -629,7 +714,7 @@ ensure_fw_image() {
 }
 
 cmd_sd_fw_device() {
-  local port="$1" id src tmp rc=0 args=() tmps=() want_bank=0
+  local port="$1" id src tmp rc=0 args=() tmps=() packs=()
   shift
   # Images are already built by cmd_sd_fw. Ping only gates the USB write.
   log_info "经 USB 写入卡上的 ${SD_DIR}/（${port}）"
@@ -640,17 +725,14 @@ cmd_sd_fw_device() {
     printf '%s\n' "$(fw_label "$id")" >"$tmp"
     tmps+=("$tmp")
     args+=("$src" "${id}.bin" "$tmp" "${id}.txt")
-    [ "$id" = "words" ] && want_bank=1
-  done
-  if [ "$want_bank" -eq 1 ]; then
-    src="$(words_junior_src)"
-    if [ -f "$src" ]; then
-      args+=("$src" "words/junior.bin")
-    else
-      log_warn "没有词库 $src，跳过 ${WORDS_JUNIOR_REL}"
-      want_bank=0
+    if [ "$id" = "words" ]; then
+      while IFS= read -r src; do
+        [ -n "$src" ] || continue
+        packs+=("$src")
+        args+=("$(words_pack_src "$src")" "words/${src}.bin")
+      done < <(words_pack_ids)
     fi
-  fi
+  done
   link_put "$port" "${args[@]}" || rc=$?
   rm -f "${tmps[@]}"
   [ "$rc" -eq 0 ] || return "$rc"
@@ -658,14 +740,14 @@ cmd_sd_fw_device() {
     src="$(fw_image "$id")"
     log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
   done
-  if [ "$want_bank" -eq 1 ]; then
-    src="$(words_junior_src)"
-    log_success "词库 → ${WORDS_JUNIOR_REL}（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
-  fi
+  for id in "${packs[@]}"; do
+    src="$(words_pack_src "$id")"
+    log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
+  done
 }
 
 cmd_sd_fw() {
-  local route kind root id src dest home ids=()
+  local route kind root id src dest home ids=() packs=()
   if [ $# -eq 0 ] || [ "${1:-}" = "all" ]; then
     while IFS= read -r id; do
       [ -n "$id" ] || continue
@@ -704,7 +786,14 @@ cmd_sd_fw() {
     printf '%s\n' "$(fw_label "$id")" > "$home/${id}.txt"
     log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
     if [ "$id" = "words" ]; then
-      sd_put_words_bank_host "$home"
+      packs=()
+      while IFS= read -r src; do
+        [ -n "$src" ] || continue
+        packs+=("$src")
+      done < <(words_pack_ids)
+      if [ "${#packs[@]}" -gt 0 ]; then
+        sd_put_words_packs_host "$home" "${packs[@]}"
+      fi
     fi
   done
   sync || true
@@ -721,12 +810,16 @@ cmd_sd() {
       shift
       cmd_sd_fw "$@"
       ;;
+    bank | banks | words-bank)
+      shift
+      cmd_sd_bank "$@"
+      ;;
     file | files)
       shift
       cmd_sd_file "$@"
       ;;
     *)
-      log_die "用法：./do.sh sd [ls|fw|file] …"
+      log_die "用法：./do.sh sd [ls|fw|bank|file] …"
       ;;
   esac
 }
@@ -738,6 +831,7 @@ sd_menu() {
       "all:上传全部固件" \
       "ls:列出 cadv" \
       "fw:上传一个固件" \
+      "bank:上传词库" \
       "file:上传文件到 cadv")"
     case "$choice" in
       "") return 0 ;;
@@ -753,6 +847,10 @@ sd_menu() {
         id="$(pick_fw "上传哪个固件")"
         [ -n "$id" ] || continue
         (cmd_sd_fw "$id") || log_error "执行失败（sd fw）"
+        pause_menu
+        ;;
+      bank)
+        (cmd_sd_bank) || log_error "执行失败（sd bank）"
         pause_menu
         ;;
       file)

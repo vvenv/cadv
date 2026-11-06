@@ -16,7 +16,8 @@
 ```bash
 ./do.sh flash words
 ./do.sh sim words
-./do.sh sd fw words          # 镜像 + cadv/words/junior.bin
+./do.sh sd fw words          # 镜像 + fw/words 下可选词库 → cadv/words/
+./do.sh sd bank              # 只传词库（菜单选；或 sd bank junior / all）
 ./do.sh sd file ./wordsdir   # 目录名须为 words，内含 *.bin → cadv/words/
 ```
 
