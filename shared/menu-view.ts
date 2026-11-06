@@ -69,7 +69,7 @@ export class MenuBehavior extends Behavior {
 			if (line.selected)
 				port.fillColor("#143214", 0, y + 4, port.width, 22);
 			const color = line.selected ? "#39FF14" : "white";
-			const text = (marked ? (line.selected ? "> " : "  ") : "") + line.text;
+			const text = (marked ? (line.selected ? "> " : "- ") : "") + line.text;
 			port.drawString(text, style, color, 6, y, port.width - 12, DRAW_H);
 		}
 		if (this.hint)
