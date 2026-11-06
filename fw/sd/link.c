@@ -9,11 +9,13 @@
 */
 
 #include "xsmc.h"
-#include "xsHost.h"
 #include "mc.defines.h"
 
+#include "freertos/FreeRTOSConfig.h"
+#include "freertos/portmacro.h"
+#include "freertos/projdefs.h"
+
 #include "driver/usb_serial_jtag.h"
-#include "freertos/FreeRTOS.h"
 
 #include <dirent.h>
 #include <errno.h>
