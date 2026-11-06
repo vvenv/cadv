@@ -14,6 +14,11 @@ build/
 wifi.local.json
 **/wifi.local.json
 
+# Local IDE database (absolute SDK / toolchain paths)
+compile_commands.json
+.clangd
+*.d
+
 # OS / editor
 .DS_Store
 Thumbs.db
