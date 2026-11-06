@@ -1,7 +1,8 @@
 /*
-	Fill-in-the-blank English words. The lists live in wordbank.bin,
-	generated from ../../alice/data. Glosses prefer library.json, then
-	ecdict-meta.json. Phonetics come from ECDICT.
+	Fill-in-the-blank English words. The lists live in wordbank.bin
+	(SD cadv/words/ first, else flash), generated from ../../alice/data.
+	Glosses prefer library.json, then ecdict-meta.json. Phonetics come
+	from ECDICT.
 */
 
 import { storedBankCount, storedBankName, storedBankSize, storedLexGloss, storedLexId, storedLexPhone, storedLexWord } from "wordbank";

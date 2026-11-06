@@ -15,6 +15,8 @@
 #   ./do.sh port                    # 列出可用串口
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
 #   ./do.sh gen-words               # 从 ../alice/data 生成 fw/words/wordbank.bin
+#                                   # 并同步到 fw/words/sample/cadv/words/（模拟用）
+#   ./do.sh sd fw words             # 额外写入 cadv/words/wordbank.bin 供设备优先加载
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh sd                      # 列出卡上的 cadv/
 #   ./do.sh sd fw                  # 把除启动器以外的全部固件拷进 cadv/（不烧进芯片）
@@ -396,6 +398,28 @@ fw_image() {
   printf '%s\n' "$MODDABLE/build/bin/esp32/esp32s3_cdc/debug/$1/xs_esp32.bin"
 }
 
+# Spelling lexicon override on the card. Kept under cadv/words/ so the
+# launcher does not treat wordbank.bin as a flashable firmware image.
+WORDS_BANK_REL="${SD_DIR}/words/wordbank.bin"
+
+words_bank_src() {
+  printf '%s\n' "$FW_ROOT/words/wordbank.bin"
+}
+
+# Host-mounted card: copy the lexicon next to the words firmware image.
+sd_put_words_bank_host() {
+  local home="$1" src dest
+  src="$(words_bank_src)"
+  [ -f "$src" ] || {
+    log_warn "没有词库 $src，跳过 ${WORDS_BANK_REL}"
+    return 0
+  }
+  dest="$home/words/wordbank.bin"
+  mkdir -p "$(dirname "$dest")"
+  cp -X -f "$src" "$dest"
+  log_success "词库 → ${WORDS_BANK_REL}（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
+}
+
 # Newest fw/<id> or shared file newer than the image, relative to the repo.
 # Empty when the image is missing or current.
 fw_image_newer_source() {
@@ -597,7 +621,7 @@ ensure_fw_image() {
 }
 
 cmd_sd_fw_device() {
-  local port="$1" id src tmp rc=0 args=() tmps=()
+  local port="$1" id src tmp rc=0 args=() tmps=() want_bank=0
   shift
   # Images are already built by cmd_sd_fw. Ping only gates the USB write.
   log_info "经 USB 写入卡上的 ${SD_DIR}/（${port}）"
@@ -608,7 +632,17 @@ cmd_sd_fw_device() {
     printf '%s\n' "$(fw_label "$id")" >"$tmp"
     tmps+=("$tmp")
     args+=("$src" "${id}.bin" "$tmp" "${id}.txt")
+    [ "$id" = "words" ] && want_bank=1
   done
+  if [ "$want_bank" -eq 1 ]; then
+    src="$(words_bank_src)"
+    if [ -f "$src" ]; then
+      args+=("$src" "words/wordbank.bin")
+    else
+      log_warn "没有词库 $src，跳过 ${WORDS_BANK_REL}"
+      want_bank=0
+    fi
+  fi
   link_put "$port" "${args[@]}" || rc=$?
   rm -f "${tmps[@]}"
   [ "$rc" -eq 0 ] || return "$rc"
@@ -616,6 +650,10 @@ cmd_sd_fw_device() {
     src="$(fw_image "$id")"
     log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
   done
+  if [ "$want_bank" -eq 1 ]; then
+    src="$(words_bank_src)"
+    log_success "词库 → ${WORDS_BANK_REL}（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
+  fi
 }
 
 cmd_sd_fw() {
@@ -657,6 +695,9 @@ cmd_sd_fw() {
     cp -X -f "$src" "$dest"
     printf '%s\n' "$(fw_label "$id")" > "$home/${id}.txt"
     log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
+    if [ "$id" = "words" ]; then
+      sd_put_words_bank_host "$home"
+    fi
   done
   sync || true
 }

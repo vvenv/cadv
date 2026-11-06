@@ -32,6 +32,8 @@ const LIBRARY_JSON = path.join(ALICE, "assets/data/library.json");
 const OUT_BIN = path.join(ROOT, "fw/words/wordbank.bin");
 const OUT_CHARS = path.join(ROOT, "fw/words/wordbank-chars.txt");
 const OUT_PHONE = path.join(ROOT, "fw/words/phone-chars.txt");
+/** Desktop sim / host copy target: mounted as the card root under cadv/words/. */
+const OUT_SD_BIN = path.join(ROOT, "fw/words/sample/cadv/words/wordbank.bin");
 const ECDICT_URL = "https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv";
 
 const GLOSS_CAP = 8;
@@ -391,6 +393,8 @@ function build() {
 
 	const bin = packBank(bankName, lexWord, lexGloss, lexPhone, bankAt);
 	fs.writeFileSync(OUT_BIN, bin);
+	fs.mkdirSync(path.dirname(OUT_SD_BIN), { recursive: true });
+	fs.writeFileSync(OUT_SD_BIN, bin);
 	const chars = [...han].sort((a, b) => a.codePointAt(0) - b.codePointAt(0)).join("");
 	fs.writeFileSync(OUT_CHARS, chars + "\n");
 	fs.writeFileSync(OUT_PHONE, phoneChars + "\n");
@@ -398,6 +402,7 @@ function build() {
 	const counts = bankName.map((name, i) => `${name} ${bankAt[i].length}`).join(", ");
 	const withPhone = lexPhone.filter(Boolean).length;
 	console.log(`wrote ${path.relative(ROOT, OUT_BIN)} (${bin.length} bytes)`);
+	console.log(`wrote ${path.relative(ROOT, OUT_SD_BIN)}`);
 	console.log(`wrote ${path.relative(ROOT, OUT_CHARS)} (${han.size} chars)`);
 	console.log(`wrote ${path.relative(ROOT, OUT_PHONE)} (${[...phoneChars].length} chars)`);
 	console.log(`lexicon ${lexWord.length}, dropped ${dropped}`);
