@@ -6,68 +6,31 @@ import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import Timer from "timer";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
+import { hostStroke } from "hostkey";
 import { asMenu } from "menu-view";
-import { menuDirFromChars, menuItems, menuStep } from "menu";
+import { helpFor, helpTitle, helpTopic } from "help";
+import { MENU_VISIBLE, menuDirFromChars, menuStep } from "list";
+import { menuItems } from "menu";
 import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
 import { ClockSound } from "sound";
 import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_MIN, type ClockSettings } from "settings";
 import { fetchWeather, formatLunarWithWeather, weatherLabel, WEATHER_REFRESH_MS } from "weather";
 import { beijingParts, formatClockTop, formatHMS, formatLunar, formatNow, pad2, timeSynced } from "lunar";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
-import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, puzzleCorrect, renderPuzzle, wordAt, wordCount } from "words";
+import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
 
-export type AppHost = {
-	content: (name: string) => unknown;
-};
-
-type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "menu" | "word";
-
-const WORD_HOLD_MS = 700;
+type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "menu" | "help";
 
 let valueStyleSmall: object | undefined;
-let valueStyleWord: object | undefined;
-let valueStyleFit: object | undefined;
 
-function valueStyle(word: boolean): object {
-	if (word) {
-		if (!valueStyleWord)
-			valueStyleWord = new Style({ font: "48px Word", color: "#39FF14", horizontal: "center", vertical: "middle" });
-		return valueStyleWord;
-	}
+function valueStyle(): object {
 	if (!valueStyleSmall)
-		valueStyleSmall = new Style({ font: "12px Zpix", color: "#39FF14", horizontal: "center", vertical: "middle" });
+		valueStyleSmall = new Style({ font: "bold 20px UI", color: "#39FF14", horizontal: "center", vertical: "middle" });
 	return valueStyleSmall;
-}
-
-/** 48px fits at most 7 letters in 240px. Longer headwords use 20px. */
-function puzzleStyle(letters: number): object {
-	if (letters > 7) {
-		if (!valueStyleFit)
-			valueStyleFit = new Style({ font: "20px UI", color: "#39FF14", horizontal: "center", vertical: "middle" });
-		return valueStyleFit;
-	}
-	return valueStyle(true);
 }
 
 function hasStyle(target: unknown): target is { style: object } {
 	return !!target && typeof target === "object" && "style" in target;
-}
-
-/** Desktop simulator keys. Hardware polling owns the keypad when it is up. */
-function hostStroke(key: string): KeyStroke | null {
-	if (key === "\r" || key === "\n")
-		return { chars: [], enter: true, del: false, shift: false, esc: false, up: false, down: false };
-	if (key === "\u001b")
-		return { chars: [], enter: false, del: false, shift: false, esc: true, up: false, down: false };
-	if (key === "\u007f" || key === "\b")
-		return { chars: [], enter: false, del: true, shift: false, esc: false, up: false, down: false };
-	if (key === "\uf700")
-		return { chars: [], enter: false, del: false, shift: false, esc: false, up: true, down: false };
-	if (key === "\uf701")
-		return { chars: [], enter: false, del: false, shift: false, esc: false, up: false, down: true };
-	if (key.length === 1 && key >= " " && key <= "~")
-		return { chars: [key], enter: false, del: false, shift: false, esc: false, up: false, down: false };
-	return null;
 }
 
 /** Digits-only field; empty → 0. */
@@ -86,25 +49,11 @@ function parseFieldDigits(raw: string, max: number): number | null {
 	return n;
 }
 
-function contentByName(app: AppHost, name: string): unknown {
-	return app.content(name);
-}
-
-function setStringProp(target: unknown, value: string) {
-	if (target && typeof target === "object" && "string" in target)
-		(target as { string: string }).string = value;
-}
-
-function setVisibleProp(target: unknown, value: boolean) {
-	if (target && typeof target === "object" && "visible" in target)
-		(target as { visible: boolean }).visible = value;
-}
-
 export class AppBehavior extends Behavior {
 	mode: Mode = "clock";
 	kb: CardputerKeyboard | null = null;
 	sound: ClockSound | null = null;
-	settings: ClockSettings = { sound: true, hourly: true, volume: 6, alarmOn: false, alarmHH: 7, alarmMM: 0, wordLevel: 0, wordBank: 0 };
+	settings: ClockSettings = { sound: true, hourly: true, volume: 6, alarmOn: false, alarmHH: 7, alarmMM: 0 };
 	kbTimer: unknown = null;
 	labelTimer: unknown = null;
 	marqueeTimer: unknown = null;
@@ -131,13 +80,9 @@ export class AppBehavior extends Behavior {
 	weatherTimer: unknown = null;
 	weatherKey = "";
 	menuIndex = 0;
-	wordIndex = 0;
-	wordTyped = "";
-	wordHidden: number[] = [];
-	wordMaskLevel = -1;
-	wordNote = "";
-	wordNoteUntil = 0;
-	wordAdvance = false;
+	helpIndex = 0;
+	helpTopicId = "clock";
+	helpFrom: Mode = "clock";
 	/** Simulator Enter repeat would open the list and immediately activate. */
 	hostEnterDown = false;
 
@@ -247,10 +192,46 @@ export class AppBehavior extends Behavior {
 
 	handleStroke(app: AppHost, stroke: KeyStroke) {
 		const chars = stroke.chars;
+		const wantHelp = chars.some(ch => ch === "?");
+		if (wantHelp && this.mode !== "ssid" && this.mode !== "pass" && this.mode !== "help") {
+			this.enterHelp(app);
+			this.maybeBeep();
+			return;
+		}
+
 		const wantWifi = chars.some(ch => ch === "w" || ch === "W");
 		if (wantWifi && (this.mode === "clock" || this.mode === "busy")) {
 			this.busy = false;
 			this.enterPrompt(app, "ssid");
+			return;
+		}
+
+		if (this.mode === "help") {
+			if (stroke.esc || stroke.enter) {
+				this.exitHelp(app);
+				this.maybeBeep();
+				return;
+			}
+			let dir: -1 | 0 | 1 = menuDirFromChars(chars);
+			if (stroke.up)
+				dir = -1;
+			if (stroke.down)
+				dir = 1;
+			if (dir !== 0) {
+				const max = helpFor(this.helpTopicId).length - MENU_VISIBLE;
+				let next = this.helpIndex + dir;
+				if (next < 0)
+					next = 0;
+				if (max < 0)
+					next = 0;
+				else if (next > max)
+					next = max;
+				if (next !== this.helpIndex) {
+					this.helpIndex = next;
+					this.paintHelp(app);
+					this.maybeBeep();
+				}
+			}
 			return;
 		}
 
@@ -266,7 +247,7 @@ export class AppBehavior extends Behavior {
 			if (stroke.down)
 				dir = 1;
 			if (dir !== 0) {
-				const n = menuItems(this.settings.sound, this.settings.hourly, this.settings.wordLevel, this.settings.wordBank).length;
+				const n = menuItems(this.settings.sound, this.settings.hourly).length;
 				this.menuIndex = menuStep(this.menuIndex, n, dir);
 				this.paintMenu(app);
 				this.maybeBeep();
@@ -274,11 +255,6 @@ export class AppBehavior extends Behavior {
 			}
 			if (stroke.enter)
 				this.activateMenu(app);
-			return;
-		}
-
-		if (this.mode === "word") {
-			this.onWordStroke(app, stroke);
 			return;
 		}
 
@@ -325,7 +301,7 @@ export class AppBehavior extends Behavior {
 					this.settings.alarmOn = false;
 					saveSettings(this.settings);
 					this.resumeClock(app);
-					this.flashStatus(app, "Alarm OFF", "A=set");
+					this.flashStatus(app, "闹钟关", "");
 					this.maybeBeep();
 					return;
 				}
@@ -529,8 +505,7 @@ export class AppBehavior extends Behavior {
 
 	paintAlarmPrompt(app: AppHost, err?: string) {
 		const top = err ?? (this.settings.alarmOn ? formatAlarm(this.settings) : "设闹钟");
-		const bottom = this.alStep === 0 ? "时 满2位/Del关 Esc" : "分 Enter=开 Esc";
-		this.setLabels(app, top, bottom);
+		this.setLabels(app, top, "");
 	}
 
 	/** Active slot: digits + trailing `_`, empty → `__`. */
@@ -586,8 +561,7 @@ export class AppBehavior extends Behavior {
 
 	paintCountdownPrompt(app: AppHost, err?: string) {
 		const top = err ?? "时 分 秒";
-		const bottom = this.cdStep < 2 ? "满2位跳下格 Esc" : "Enter=开始 Esc";
-		this.setLabels(app, top, bottom);
+		this.setLabels(app, top, "");
 	}
 
 	startCountdown(app: AppHost, totalSec: number) {
@@ -597,7 +571,7 @@ export class AppBehavior extends Behavior {
 		this.mode = "cd_run";
 		this.prompt = "";
 		this.showClock(app, true);
-		this.setLabels(app, "Countdown", "Esc=stop");
+		this.setLabels(app, "倒计时", "");
 		this.maybeBeep();
 	}
 
@@ -616,15 +590,17 @@ export class AppBehavior extends Behavior {
 		this.ssidDraft = "";
 		this.dateKey = "";
 		this.showClock(app, true);
-		this.flashStatus(app, "WiFi cancel", "W=WiFi");
+		this.flashStatus(app, "WiFi cancel", "");
 		this.maybeBeep();
 	}
 
 	paintPrompt(app: AppHost) {
 		const title = this.mode === "ssid" ? "SSID" : "Password";
 		const shown = this.maskPass ? "*".repeat(this.prompt.length) : this.prompt;
-		this.setLabels(app, title, "OK/BS Esc=quit");
-		setStringProp(contentByName(app, "valueLabel"), `${shown}_`);
+		const line = `${shown}_`;
+		// 14 wide letters no longer fit the 240px row at Bold 20px.
+		this.setLabels(app, title, line.length > 13 ? line : "");
+		setStringProp(contentByName(app, "valueLabel"), line);
 	}
 
 	startNet(app: AppHost, creds: WifiCreds) {
@@ -637,14 +613,14 @@ export class AppBehavior extends Behavior {
 		setStringProp(contentByName(app, "valueLabel"), "...");
 
 		connectAndSync(creds, (msg) => {
-			this.setLabels(app, msg, `${creds.ssid} W=edit`);
+			this.setLabels(app, msg, creds.ssid);
 		}, (ok, detail) => {
 			this.busy = false;
 			this.mode = "clock";
 			this.dateKey = "";
 			this.showClock(app, true);
 			if (!ok)
-				this.setLabels(app, detail, "W=WiFi");
+				this.setLabels(app, detail, "");
 			else {
 				this.onClockTick(app);
 				this.refreshWeather(app, true);
@@ -675,7 +651,7 @@ export class AppBehavior extends Behavior {
 		this.showList(app, false);
 		const value = contentByName(app, "valueLabel");
 		if (hasStyle(value))
-			value.style = valueStyle(false);
+			value.style = valueStyle();
 		setVisibleProp(contentByName(app, "clockPort"), on);
 		setVisibleProp(contentByName(app, "valueLabel"), !on);
 	}
@@ -703,7 +679,6 @@ export class AppBehavior extends Behavior {
 	}
 
 	enterMenu(app: AppHost) {
-		this.wordAdvance = false;
 		this.statusUntil = 0;
 		this.mode = "menu";
 		this.showList(app, true);
@@ -712,7 +687,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	paintMenu(app: AppHost) {
-		const items = menuItems(this.settings.sound, this.settings.hourly, this.settings.wordLevel, this.settings.wordBank);
+		const items = menuItems(this.settings.sound, this.settings.hourly);
 		if (this.menuIndex < 0 || this.menuIndex >= items.length)
 			this.menuIndex = 0;
 		const lines = [];
@@ -721,25 +696,88 @@ export class AppBehavior extends Behavior {
 		const port = contentByName(app, "listPort");
 		const view = asMenu(port);
 		if (view)
-			view.setList(port, "功能", lines, `${this.menuIndex + 1}/${items.length}  j/k 选择 Enter Esc`);
+			view.setList(port, `功能 ${this.menuIndex + 1}/${items.length}`, lines, "");
+	}
+
+	enterHelp(app: AppHost) {
+		if (this.mode === "help")
+			return;
+		this.helpFrom = this.mode;
+		this.helpTopicId = helpTopic(this.mode);
+		this.helpIndex = 0;
+		this.mode = "help";
+		this.statusUntil = 0;
+		this.showList(app, true);
+		this.paintHelp(app);
+	}
+
+	exitHelp(app: AppHost) {
+		const from = this.helpFrom;
+		this.mode = from;
+		if (from === "menu") {
+			this.showList(app, true);
+			this.paintMenu(app);
+			return;
+		}
+		if (from === "cd_edit") {
+			this.showClock(app, true);
+			this.paintCountdownPrompt(app);
+			return;
+		}
+		if (from === "al_edit") {
+			this.showClock(app, true);
+			this.paintAlarmPrompt(app);
+			return;
+		}
+		if (from === "ssid" || from === "pass") {
+			this.showClock(app, false);
+			this.paintPrompt(app);
+			return;
+		}
+		if (from === "cd_run" || from === "cd_done") {
+			this.showClock(app, true);
+			this.setLabels(app, "倒计时", "");
+			return;
+		}
+		if (from === "al_ring") {
+			this.showClock(app, true);
+			this.setLabels(app, formatAlarm(this.settings), "");
+			return;
+		}
+		if (from === "busy") {
+			this.showClock(app, false);
+			return;
+		}
+		this.resumeClock(app);
+	}
+
+	paintHelp(app: AppHost) {
+		const page = helpFor(this.helpTopicId);
+		const n = page.length;
+		const vis = MENU_VISIBLE;
+		let start = this.helpIndex;
+		const max = n > vis ? n - vis : 0;
+		if (start < 0)
+			start = 0;
+		if (start > max)
+			start = max;
+		this.helpIndex = start;
+		const lines = [];
+		for (let i = 0; i < vis; i++) {
+			const text = page[start + i];
+			if (text)
+				lines.push({ text, selected: false });
+		}
+		const port = contentByName(app, "listPort");
+		const view = asMenu(port);
+		if (view)
+			view.setList(port, `${helpTitle(this.helpTopicId)} ${start + 1}/${n}`, lines, "");
 	}
 
 	activateMenu(app: AppHost) {
-		const items = menuItems(this.settings.sound, this.settings.hourly, this.settings.wordLevel, this.settings.wordBank);
+		const items = menuItems(this.settings.sound, this.settings.hourly);
 		const id = items[this.menuIndex] ? items[this.menuIndex].id : "";
 		this.maybeBeep();
-		if (id === "word") {
-			this.enterWord(app);
-			return;
-		}
-		if (id === "level") {
-			this.setWordLevel(app, this.settings.wordLevel + 1);
-			return;
-		}
-		if (id === "bank") {
-			this.setWordBank(app, this.settings.wordBank + 1);
-			return;
-		}
 		if (id === "cd") {
 			this.enterCountdownEdit(app);
 			return;
@@ -770,213 +808,32 @@ export class AppBehavior extends Behavior {
 		}
 	}
 
-	loadWord() {
-		const n = wordCount(this.settings.wordBank);
-		if (n <= 0)
+	advanceCountdown(app: AppHost, paint: boolean) {
+		const left = Math.max(0, Math.ceil((this.cdEndMs - Date.now()) / 1000));
+		this.cdRemainSec = left;
+		if (left === this.cdLastSec)
 			return;
-		if (this.wordIndex < 0 || this.wordIndex >= n)
-			this.wordIndex = 0;
-		const entry = wordAt(this.settings.wordBank, this.wordIndex);
-		this.wordMaskLevel = clampWordLevel(this.settings.wordLevel);
-		this.wordHidden = hiddenIndices(entry.word, this.wordIndex, this.wordMaskLevel);
-		this.wordTyped = "";
-	}
-
-	setWordBank(app: AppHost, bank: number) {
-		const count = bankCount();
-		if (count <= 0)
-			return;
-		let b = (bank | 0) % count;
-		if (b < 0)
-			b += count;
-		this.settings.wordBank = b;
-		saveSettings(this.settings);
-		this.wordIndex = 0;
-		this.wordAdvance = false;
-		this.wordNote = "";
-		this.wordHidden = [];
-		this.wordMaskLevel = -1;
-		if (this.mode === "word") {
-			this.loadWord();
-			this.paintWord(app);
-			return;
+		this.cdLastSec = left;
+		if (paint)
+			this.setLabels(app, "倒计时", "");
+		if (this.settings.sound && left > 0)
+			this.sound?.tick();
+		if (left <= 0) {
+			if (this.mode === "help")
+				this.helpFrom = "cd_done";
+			else
+				this.mode = "cd_done";
+			if (this.settings.sound)
+				this.sound?.hourlyChime();
 		}
-		this.paintMenu(app);
-	}
-
-	setWordLevel(app: AppHost, level: number) {
-		const n = WORD_LEVEL_NAME.length;
-		let lv = (level | 0) % n;
-		if (lv < 0)
-			lv += n;
-		this.settings.wordLevel = lv;
-		saveSettings(this.settings);
-		this.wordAdvance = false;
-		this.wordNote = "";
-		if (this.mode === "word") {
-			this.loadWord();
-			this.paintWord(app);
-			return;
-		}
-		this.paintMenu(app);
-	}
-
-	enterWord(app: AppHost) {
-		this.wordAdvance = false;
-		this.wordNote = "";
-		this.mode = "word";
-		if (this.wordHidden.length === 0 || this.wordMaskLevel !== clampWordLevel(this.settings.wordLevel))
-			this.loadWord();
-		this.showClock(app, false);
-		const value = contentByName(app, "valueLabel");
-		if (hasStyle(value))
-			value.style = valueStyle(true);
-		this.paintWord(app);
-	}
-
-	stepWord(app: AppHost, dir: -1 | 1) {
-		const n = wordCount(this.settings.wordBank);
-		if (n <= 0)
-			return;
-		this.wordIndex = (this.wordIndex + dir + n) % n;
-		this.wordAdvance = false;
-		this.wordNote = "";
-		this.loadWord();
-		this.paintWord(app);
-		this.maybeBeep();
-	}
-
-	paintWord(app: AppHost) {
-		const entry = wordAt(this.settings.wordBank, this.wordIndex);
-		if (!entry.word)
-			return;
-		const view = renderPuzzle(entry.word, this.wordHidden, this.wordTyped);
-		const note = this.wordNote && Date.now() < this.wordNoteUntil ? this.wordNote : "";
-		const level = WORD_LEVEL_NAME[clampWordLevel(this.settings.wordLevel)];
-		const gloss = entry.gloss ? `${entry.gloss} ` : "";
-		const top = note
-			? `${gloss}${level} ${note}`
-			: `${gloss}${level} ${this.wordIndex + 1}/${wordCount(this.settings.wordBank)}`;
-		this.setLabels(app, top, "[]难度  \\换库  Del ,.换题  Enter Esc");
-		const value = contentByName(app, "valueLabel");
-		if (hasStyle(value))
-			value.style = puzzleStyle(entry.word.length);
-		setStringProp(contentByName(app, "valueLabel"), view);
-	}
-
-	onWordStroke(app: AppHost, stroke: KeyStroke) {
-		const chars = stroke.chars;
-		if (stroke.esc) {
-			if (this.wordAdvance) {
-				this.wordAdvance = false;
-				const n = wordCount(this.settings.wordBank);
-				this.wordIndex = n > 0 ? (this.wordIndex + 1) % n : 0;
-				this.loadWord();
-			}
-			this.enterMenu(app);
-			return;
-		}
-		if (this.wordAdvance)
-			return;
-		if (chars.some(ch => ch === "[" || ch === "{")) {
-			this.setWordLevel(app, this.settings.wordLevel - 1);
-			this.maybeBeep();
-			return;
-		}
-		if (chars.some(ch => ch === "]" || ch === "}")) {
-			this.setWordLevel(app, this.settings.wordLevel + 1);
-			this.maybeBeep();
-			return;
-		}
-		if (chars.some(ch => ch === "\\" || ch === "|")) {
-			this.setWordBank(app, this.settings.wordBank + 1);
-			this.maybeBeep();
-			return;
-		}
-		if (stroke.up || chars.some(ch => ch === ",")) {
-			this.stepWord(app, -1);
-			return;
-		}
-		if (stroke.down || chars.some(ch => ch === ".")) {
-			this.stepWord(app, 1);
-			return;
-		}
-		const entry = wordAt(this.settings.wordBank, this.wordIndex);
-		if (!entry.word)
-			return;
-		let typed = false;
-		for (const ch of chars) {
-			const c = ch.toLowerCase();
-			if (c < "a" || c > "z")
-				continue;
-			if (this.wordTyped.length >= this.wordHidden.length)
-				break;
-			this.wordTyped += c;
-			typed = true;
-		}
-		if (stroke.del && this.wordTyped.length > 0) {
-			this.wordTyped = this.wordTyped.slice(0, -1);
-			typed = true;
-		}
-		if (stroke.enter) {
-			if (puzzleCorrect(entry.word, this.wordHidden, this.wordTyped)) {
-				this.wordNote = "正确";
-				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
-				this.wordAdvance = true;
-				this.paintWord(app);
-				this.maybeBeep();
-			}
-			else {
-				this.wordNote = "不对";
-				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
-				this.paintWord(app);
-			}
-			return;
-		}
-		if (typed) {
-			this.wordNote = "";
-			this.paintWord(app);
-		}
-	}
-
-	tickWord(app: AppHost) {
-		if (!this.wordNote || Date.now() < this.wordNoteUntil)
-			return;
-		if (this.wordAdvance) {
-			this.wordAdvance = false;
-			this.wordNote = "";
-			const n = wordCount(this.settings.wordBank);
-			this.wordIndex = n > 0 ? (this.wordIndex + 1) % n : 0;
-			this.loadWord();
-			this.paintWord(app);
-			return;
-		}
-		this.wordNote = "";
-		this.paintWord(app);
 	}
 
 	onClockTick(app: AppHost) {
-		if (this.mode === "word") {
-			this.tickWord(app);
-			return;
-		}
-		if (this.mode === "menu")
+		if (this.mode === "menu" || (this.mode === "help" && this.helpFrom === "menu"))
 			return;
 
-		if (this.mode === "cd_run") {
-			const left = Math.max(0, Math.ceil((this.cdEndMs - Date.now()) / 1000));
-			this.cdRemainSec = left;
-			if (left !== this.cdLastSec) {
-				this.cdLastSec = left;
-				this.setLabels(app, "Countdown", left > 0 ? "Esc=stop" : "Done Esc");
-				if (this.settings.sound && left > 0)
-					this.sound?.tick();
-				if (left <= 0) {
-					this.mode = "cd_done";
-					if (this.settings.sound)
-						this.sound?.hourlyChime();
-				}
-			}
+		if (this.mode === "cd_run" || (this.mode === "help" && this.helpFrom === "cd_run")) {
+			this.advanceCountdown(app, this.mode === "cd_run");
 			return;
 		}
 
@@ -989,7 +846,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 
-		if (this.mode !== "clock")
+		if (this.mode !== "clock" && !(this.mode === "help" && this.helpFrom === "clock"))
 			return;
 
 		const p = beijingParts();
@@ -1006,10 +863,14 @@ export class AppBehavior extends Behavior {
 				&& alarmKey !== this.lastAlarmKey;
 			if (hitAlarm) {
 				this.lastAlarmKey = alarmKey;
-				this.mode = "al_ring";
-				this.statusUntil = 0;
-				this.showClock(app, true);
-				this.setLabels(app, formatAlarm(this.settings), "Esc=关");
+				if (this.mode === "help")
+					this.helpFrom = "al_ring";
+				else {
+					this.mode = "al_ring";
+					this.statusUntil = 0;
+					this.showClock(app, true);
+					this.setLabels(app, formatAlarm(this.settings), "");
+				}
 				this.sound?.alarmChime();
 			}
 			else if (this.settings.sound) {
@@ -1018,7 +879,8 @@ export class AppBehavior extends Behavior {
 					if (chimeKey !== this.lastChimeKey) {
 						this.lastChimeKey = chimeKey;
 						this.sound?.hourlyChime();
-						this.flashStatus(app, `${pad2(p.hh)}:00`, "Hourly");
+						if (this.mode !== "help")
+							this.flashStatus(app, `${pad2(p.hh)}:00`, "Hourly");
 					}
 				}
 				else {
@@ -1027,7 +889,7 @@ export class AppBehavior extends Behavior {
 			}
 		}
 
-		if (Date.now() < this.statusUntil)
+		if (this.mode === "help" || Date.now() < this.statusUntil)
 			return;
 
 		const key = this.clockLabelKey();

@@ -1,0 +1,40 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"$(MODDABLE)/examples/manifest_net.json",
+		"$(MODULES)/files/preference",
+		"$(MODULES)/network/http",
+		"../../shared/manifest.json"
+	],
+	"modules": {
+		"*": [
+			"./main",
+			"./behavior",
+			"./menu",
+			"./sevenseg",
+			"./lunar",
+			"./netboot",
+			"./settings",
+			"./weather",
+			"./help"
+		]
+	},
+	"preload": [
+		"behavior",
+		"menu",
+		"sevenseg",
+		"lunar",
+		"netboot",
+		"settings",
+		"weather",
+		"help"
+	],
+	"config": {
+		"sntp": "ntp.aliyun.com",
+		"weatherLat": 25.7212,
+		"weatherLon": 119.3841,
+		"weatherName": "Fuqing"
+	}
+}

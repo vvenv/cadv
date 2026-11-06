@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # cadv 常用命令入口。无参数进入交互菜单；具体做法仍在本脚本命令函数里，这里做转发。
 #
-# TypeScript / Moddable（Cardputer-Adv 时钟）:
-#   ./do.sh ts-sim                  # 桌面模拟器跑 app
-#   ./do.sh ts-flash                # 烧到 esp32/esp32s3（USB；Wi-Fi 见 app/wifi.local.json）
-#   词库或字体比源文件旧时，ts-sim / ts-flash 会先问要不要生成。
+# 固件在 fw/<id>/（manifest.json + 一行 label）。do.sh 按目录发现，不写死名单。
+#   ./do.sh                         # 交互菜单，烧录和模拟都会再选固件
+#   ./do.sh flash clock             # 烧「时间天气」
+#   ./do.sh flash words             # 烧「单词拼写」
+#   ./do.sh sim clock               # 桌面模拟某一个固件
+#   菜单里 Esc 或 ← 返回上一级。主菜单再按一次即退出。
+#   不写 id 且当前是终端时，会列出 fw/*/label 让你选。取消则什么都不做。
+#   字体比源文件旧时会先问要不要生成。选中的固件用到 wordbank.bin 时才重做词库。
 #   CADV_REFRESH=1 直接生成；CADV_REFRESH=0 跳过。
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
 #   ./do.sh port                    # 列出可用串口
-#   ./do.sh gen-font                # 用 fontbm 生成 app/fonts/UI-Regular-20
-#   ./do.sh gen-words               # 从 ../alice/data 生成 app/wordbank.ts
+#   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
+#   ./do.sh gen-words               # 从 ../alice/data 生成 fw/words/wordbank.bin
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh help                    # 本说明
 set -euo pipefail
@@ -23,7 +27,7 @@ source "$ROOT/scripts/lib/log.sh"
 # shellcheck source=scripts/lib/prompt-menu.sh
 source "$ROOT/scripts/lib/prompt-menu.sh"
 
-APP_DIR="$ROOT/app"
+FW_ROOT="$ROOT/fw"
 
 export PATH="/opt/homebrew/bin:${HOME}/Library/Python/3.9/bin:${PATH}"
 export HOMEBREW_PREFIX="${HOMEBREW_PREFIX:-/opt/homebrew}"
@@ -62,6 +66,62 @@ detect_port() {
   printf '%s\n' "${ports[0]}"
 }
 
+# fw/<id>/manifest.json is one firmware. label is the one-line menu name.
+fw_ids() {
+  local d
+  [ -d "$FW_ROOT" ] || return 0
+  for d in "$FW_ROOT"/*; do
+    [ -f "$d/manifest.json" ] || continue
+    basename "$d"
+  done
+}
+
+fw_label() {
+  local id="$1" f="$FW_ROOT/$1/label" line=""
+  if [ -f "$f" ]; then
+    IFS= read -r line <"$f" || true
+  fi
+  if [ -n "$line" ]; then
+    printf '%s\n' "$line"
+  else
+    printf '%s\n' "$id"
+  fi
+}
+
+fw_exists() {
+  [ -n "${1:-}" ] && [ -f "$FW_ROOT/$1/manifest.json" ]
+}
+
+pick_fw() {
+  local title="$1" id opts=()
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    opts+=("$id:$(fw_label "$id")")
+  done < <(fw_ids)
+  [ "${#opts[@]}" -gt 0 ] || log_die "fw/ 下没有固件。新增：建 fw/<id>/，放入 manifest.json 和一行 label"
+  prompt_menu "$title" --back "${opts[@]}"
+}
+
+require_fw() {
+  local id="${1:-}"
+  if [ -z "$id" ]; then
+    if [ -t 0 ]; then
+      id="$(pick_fw "选择固件")"
+      # Esc / ←：调用方什么都不做。空串且返回 0，和 log_die 的退出区分开。
+      [ -n "$id" ] || return 0
+    else
+      log_die "要指定固件 id：$(fw_ids | tr '\n' ' ')"
+    fi
+  fi
+  fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
+  printf '%s\n' "$id"
+}
+
+# A firmware that embeds wordbank.bin needs the generated bank refreshed.
+fw_uses_wordbank() {
+  grep -q 'wordbank\.bin' "$FW_ROOT/$1/manifest.json"
+}
+
 # ---------- commands ----------
 
 cmd_port() {
@@ -90,18 +150,15 @@ cmd_gen_words() {
   node "$ROOT/scripts/gen-wordbank.mjs"
 }
 
-# app/wordbank.ts is older than the generator, ../alice/data, or the ECDICT gloss file.
+# fw/words/wordbank.bin is older than the generator or the elementary lists in ../alice/data.
 wordbank_stale() {
-  local out="$APP_DIR/wordbank.ts"
+  local out="$FW_ROOT/words/wordbank.bin"
   local alice="$ROOT/../alice"
   local hit
   [ -f "$out" ] || return 0
   [ "$ROOT/scripts/gen-wordbank.mjs" -nt "$out" ] && return 0
-  if [ -f "$alice/assets/data/ecdict-meta.json" ] && [ "$alice/assets/data/ecdict-meta.json" -nt "$out" ]; then
-    return 0
-  fi
   if [ -d "$alice/data" ]; then
-    hit="$(find "$alice/data" -name '*.txt' -newer "$out" -print -quit)"
+    hit="$(find "$alice/data" -path '*小学*/*.txt' -newer "$out" -print -quit)"
     [ -n "$hit" ] && return 0
   fi
   return 1
@@ -114,11 +171,12 @@ font_stale() {
   return 0
 }
 
-# ts-sim / ts-flash: offer to rebuild a stale word bank, then the font that embeds its glosses.
+# Offer to rebuild a stale word bank (only if this firmware embeds one), then the shared font.
 # CADV_REFRESH=1 runs it; CADV_REFRESH=0 skips; otherwise ask on a terminal.
 refresh_generated() {
+  local want_words="${1:-0}"
   local words=0 fonts=0 msg ans
-  if wordbank_stale; then
+  if [ "$want_words" -eq 1 ] && wordbank_stale; then
     words=1
   fi
   if font_stale; then
@@ -170,7 +228,7 @@ need_moddable() {
     if [ -d "$ROOT/third_party/moddable" ]; then
       export MODDABLE="$ROOT/third_party/moddable"
     else
-      log_die "未设置 MODDABLE。先按 app/README.md 安装 Moddable SDK，并 export MODDABLE=..."
+      log_die "未设置 MODDABLE。先按 fw/clock/README.md 安装 Moddable SDK，并 export MODDABLE=..."
     fi
   fi
   # ensure mcconfig on PATH (common mac layout)
@@ -181,9 +239,10 @@ need_moddable() {
   command -v mcconfig >/dev/null 2>&1 || log_die "找不到 mcconfig（MODDABLE=${MODDABLE}）"
 }
 
-# Prints ssid=… / password=… lines for mcconfig from env or wifi.local.json.
+# Prints ssid=… / password=… lines for mcconfig from env or fw/<id>/wifi.local.json.
 ts_wifi_args() {
-  local ssid="${WIFI_SSID:-}" password="${WIFI_PASSWORD:-}" file="$APP_DIR/wifi.local.json"
+  local id="$1"
+  local ssid="${WIFI_SSID:-}" password="${WIFI_PASSWORD:-}" file="$FW_ROOT/$id/wifi.local.json"
   if [ -z "$ssid" ] && [ -f "$file" ]; then
     ssid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8")).get("ssid") or "")' "$file")"
     password="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8")).get("password") or "")' "$file")"
@@ -214,7 +273,13 @@ cmd_ts_check() {
   else
     log_warn "mcconfig 不在 PATH"
   fi
-  [ -f "$APP_DIR/main.ts" ] && log_success "app/main.ts 就绪" || log_error "缺少 app"
+  local id found=0
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    log_success "固件 $id（$(fw_label "$id")）"
+    found=1
+  done < <(fw_ids)
+  [ "$found" -eq 1 ] || log_error "fw/ 下没有固件"
   local idf="${IDF_PATH:-$HOME/esp32/esp-idf-v6.1}"
   if [ -f "$idf/export.sh" ]; then
     log_success "ESP-IDF: $idf"
@@ -242,14 +307,26 @@ cmd_ts_check() {
 }
 
 cmd_ts_sim() {
-  refresh_generated
+  local id want=0
+  id="$(require_fw "${1:-}")"
+  [ -n "$id" ] || return 0
+  if fw_uses_wordbank "$id"; then
+    want=1
+  fi
+  refresh_generated "$want"
   need_moddable
-  log_info "Moddable 桌面模拟：app（-dn 不弹 xsbug）"
-  (cd "$APP_DIR" && mcconfig -d -m -dn -p mac)
+  log_info "桌面模拟 $(fw_label "$id")（${id}，-dn 不弹 xsbug）"
+  (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p mac)
 }
 
 cmd_ts_flash() {
-  refresh_generated
+  local id want=0
+  id="$(require_fw "${1:-}")"
+  [ -n "$id" ] || return 0
+  if fw_uses_wordbank "$id"; then
+    want=1
+  fi
+  refresh_generated "$want"
   need_moddable
   # Prefer brew python@3.12 — system/homebrew python3 may be 3.14 and break IDF venv
   export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/opt/python@3.12/bin:$PATH"
@@ -266,32 +343,35 @@ cmd_ts_flash() {
   source "$IDF_PATH/export.sh"
 
   local wifi_args=() line
-  while IFS= read -r line; do
-    [ -n "$line" ] && wifi_args+=("$line")
-  done < <(ts_wifi_args)
-  if [ "${#wifi_args[@]}" -eq 0 ]; then
-    log_warn "未配置 Wi-Fi：复制 app/wifi.local.json.example → wifi.local.json 后重烧，否则时钟停在 1970"
-  else
-    log_info "Wi-Fi SSID 已传入 mcconfig（密码不打印）"
+  if [ -f "$FW_ROOT/$id/wifi.local.json.example" ]; then
+    while IFS= read -r line; do
+      [ -n "$line" ] && wifi_args+=("$line")
+    done < <(ts_wifi_args "$id")
+    if [ "${#wifi_args[@]}" -eq 0 ]; then
+      log_warn "未配置 Wi-Fi：复制 fw/${id}/wifi.local.json.example → wifi.local.json 后重烧，否则时钟停在 1970"
+    else
+      log_info "Wi-Fi SSID 已传入 mcconfig（密码不打印）"
+    fi
   fi
 
-  log_info "Moddable 烧录 esp32/esp32s3_cdc（USB Serial/JTAG，适合 Cardputer）"
+  log_info "烧录 $(fw_label "$id")（${id}）到 esp32/esp32s3_cdc"
   # -dn builds a debug image but does not launch xsbug. serial2xsbug then
-  # exits non-zero after a successful flash. Hash verified means the image is on the board.
+  # exits non-zero after a successful flash. esptool 4 prints "Hash of data
+  # verified"; esptool 5 prints "verified" and "Hard resetting via RTS pin".
   # bash 3.2 + set -u: empty "${arr[@]}" is "unbound variable" — branch instead.
   local log rc
   log="$(mktemp "${TMPDIR:-/tmp}/cadv-flash.XXXXXX")"
   set +e
   set +o pipefail
   if [ "${#wifi_args[@]}" -gt 0 ]; then
-    (cd "$APP_DIR" && mcconfig -d -m -dn -p esp32/esp32s3_cdc "${wifi_args[@]}") 2>&1 | tee "$log"
+    (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p esp32/esp32s3_cdc "${wifi_args[@]}") 2>&1 | tee "$log"
   else
-    (cd "$APP_DIR" && mcconfig -d -m -dn -p esp32/esp32s3_cdc) 2>&1 | tee "$log"
+    (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p esp32/esp32s3_cdc) 2>&1 | tee "$log"
   fi
   rc=${PIPESTATUS[0]}
   set -o pipefail
   set -e
-  if [ "$rc" -ne 0 ] && grep -q "Hash of data verified" "$log"; then
+  if [ "$rc" -ne 0 ] && grep -qE "Hash of data verified|Hard resetting via RTS pin" "$log"; then
     log_warn "xsbug 没开，调试器连接失败。固件已经写入。"
     rc=0
   fi
@@ -300,7 +380,7 @@ cmd_ts_flash() {
     # ${rc}: bash 3.2 treats $rc（ as a multi-byte var name
     log_die "mcconfig 退出码 ${rc}"
   fi
-  log_success "烧录完成。板子按 RESET。要对时需 wifi.local.json 或 WIFI_SSID/WIFI_PASSWORD"
+  log_success "已烧录 $(fw_label "$id")。板子按 RESET。"
 }
 
 run() {
@@ -308,10 +388,10 @@ run() {
   shift || true
   case "$cmd" in
     ts-check | check) cmd_ts_check ;;
-    ts-sim | sim) cmd_ts_sim ;;
-    ts-flash | flash) cmd_ts_flash ;;
+    ts-sim | sim) cmd_ts_sim "$@" ;;
+    ts-flash | flash) cmd_ts_flash "$@" ;;
     gen-font | font) cmd_gen_font "$@" ;;
-    gen-words | words) cmd_gen_words ;;
+    gen-words) cmd_gen_words ;;
     port) cmd_port ;;
     clean) cmd_clean ;;
     -h | --help | help) usage ;;
@@ -323,11 +403,11 @@ run() {
 }
 
 main_menu() {
-  local choice
+  local choice id
   while true; do
-    choice="$(prompt_menu "cadv" --default=1 \
-      "ts-flash:烧录到 ESP32-S3" \
-      "ts-sim:桌面模拟" \
+    choice="$(prompt_menu "cadv" --back --default=1 \
+      "flash:烧录固件" \
+      "sim:桌面模拟" \
       "ts-check:检查 Moddable / TS 环境" \
       "gen-font:生成 UI BMFont" \
       "gen-words:从 alice/data 生成词库" \
@@ -336,12 +416,19 @@ main_menu() {
       "help:命令说明" \
       "quit:退出")"
     case "$choice" in
-      quit) return 0 ;;
+      "" | quit) return 0 ;;
+      flash | sim)
+        id="$(pick_fw "选择固件")"
+        # 取消固件选择：回到主菜单，不暂停
+        [ -n "$id" ] || continue
+        (run "$choice" "$id") || log_error "执行失败（${choice}）"
+        pause_menu
+        ;;
+      *)
+        (run "$choice") || log_error "执行失败（${choice}）"
+        pause_menu
+        ;;
     esac
-    # 子命令失败不退出菜单
-    # shellcheck disable=SC2086
-    (run $choice) || log_error "执行失败（${choice}）"
-    pause_menu
   done
 }
 

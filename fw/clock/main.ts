@@ -5,7 +5,7 @@
 */
 
 import {} from "piu/MC";
-import { AppBehavior } from "app-behavior";
+import { AppBehavior } from "behavior";
 import { MarqueeBehavior } from "marquee";
 import { MenuBehavior } from "menu-view";
 import { SevenSegBehavior } from "sevenseg";
@@ -27,7 +27,7 @@ const ClockApplication = Application.template($ => ({
 		Label($, {
 			name: "valueLabel",
 			left: 0, right: 0, top: 32, bottom: 32,
-			style: new Style({ font: "12px Zpix", color: "#39FF14", horizontal: "center", vertical: "middle" }),
+			style: new Style({ font: "bold 20px UI", color: "#39FF14", horizontal: "center", vertical: "middle" }),
 			string: "",
 			visible: false,
 		}),

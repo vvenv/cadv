@@ -1,18 +1,18 @@
 /*
-	Fill-in-the-blank English words. The lists live in wordbank.ts,
-	generated from ../alice/data.
+	Fill-in-the-blank English words. The lists live in wordbank.bin,
+	generated from ../../alice/data into wordbank.bin.
 */
 
-import { BANK_AT, BANK_NAME, LEX_GLOSS, LEX_WORD } from "wordbank";
+import { storedBankCount, storedBankName, storedBankSize, storedLexId, storedLexWord } from "wordbank";
 
-export type WordEntry = { word: string; gloss: string };
+export type WordEntry = { word: string };
 
 export function bankCount(): number {
-	return BANK_NAME.length;
+	return storedBankCount();
 }
 
 export function clampBank(bank: number): number {
-	const n = BANK_NAME.length;
+	const n = storedBankCount();
 	if (n <= 0)
 		return 0;
 	let b = bank | 0;
@@ -24,26 +24,20 @@ export function clampBank(bank: number): number {
 }
 
 export function bankName(bank: number): string {
-	return BANK_NAME[clampBank(bank)] ?? "";
+	return storedBankName(clampBank(bank));
 }
 
 export function wordCount(bank: number): number {
-	const list = BANK_AT[clampBank(bank)];
-	return list ? list.length : 0;
+	return storedBankSize(clampBank(bank));
 }
 
 export function wordAt(bank: number, index: number): WordEntry {
-	const list = BANK_AT[clampBank(bank)];
-	const n = list ? list.length : 0;
+	const b = clampBank(bank);
+	const n = storedBankSize(b);
 	if (n <= 0)
-		return { word: "", gloss: "" };
-	let i = index | 0;
-	if (i < 0)
-		i = 0;
-	if (i >= n)
-		i = i % n;
-	const id = list[i] ?? 0;
-	return { word: LEX_WORD[id] ?? "", gloss: LEX_GLOSS[id] ?? "" };
+		return { word: "" };
+	const id = storedLexId(b, index);
+	return { word: storedLexWord(id) };
 }
 
 /** 易 / 中 / 难. Share of letters the player must type. */

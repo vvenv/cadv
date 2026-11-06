@@ -1,7 +1,9 @@
-# app — Moddable + TypeScript 时钟
+# 时间天气固件 — Moddable + TypeScript
 
-板端用 **TypeScript**（经 Moddable XS）跑在 ESP32-S3 上。  
+这是 `fw/clock`。板端用 **TypeScript**（经 Moddable XS）跑在 ESP32-S3 上。  
 桌面模拟器用 **PIU** 画时钟；真机同样走 PIU + Cardputer-Adv ST7789 / TCA8418 键盘 / ES8311 扬声器。
+
+单词拼写是另一个固件 `fw/words`，用 `./do.sh flash words` 烧。两个固件不会打进同一个包。
 
 ## 一次安装（本机尚未装过时）
 
@@ -43,8 +45,9 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 在仓库根目录：
 
 ```bash
-./do.sh ts-sim      # 桌面模拟器（mac），看 xsbug / 控制台 trace
-./do.sh ts-flash    # 烧到 ESP32-S3（下载模式同 Cardputer）
+./do.sh sim clock      # 桌面模拟时间天气
+./do.sh flash clock    # 烧到 ESP32-S3（下载模式同 Cardputer）
+./do.sh flash words    # 换成单词拼写固件
 ```
 
 ### Wi-Fi / NTP（真机对时）
@@ -69,29 +72,26 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 | **`A`** | 闹钟：数码管 `__:__`（时:分）；时满 2 位跳分；分 **`Enter`** 保存（北京时间，掉电保留）；时位空 `Del` 关闭；响铃 `Esc` 关；顶栏显示 `YYYY-MM-DD MO AL:HH:MM` |
 | **`T`** | 立即刷新天气（Open-Meteo；默认福清；底栏 `农历 XX℃ YY%`；超长自动左右滚动） |
 | **`Enter`** | 功能列表：`j`/`k` 或 `,`/`.` 上下，Enter 进入，Esc 回时钟 |
+| **`?`** | 只看当前功能的帮助。时钟、列表、倒计时、闹钟各一页。`j`/`k` 翻页，Esc 返回。配网输入时 `?` 仍是字符 |
 
-屏上会短暂显示 `Snd:… Hour:… Vol:N`；联网后每 20 分钟自动拉温湿度。城市经纬度在 `manifest.json` 的 `weatherLat` / `weatherLon`。
+屏上会短暂显示 `Snd:… Hour:… Vol:N`；联网后每 20 分钟自动拉温湿度。城市经纬度在 `fw/clock/manifest.json` 的 `weatherLat` / `weatherLon`。
 
 ### 功能列表
 
-时钟界面 **Enter** 打开。列表里有：单词补充完整、难度、词库、倒计时、闹钟、刷新天气、Wi-Fi、声音开关、整点报时。`C` / `A` / `T` / `W` / `S` / `H` 仍可在时钟界面直接用。
+时钟界面 **Enter** 打开。列表里有：倒计时、闹钟、刷新天气、Wi-Fi、声音开关、整点报时。各界面不再常驻按键说明；在当前界面按 **`?`** 只看这一功能的帮助。`C` / `A` / `T` / `W` / `S` / `H` 仍可在时钟界面直接用。
 
-### 单词补充完整
+单词补充完整在 `fw/words`，`./do.sh flash words` 单独烧。词库只取 `../alice/data` 里的小学词表，不带中文释义。
 
-词库来自 `../alice/data`（中考、高考、初中、人教、外研、仁爱、闽教）。顶栏是中文释义、难度和题号，中间是挖空的英文。7 个字母以内用大字，更长的词缩小以放进屏幕。输入缺的字母，**Enter** 判断：对则显示「正确」并自动下一题，错则「不对」可删改。`,` / `.` 换题，`\` 换词库，**Esc** 回功能列表。
-
-难度（掉电保留）：**易** 约 1/3 字母，**中** 约 1/2，**难** 全部字母（只剩中文）。功能列表里选「难度」或「词库」循环，题里用 `[` / `]` 切换难度。`./do.sh ts-sim` 和 `./do.sh ts-flash` 会在词库或字体比源文件旧时先问要不要生成；`CADV_REFRESH=1` 直接生成，`CADV_REFRESH=0` 跳过。也可以手动 `./do.sh gen-words`，再 `./do.sh gen-font`。
-
-也可预置（可选，烧录时写入 config；设备上仍可改）：
+也可预置 Wi-Fi（可选，烧录时写入 config；设备上仍可改）：
 
 ```bash
-cp app/wifi.local.json.example app/wifi.local.json
-./do.sh ts-flash
-# 或 WIFI_SSID=… WIFI_PASSWORD=… ./do.sh ts-flash
+cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
+./do.sh flash clock
+# 或 WIFI_SSID=… WIFI_PASSWORD=… ./do.sh flash clock
 ```
 
 ```bash
-cd app
+cd fw/clock
 mcconfig -d -m -dn                          # 本机模拟
 mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer Adv
 ```
@@ -101,11 +101,11 @@ mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer Adv
 | 有 |
 |----|
 | TS 编译进固件 |
-| PIU + **7 段数码管时钟**（上：`YYYY-MM-DD MO AL:HH:MM`，下：`农历 XX℃ YY%`；思源黑体 20px，超长左右滚动） |
+| PIU + **7 段数码管时钟**（上：`YYYY-MM-DD MO AL:HH:MM`，下：`农历 XX℃ YY%`；思源黑体 Bold 20px，超长左右滚动） |
 | Cardputer **Adv** 键盘配网（TCA8418）+ Preference |
 | Wi-Fi + SNTP（`ntp.aliyun.com`） |
 | ES8311 扬声器：`S` 声音 / `H` 整点报时 |
 | 倒计时：`C` → 时分秒 |
 | 闹钟：`A` → 时:分 → `Enter` 保存 |
-| 功能列表：时钟界面 **Enter**；单词补充完整（alice/data 词库、难度 易/中/难） |
+| 功能列表：时钟界面 **Enter**；`?` 只打开当前功能的帮助。单词拼写是另一个固件 |
 | ESP32-S3 USB 下载 + ST7789 |

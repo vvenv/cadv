@@ -1,55 +1,38 @@
 {
-	"include": [
-		"$(MODDABLE)/examples/manifest_base.json",
-		"$(MODDABLE)/examples/manifest_typings.json",
-		"$(MODDABLE)/examples/manifest_piu.json",
-		"$(MODDABLE)/examples/manifest_net.json",
-		"$(MODULES)/files/preference",
-		"$(MODULES)/network/http"
-	],
 	"modules": {
 		"*": [
-			"./main",
-			"./app-behavior",
 			"./marquee",
-			"./menu",
 			"./menu-view",
-			"./sevenseg",
-			"./lunar",
-			"./netboot",
-			"./settings",
-			"./weather",
-			"./wordbank",
-			"./words"
+			"./list",
+			"./ui",
+			"./hostkey",
+			"./volume"
 		]
 	},
 	"preload": [
-		"keyboard",
-		"app-behavior",
 		"marquee",
-		"menu",
 		"menu-view",
-		"sevenseg",
-		"lunar",
-		"netboot",
-		"settings",
-		"sound",
-		"weather",
-		"wordbank",
-		"words"
+		"list",
+		"ui",
+		"hostkey",
+		"volume",
+		"keyboard",
+		"sound"
 	],
+	"creation": {
+		"chunk": {
+			"initial": 78848,
+			"incremental": 16384
+		},
+		"heap": {
+			"initial": 4928,
+			"incremental": 1024
+		}
+	},
 	"resources": {
 		"*-mask": [
-			"./fonts/Zpix-Regular-12",
-			"./fonts/UI-Regular-20",
-			"./fonts/Word-Regular-48"
+			"./fonts/UI-Bold-20"
 		]
-	},
-	"config": {
-		"sntp": "ntp.aliyun.com",
-		"weatherLat": 25.7212,
-		"weatherLon": 119.3841,
-		"weatherName": "Fuqing"
 	},
 	"platforms": {
 		"esp32": {

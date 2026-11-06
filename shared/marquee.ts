@@ -9,7 +9,7 @@ import type { Port as PortContent } from "piu/MC";
 let marqueeStyle: /* Style */ object | undefined;
 function getMarqueeStyle(): /* Style */ any {
 	if (!marqueeStyle)
-		marqueeStyle = new Style({ font: "20px UI", color: "white", horizontal: "left", vertical: "middle" });
+		marqueeStyle = new Style({ font: "bold 20px UI", color: "white", horizontal: "left", vertical: "middle" });
 	return marqueeStyle;
 }
 

@@ -129,7 +129,7 @@ function lunarDayName(day: number): string {
 export function formatLunar(): string {
 	const p = beijingParts();
 	if (!timeSynced())
-		return "W=WiFi";
+		return "未对时";
 	if (p.y < 1900 || p.y > 2100 || LUNAR_INFO.length <= p.y - 1900)
 		return "农历—";
 	let offset = solarOffset(p.y, p.m, p.d);

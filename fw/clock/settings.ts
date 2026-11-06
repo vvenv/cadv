@@ -3,11 +3,10 @@
 */
 
 import Preference from "preference";
+import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
 
 const PREF = "clock";
-export const VOL_MIN = 0;
-export const VOL_MAX = 10;
-export const VOL_DEFAULT = 6;
+export { VOL_DEFAULT, VOL_MAX, VOL_MIN };
 
 export type ClockSettings = {
 	sound: boolean;
@@ -16,10 +15,6 @@ export type ClockSettings = {
 	alarmOn: boolean;
 	alarmHH: number; // 0..23
 	alarmMM: number; // 0..59
-	/** Word quiz: 0 易 ≈1/3, 1 中 ≈1/2, 2 难 = every letter. */
-	wordLevel: number;
-	/** Index into the alice/data word banks. */
-	wordBank: number;
 };
 
 function readBool(name: string, fallback: boolean): boolean {
@@ -67,8 +62,6 @@ export function loadSettings(): ClockSettings {
 		alarmOn: readBool("alarmOn", false),
 		alarmHH: readInt("alarmHH", 7, 0, 23),
 		alarmMM: readInt("alarmMM", 0, 0, 59),
-		wordLevel: readInt("wordLevel", 0, 0, 2),
-		wordBank: readInt("wordBank", 0, 0, 15),
 	};
 }
 
@@ -79,8 +72,6 @@ export function saveSettings(s: ClockSettings) {
 	Preference.set(PREF, "alarmOn", s.alarmOn ? 1 : 0);
 	Preference.set(PREF, "alarmHH", s.alarmHH);
 	Preference.set(PREF, "alarmMM", s.alarmMM);
-	Preference.set(PREF, "wordLevel", s.wordLevel);
-	Preference.set(PREF, "wordBank", s.wordBank);
 }
 
 export function formatAlarm(s: ClockSettings): string {
@@ -95,11 +86,3 @@ export function formatSettings(s: ClockSettings): string {
 	return `Snd:${s.sound ? "ON" : "OFF"} Hour:${s.hourly ? "ON" : "OFF"} Vol:${s.volume}`;
 }
 
-/** Map 0..10 UI steps → AudioOut volume 0..256. */
-export function audioVolume(level: number): number {
-	if (level <= 0)
-		return 0;
-	if (level >= VOL_MAX)
-		return 256;
-	return Math.floor((256 * level) / VOL_MAX);
-}

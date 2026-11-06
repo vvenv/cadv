@@ -6,18 +6,24 @@
 #   value=$(prompt_menu "标题" --default=1 \
 #     "production:生产环境 (/var/www/app, 端口 3700)" \
 #     "test:测试环境 (/var/www/app_test, 端口 3702)")
+#   value=$(prompt_menu "标题" --back "a:甲" "b:乙")   # Esc 或 ←：stdout 为空
 # 输出选中项的 value（冒号前）到 stdout，菜单到 stderr
 
 prompt_menu() {
   local title="$1"
   shift
   local default_idx=1
+  local allow_back=0
   local options=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --default=*)
         default_idx="${1#--default=}"
+        shift
+        ;;
+      --back)
+        allow_back=1
         shift
         ;;
       *)
@@ -38,7 +44,8 @@ prompt_menu() {
   fi
 
   # 单选项直接返回
-  if [ "$count" -eq 1 ]; then
+  # One item normally confirms itself. --back must stay interactive so Esc can cancel.
+  if [ "$count" -eq 1 ] && [ "$allow_back" -eq 0 ]; then
     echo "${options[0]%%:*}"
     return 0
   fi
@@ -86,7 +93,11 @@ prompt_menu() {
     # 标题区
     echo "" >&2
     printf '%s%s%s\n' "$bold" "$title" "$sgr0" >&2
-    printf '  %s↑/↓ 或 j/k 移动 · 空格/回车确认 · 数字键直跳%s\n' "$cyan" "$sgr0" >&2
+    if [ "$allow_back" -eq 1 ]; then
+      printf '  %s↑/↓ 或 j/k 移动 · 空格/回车确认 · Esc/← 返回%s\n' "$cyan" "$sgr0" >&2
+    else
+      printf '  %s↑/↓ 或 j/k 移动 · 空格/回车确认 · 数字键直跳%s\n' "$cyan" "$sgr0" >&2
+    fi
     echo "" >&2
 
     # 隐藏光标
@@ -129,15 +140,24 @@ prompt_menu() {
       IFS= read -rsn1 key </dev/tty || true
       case "$key" in
         $'\x1b')
-          # 方向键转义序列：ESC [ A/B（部分终端用 ESC O A/B）
+          # 方向键：ESC [ A/B/D，或 ESC O A/B/D。单独 Esc 在超时内没有后续字节。
           seq1=""; seq2=""
           read -rsn1 -t "$esc_t" seq1 </dev/tty || true
-          read -rsn1 -t "$esc_t" seq2 </dev/tty || true
           if [ "$seq1" = "[" ] || [ "$seq1" = "O" ]; then
+            read -rsn1 -t "$esc_t" seq2 </dev/tty || true
             case "$seq2" in
               A) sel=$((sel - 1)); [ "$sel" -lt 1 ] && sel=$count ;;
               B) sel=$((sel + 1)); [ "$sel" -gt "$count" ] && sel=1 ;;
+              D)
+                if [ "$allow_back" -eq 1 ]; then
+                  sel=0
+                  break
+                fi
+                ;;
             esac
+          elif [ -z "$seq1" ] && [ "$allow_back" -eq 1 ]; then
+            sel=0
+            break
           fi
           ;;
         "")
@@ -200,6 +220,10 @@ prompt_menu() {
     fi
   fi
 
+  if [ "$sel" -eq 0 ]; then
+    echo ""
+    return 0
+  fi
   echo "${options[$((sel - 1))]%%:*}"
 }
 

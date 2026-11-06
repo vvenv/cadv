@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Generate app/fonts/UI-Regular-N BMFont from Source Han Sans SC via fontbm.
+# Generate shared/fonts/UI-Bold-N and Word-Bold-48 from Source Han Sans SC Bold.
+#
+# Source Han Sans VF's default instance is ExtraLight (wght 250). fontbm
+# rasterizes that master, which is too thin on a 240×135 panel. Pin the
+# Bold instance (wght 700) before rasterizing. Needs hb-subset, or fontTools.
 #
 # Usage:
 #   ./scripts/gen-ui-font.sh
 #   ./scripts/gen-ui-font.sh --size 20
-#   ./scripts/gen-ui-font.sh --font /path/to/SourceHanSansSC-Medium.otf
+#   ./scripts/gen-ui-font.sh --font /path/to/SourceHanSansSC-Bold.otf
 #   ./scripts/gen-ui-font.sh --mono
 set -euo pipefail
 
@@ -12,31 +16,24 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/log.sh
 source "$ROOT/scripts/lib/log.sh"
 
-OUT_DIR="$ROOT/app/fonts"
+OUT_DIR="$ROOT/shared/fonts"
+# File names are UI-Bold-20 / Word-Bold-48. Styles must say "bold 20px UI"
+# and "bold 48px Word". "20px UI" looks up UI-Regular-20, which this script removes.
 FAMILY="UI"
 SIZE=20
 MONO=0
 STALE_CHECK=0
 FONT_FILE="${UI_FONT:-$HOME/Library/Fonts/SourceHanSans-VF.otf.ttc}"
 SC_INDEX=2
+# Named instance Bold. Default master of the VF is ExtraLight (250).
+WEIGHT=700
 FONTBM_VER="10.0.2"
 CHARS_EXTRA="年月日周闰初十廿卅冬腊设闹钟等待对时℃"
-CHAR_SOURCES=(
-  "$ROOT/app/main.ts"
-  "$ROOT/app/app-behavior.ts"
-  "$ROOT/app/marquee.ts"
-  "$ROOT/app/sevenseg.ts"
-  "$ROOT/app/lunar.ts"
-  "$ROOT/app/weather.ts"
-  "$ROOT/app/settings.ts"
-  "$ROOT/app/netboot.ts"
-  "$ROOT/app/keyboard_stub.ts"
-  "$ROOT/app/sound_stub.ts"
-  "$ROOT/app/menu.ts"
-  "$ROOT/app/menu-view.ts"
-  "$ROOT/app/words.ts"
-  "$ROOT/app/wordbank.ts"
-)
+# Every firmware and shared module contributes glyphs, so a new fw/ folder is picked up.
+CHAR_SOURCES=()
+while IFS= read -r _src; do
+  CHAR_SOURCES+=("$_src")
+done < <(find "$ROOT/fw" "$ROOT/shared" \( -name '*.ts' -o -name 'wordbank-chars.txt' \) | sort)
 
 usage() {
   sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
@@ -97,32 +94,36 @@ ensure_fontbm() {
   log_success "fontbm → $FONTBM"
 }
 
-# Source Han Sans VF is a TTC; fontbm always opens face 0. Rewrite a temp copy so
-# face 0 is Source Han Sans SC (index SC_INDEX) while keeping absolute table offsets.
-prepare_font() {
-  local src="$1" dest="$2" index="$3"
-  case "$src" in
-    *.ttc | *.otc)
-      need_cmd perl
-      SC_INDEX="$index" SRC="$src" DEST="$dest" perl -e '
-        use strict; use warnings;
-        open my $fh, "<:raw", $ENV{SRC} or die $!;
-        local $/; my $data = <$fh>; close $fh;
-        die "not ttc\n" unless substr($data, 0, 4) eq "ttcf";
-        my $num = unpack("N", substr($data, 8, 4));
-        my $idx = $ENV{SC_INDEX} + 0;
-        die "face $idx out of range (n=$num)\n" if $idx < 0 || $idx >= $num;
-        my $off = unpack("N", substr($data, 12 + 4 * $idx, 4));
-        substr($data, 8, 4) = pack("N", 1);
-        substr($data, 12, 4) = pack("N", $off);
-        open my $out, ">:raw", $ENV{DEST} or die $!;
-        print $out $data; close $out;
-      '
-      ;;
-    *)
-      cp "$src" "$dest"
-      ;;
-  esac
+# Pin wght=WEIGHT and, for a TTC, the SC face. Static fonts are copied through.
+pin_bold() {
+  local src="$1" dest="$2" face="$3"
+  if command -v hb-subset >/dev/null 2>&1; then
+    if hb-subset --font-file "$src" -y "$face" --unicodes='*' --variations="wght=${WEIGHT}" -o "$dest" 2>"$WORK_DIR/pin.err"; then
+      return 0
+    fi
+    log_warn "hb-subset 未能固定字重：$(tr '\n' ' ' <"$WORK_DIR/pin.err")"
+  fi
+  local py="" cand
+  for cand in /usr/bin/python3 python3; do
+    if "$cand" -c 'import fontTools.varLib.instancer' >/dev/null 2>&1; then
+      py="$cand"
+      break
+    fi
+  done
+  if [ -z "$py" ]; then
+    log_die "无法固定 Bold。安装 hb-subset（brew install harfbuzz）或 fontTools"
+  fi
+  SRC="$src" DEST="$dest" FACE="$face" WEIGHT="$WEIGHT" "$py" - <<'PY'
+import os
+from fontTools.ttLib import TTFont
+from fontTools.varLib.instancer import instantiateVariableFont
+src, dest = os.environ["SRC"], os.environ["DEST"]
+face, weight = int(os.environ["FACE"]), float(os.environ["WEIGHT"])
+font = TTFont(src, fontNumber=face)
+if "fvar" in font:
+    instantiateVariableFont(font, {"wght": weight}, inplace=True)
+font.save(dest)
+PY
 }
 
 # BMFont binary: rewrite info.fontName to FAMILY ("UI") so Style { font: "20px UI" } matches.
@@ -162,21 +163,23 @@ main() {
   ensure_fontbm
   [ -f "$FONT_FILE" ] || log_die "font not found: $FONT_FILE"
 
-  local out_stem="${FAMILY}-Regular-${SIZE}"
-  local chars_extra font_use nglyphs
+  local out_stem="${FAMILY}-Bold-${SIZE}"
+  local chars_extra font_use face nglyphs
   WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/cadv-ui-font.XXXXXX")"
   trap 'rm -rf "${WORK_DIR:-}"' EXIT
 
   chars_extra="$WORK_DIR/extra.txt"
   printf '%s' "$CHARS_EXTRA" >"$chars_extra"
 
-  font_use="$WORK_DIR/font-input"
+  font_use="$WORK_DIR/font-bold"
+  face=0
   if [[ "$FONT_FILE" == *.ttc || "$FONT_FILE" == *.otc ]]; then
-    log_info "TTC → SC face (index ${SC_INDEX})"
-    prepare_font "$FONT_FILE" "$font_use" "$SC_INDEX"
+    face="$SC_INDEX"
+    log_info "TTC → SC face (index ${SC_INDEX})，Bold wght=${WEIGHT}"
   else
-    font_use="$FONT_FILE"
+    log_info "Bold wght=${WEIGHT}"
   fi
+  pin_bold "$FONT_FILE" "$font_use" "$face"
 
   mkdir -p "$OUT_DIR"
   local -a args=(
@@ -204,7 +207,7 @@ main() {
 
   bmf_set_family "$WORK_DIR/${out_stem}.fnt" "$FAMILY"
 
-  find "$OUT_DIR" -maxdepth 1 -type f -name "${FAMILY}-Regular-*.*" -delete
+  find "$OUT_DIR" -maxdepth 1 -type f \( -name "${FAMILY}-Regular-*.*" -o -name "${FAMILY}-Bold-*.*" \) -delete
   mv "$WORK_DIR/${out_stem}.fnt" "$OUT_DIR/"
   mv "$WORK_DIR/${out_stem}.png" "$OUT_DIR/"
 
@@ -220,10 +223,11 @@ main() {
     }
     print 0;
   ')"
-  log_success "wrote ${out_stem} glyphs=${nglyphs} → app/fonts/ (family=${FAMILY})"
+  log_success "wrote ${out_stem} glyphs=${nglyphs} → shared/fonts/ (family=${FAMILY})"
 
-  # Puzzle face. Middle band is 240×71. 48px ASCII fits 8 unspaced letters; 40px did not once spaces were added.
-  local word_size=48 word_family="Word" word_stem="Word-Regular-48"
+  # Puzzle face. Middle band is 240×71. Bold 48px: widest 7-letter headword
+  # ("maximum") is 238px, so 8 letters and longer drop to 20px UI.
+  local word_size=48 word_family="Word" word_stem="Word-Bold-48"
   log_info "fontbm size=${word_size} → ${word_stem} (puzzle)"
   "$FONTBM" \
     --font-file "$font_use" \
@@ -237,16 +241,16 @@ main() {
   [ -f "$WORK_DIR/${word_stem}.fnt" ] && [ -f "$WORK_DIR/${word_stem}.png" ] \
     || log_die "fontbm 未生成 ${word_stem}.{fnt,png}"
   bmf_set_family "$WORK_DIR/${word_stem}.fnt" "$word_family"
-  find "$OUT_DIR" -maxdepth 1 -type f -name "Word-Regular-*.*" -delete
+  find "$OUT_DIR" -maxdepth 1 -type f \( -name "Word-Regular-*.*" -o -name "Word-Bold-*.*" \) -delete
   mv "$WORK_DIR/${word_stem}.fnt" "$OUT_DIR/"
   mv "$WORK_DIR/${word_stem}.png" "$OUT_DIR/"
-  log_success "wrote ${word_stem} → app/fonts/ (family=${word_family})"
+  log_success "wrote ${word_stem} → shared/fonts/ (family=${word_family})"
 }
 
 # Exit 0 when both faces are at least as new as the script, the glyph sources, and the font file.
 fonts_current() {
-  local ui="$OUT_DIR/${FAMILY}-Regular-${SIZE}.fnt"
-  local word="$OUT_DIR/Word-Regular-48.fnt"
+  local ui="$OUT_DIR/${FAMILY}-Bold-${SIZE}.fnt"
+  local word="$OUT_DIR/Word-Bold-48.fnt"
   local oldest src
   [ -f "$ui" ] && [ -f "$word" ] || return 1
   oldest="$ui"

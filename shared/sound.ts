@@ -6,7 +6,7 @@
 import AudioOut from "pins/audioout";
 import SMBus from "embedded:io/smbus";
 import config from "mc/config";
-import { audioVolume, VOL_DEFAULT } from "settings";
+import { audioVolume, VOL_DEFAULT } from "volume";
 
 const SAMPLE_RATE = 16000;
 const ES8311_ADDR = 0x18;

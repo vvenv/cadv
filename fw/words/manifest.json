@@ -1,0 +1,36 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"$(MODULES)/files/preference",
+		"../../shared/manifest.json"
+	],
+	"modules": {
+		"*": [
+			"./main",
+			"./behavior",
+			"./menu",
+			"./settings",
+			"./help",
+			"./wordbank",
+			"./words"
+		]
+	},
+	"preload": [
+		"behavior",
+		"menu",
+		"settings",
+		"help",
+		"wordbank",
+		"words"
+	],
+	"resources": {
+		"*-mask": [
+			"../../shared/fonts/Word-Bold-48"
+		],
+		"*": [
+			"./wordbank.bin"
+		]
+	}
+}

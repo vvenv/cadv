@@ -8,7 +8,6 @@
 build/
 **/build/
 *.xsa
-app/build/
 
 # Secrets / local overrides
 wifi.local.json

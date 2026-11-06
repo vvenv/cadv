@@ -1,11 +1,11 @@
 /*
-	Full-screen function list. 20px UI ink sits around y+6..y+26, so rows
-	step by 21px and six rows fit the 135px panel without overlapping.
+	Full-screen list. Bold 20px UI ink sits around y+6..y+28, so rows step
+	by 21px. Title plus MENU_VISIBLE rows fill the 135px panel.
 */
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { MENU_VISIBLE, windowStart } from "menu";
+import { MENU_VISIBLE, windowStart } from "list";
 
 export type MenuLine = { text: string; selected: boolean };
 
@@ -15,7 +15,7 @@ const DRAW_H = 30;
 let menuStyle: /* Style */ object | undefined;
 function getMenuStyle(): /* Style */ any {
 	if (!menuStyle)
-		menuStyle = new Style({ font: "20px UI", color: "white", horizontal: "left", vertical: "top" });
+		menuStyle = new Style({ font: "bold 20px UI", color: "white", horizontal: "left", vertical: "top" });
 	return menuStyle;
 }
 
@@ -52,9 +52,11 @@ export class MenuBehavior extends Behavior {
 		drawCentered(port, this.title, "white", 0);
 		const visible = MENU_VISIBLE;
 		let selected = 0;
+		let marked = false;
 		for (let i = 0; i < this.lines.length; i++) {
 			if (this.lines[i].selected) {
 				selected = i;
+				marked = true;
 				break;
 			}
 		}
@@ -67,9 +69,10 @@ export class MenuBehavior extends Behavior {
 			if (line.selected)
 				port.fillColor("#143214", 0, y + 4, port.width, 22);
 			const color = line.selected ? "#39FF14" : "white";
-			const text = (line.selected ? "> " : "  ") + line.text;
+			const text = (marked ? (line.selected ? "> " : "  ") : "") + line.text;
 			port.drawString(text, style, color, 6, y, port.width - 12, DRAW_H);
 		}
-		drawCentered(port, this.hint, "white", (1 + visible) * ROW);
+		if (this.hint)
+			drawCentered(port, this.hint, "white", (1 + visible) * ROW);
 	}
 }
