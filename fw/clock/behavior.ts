@@ -207,7 +207,7 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "help") {
-			if (stroke.esc || stroke.enter) {
+			if (stroke.esc || stroke.enter || stroke.del) {
 				this.exitHelp(app);
 				this.maybeBeep();
 				return;
@@ -236,7 +236,7 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "menu") {
-			if (stroke.esc) {
+			if (stroke.esc || stroke.del) {
 				this.resumeClock(app);
 				this.maybeBeep();
 				return;
@@ -259,7 +259,7 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "cd_run" || this.mode === "cd_done") {
-			if (stroke.esc || chars.some(ch => ch === "c" || ch === "C")) {
+			if (stroke.esc || stroke.del || chars.some(ch => ch === "c" || ch === "C")) {
 				this.resumeClock(app);
 				this.maybeBeep();
 			}
@@ -267,7 +267,7 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "al_ring") {
-			if (stroke.esc || stroke.enter || chars.some(ch => ch === "a" || ch === "A")) {
+			if (stroke.esc || stroke.enter || stroke.del || chars.some(ch => ch === "a" || ch === "A")) {
 				this.resumeClock(app);
 				this.maybeBeep();
 			}
@@ -342,6 +342,11 @@ export class AppBehavior extends Behavior {
 					if (this.prompt === "0")
 						this.prompt = "";
 				}
+				else {
+					this.resumeClock(app);
+					this.maybeBeep();
+					return;
+				}
 			}
 			// HH/MM: 2 digits auto-advance. SS: need Enter to start.
 			if (typed && this.prompt.length >= 2 && this.cdStep < 2) {
@@ -357,8 +362,8 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "clock" || this.mode === "busy") {
-			// Esc dismisses Sound/Hourly/Vol status overlay → clock labels
-			if (stroke.esc) {
+			// Esc / BS dismisses Sound/Hourly/Vol status overlay → clock labels
+			if (stroke.esc || stroke.del) {
 				this.resumeClock(app);
 				return;
 			}
@@ -424,8 +429,22 @@ export class AppBehavior extends Behavior {
 
 		for (const ch of chars)
 			this.prompt += ch;
-		if (stroke.del && this.prompt.length > 0)
-			this.prompt = this.prompt.slice(0, -1);
+		if (stroke.del) {
+			if (this.prompt.length > 0)
+				this.prompt = this.prompt.slice(0, -1);
+			else if (this.mode === "pass") {
+				this.mode = "ssid";
+				this.prompt = this.ssidDraft;
+				this.maskPass = false;
+				this.paintPrompt(app);
+				this.maybeBeep();
+				return;
+			}
+			else {
+				this.exitWifiPrompt(app);
+				return;
+			}
+		}
 		if (stroke.enter) {
 			if (this.mode === "ssid") {
 				this.ssidDraft = this.prompt;

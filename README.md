@@ -34,7 +34,7 @@ fw/新名字/
 ## 快捷命令
 
 ```bash
-./do.sh                 # 交互菜单。Esc 或 ← 返回上一级；烧录和模拟会再让你选固件
+./do.sh                 # 交互菜单。Esc、← 或 BS 返回上一级；烧录和模拟会再让你选固件
 ./do.sh flash clock     # 烧时间天气
 ./do.sh flash words     # 烧单词拼写
 ./do.sh sim clock       # 桌面模拟某一个

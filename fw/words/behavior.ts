@@ -107,7 +107,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (this.mode === "help") {
-			if (stroke.esc) {
+			if (stroke.esc || stroke.del) {
 				this.exitHelp(app);
 				this.maybeBeep();
 				return;
@@ -135,7 +135,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (this.mode === "menu") {
-			if (stroke.esc) {
+			if (stroke.esc || stroke.del) {
 				this.showPlay(app);
 				this.maybeBeep();
 				return;

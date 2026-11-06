@@ -4,10 +4,11 @@
 
 const PLAY_HELP = [
 	"? 本页",
+	"BS 返回",
 	"Esc 功能列表",
 	"输满即判断",
 	"对了自动下一题",
-	"错了 Del 再改",
+	"错了 BS 再改",
 	"[ ] 切换难度",
 	"\\ 切换词库",
 	", . 换下一题",
@@ -19,7 +20,7 @@ const MENU_HELP = [
 	"? 本页",
 	"j k , . 上下",
 	"Enter 切换",
-	"Esc 回拼写",
+	"BS 回拼写",
 ];
 
 export function helpTopic(mode: string): string {

@@ -6,7 +6,7 @@
 #   value=$(prompt_menu "标题" --default=1 \
 #     "production:生产环境 (/var/www/app, 端口 3700)" \
 #     "test:测试环境 (/var/www/app_test, 端口 3702)")
-#   value=$(prompt_menu "标题" --back "a:甲" "b:乙")   # Esc 或 ←：stdout 为空
+#   value=$(prompt_menu "标题" --back "a:甲" "b:乙")   # Esc、← 或 BS：stdout 为空
 # 输出选中项的 value（冒号前）到 stdout，菜单到 stderr
 
 prompt_menu() {
@@ -94,7 +94,7 @@ prompt_menu() {
     echo "" >&2
     printf '%s%s%s\n' "$bold" "$title" "$sgr0" >&2
     if [ "$allow_back" -eq 1 ]; then
-      printf '  %s↑/↓ 或 j/k 移动 · 空格/回车确认 · Esc/← 返回%s\n' "$cyan" "$sgr0" >&2
+      printf '  %s↑/↓ 或 j/k 移动 · 空格/回车确认 · Esc/←/BS 返回%s\n' "$cyan" "$sgr0" >&2
     else
       printf '  %s↑/↓ 或 j/k 移动 · 空格/回车确认 · 数字键直跳%s\n' "$cyan" "$sgr0" >&2
     fi
@@ -119,14 +119,28 @@ prompt_menu() {
       done
     }
 
-    # Ctrl-C 中断时恢复终端（光标/颜色），再 exit 终止
+    # Mac 的退格键是 DEL（^?），正好是 tty 的 erase。不改掉的话 read 收不到 BS。
+    local _pm_stty=""
+    _pm_stty=$(stty -g </dev/tty 2>/dev/null || true)
+    if [ -n "$_pm_stty" ]; then
+      stty erase undef </dev/tty 2>/dev/null || true
+    fi
+    _pm_restore_stty() {
+      if [ -n "${_pm_stty:-}" ]; then
+        stty "$_pm_stty" </dev/tty 2>/dev/null || true
+        _pm_stty=""
+      fi
+    }
+
+    # Ctrl-C 中断时恢复终端（光标/颜色/erase），再 exit 终止
     # 注意：调用方 v=$(prompt_menu) 在子 shell 执行，bash 的 $$ 在子 shell 仍是父 PID，
     # 用 kill -INT $$ 会误杀父 shell 且子 shell 不退出（导致循环重绘、终端狂闪）；
     # exit 130 在子 shell 终止子 shell，父 shell 由进程组的原始 SIGINT 处理
     _pm_sigint_cleanup() {
+      _pm_restore_stty
       [ -n "$cnorm" ] && printf '%s' "$cnorm" >&2
       [ -n "$sgr0" ] && printf '%s' "$sgr0" >&2
-      unset -f _pm_render _pm_sigint_cleanup
+      unset -f _pm_render _pm_sigint_cleanup _pm_restore_stty
       exit 130
     }
     local _pm_prev_int
@@ -160,6 +174,13 @@ prompt_menu() {
             break
           fi
           ;;
+        $'\x7f'|$'\x08')
+          # BS / Backspace：返回上一级
+          if [ "$allow_back" -eq 1 ]; then
+            sel=0
+            break
+          fi
+          ;;
         "")
           # 回车 → 确认
           break
@@ -186,10 +207,11 @@ prompt_menu() {
       _pm_render
     done
 
-    # 恢复光标、原 SIGINT trap 并清理内部函数
+    # 恢复光标、erase、原 SIGINT trap 并清理内部函数
+    _pm_restore_stty
     [ -n "$cnorm" ] && printf '%s' "$cnorm" >&2
     eval "${_pm_prev_int:-trap - SIGINT}"
-    unset -f _pm_render _pm_sigint_cleanup
+    unset -f _pm_render _pm_sigint_cleanup _pm_restore_stty
     echo "" >&2
   else
     # ===== 经典数字菜单（bash 3.2 或无 tput 降级）=====

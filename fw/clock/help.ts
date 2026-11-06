@@ -5,10 +5,11 @@
 
 const CLOCK_HELP = [
 	"? 本页",
-	"Esc 关掉提示",
+	"BS 关掉提示",
 	"Enter 功能列表",
 	"W 配网",
-	"配网 Del Enter Esc",
+	"配网 BS 退格",
+	"空 BS 回上一页",
 	"S 声音开关",
 	"H 整点报时",
 	"- = 调节音量",
@@ -22,15 +23,17 @@ const MENU_HELP = [
 	"j k , . 上下",
 	"Enter 进入",
 	"声音整点 Enter 切换",
-	"Esc 回时钟",
+	"BS 回时钟",
 ];
 
 const CD_HELP = [
 	"? 本页",
-	"Esc 退出",
+	"Esc 直接退出",
+	"BS 退格或回上一格",
+	"时位空 BS 回时钟",
 	"时分满两位跳格",
 	"秒位 Enter 开始",
-	"进行中 Esc 停止",
+	"进行中 BS 停止",
 ];
 
 const AL_HELP = [
@@ -38,8 +41,8 @@ const AL_HELP = [
 	"Esc 退出",
 	"时满两位跳到分",
 	"分位 Enter 保存",
-	"时位空 Del 关闭",
-	"响铃 Esc 停止",
+	"时位空 BS 关闭",
+	"响铃 BS 停止",
 ];
 
 /** Which page `?` opens for the screen you are on. */

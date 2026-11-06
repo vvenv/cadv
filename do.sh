@@ -6,7 +6,7 @@
 #   ./do.sh flash clock             # 烧「时间天气」
 #   ./do.sh flash words             # 烧「单词拼写」
 #   ./do.sh sim clock               # 桌面模拟某一个固件
-#   菜单里 Esc 或 ← 返回上一级。主菜单再按一次即退出。
+#   菜单里 Esc、← 或 BS 返回上一级。主菜单再按一次即退出。
 #   不写 id 且当前是终端时，会列出 fw/*/label 让你选。取消则什么都不做。
 #   字体比源文件旧时会先问要不要生成。选中的固件用到 wordbank.bin 时才重做词库。
 #   CADV_REFRESH=1 直接生成；CADV_REFRESH=0 跳过。
@@ -107,7 +107,7 @@ require_fw() {
   if [ -z "$id" ]; then
     if [ -t 0 ]; then
       id="$(pick_fw "选择固件")"
-      # Esc / ←：调用方什么都不做。空串且返回 0，和 log_die 的退出区分开。
+      # Esc / ← / BS：调用方什么都不做。空串且返回 0，和 log_die 的退出区分开。
       [ -n "$id" ] || return 0
     else
       log_die "要指定固件 id：$(fw_ids | tr '\n' ' ')"
