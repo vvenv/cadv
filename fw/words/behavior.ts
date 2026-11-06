@@ -11,7 +11,8 @@ import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { asMenu } from "menu-view";
 import { helpFor, helpTitle, helpTopic } from "help";
-import { isBack, isConfirm, isHelp, isPageBack, navDir, volumeDelta } from "keys";
+import { bootLauncher } from "boot";
+import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir, volumeDelta } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
 import { ClockSound } from "sound";
@@ -103,6 +104,10 @@ export class AppBehavior extends Behavior {
 	}
 
 	handleStroke(app: AppHost, stroke: KeyStroke) {
+		if (isLauncher(stroke)) {
+			bootLauncher();
+			return;
+		}
 		if (isHelp(stroke) && this.mode !== "help") {
 			this.enterHelp(app);
 			this.maybeBeep();

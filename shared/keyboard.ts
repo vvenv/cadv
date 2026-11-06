@@ -76,6 +76,8 @@ export type KeyStroke = {
 	left: boolean;
 	/** Simulator →, or Fn+L on the board. */
 	right: boolean;
+	/** Fn is held. Fn+BS returns to the SD launcher. */
+	fn: boolean;
 };
 
 type KbConfig = { sda: number; scl: number; address: number };
@@ -267,6 +269,6 @@ export class CardputerKeyboard {
 				continue;
 			chars.push(shift ? String(cell.b) : String(cell.a));
 		}
-		return { chars, enter, del, shift, esc, up, down, left, right };
+		return { chars, enter, del, shift, esc, up, down, left, right, fn };
 	}
 }

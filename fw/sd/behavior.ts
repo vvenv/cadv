@@ -1,10 +1,12 @@
 /*
-	Lists every file on the card. Enter reads the selected file in chunks.
+	Lists firmware images in cadv/. Enter twice writes the chosen image
+	into the other flash slot and reboots into it.
 */
 
 import {} from "piu/MC";
 import Timer from "timer";
-import { READ_MAX, loadCatalog, readFile, type SdCatalog, type SdEntry } from "catalog";
+import { openInstaller, type Installer } from "boot";
+import { loadCatalog, openRead, type SdCatalog, type SdEntry } from "catalog";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
@@ -12,11 +14,13 @@ import { isBack, isConfirm, isHelp, navDir } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { asMenu } from "menu-view";
 import { contentByName, type AppHost } from "ui";
+import type { File } from "embedded:storage/files";
 
-type Mode = "list" | "help";
+type Mode = "list" | "help" | "arm" | "load";
 
 const ROW_CHARS = 18;
 const ERROR_CHARS = 16;
+const CHUNK = 4096;
 
 function formatCount(n: number): string {
 	if (n < 1024)
@@ -26,10 +30,26 @@ function formatCount(n: number): string {
 	return Math.floor(n / (1024 * 1024)) + "M";
 }
 
+function errorText(e: unknown): string {
+	if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string")
+		return (e as { message: string }).message;
+	return "载入失败";
+}
+
+function installNote(message: string): string {
+	if (message === "too big")
+		return "镜像太大";
+	if (message === "no slot" || message === "slot busy")
+		return "没有分区";
+	if (message === "仅真机")
+		return "仅真机";
+	if (message.length > ERROR_CHARS)
+		return message.slice(0, ERROR_CHARS);
+	return message;
+}
+
 function rowText(entry: SdEntry): string {
-	let text = entry.directory ? entry.path + "/" : entry.path;
-	if (entry.error)
-		text = "!" + text;
+	let text = entry.error ? "!" + entry.label : entry.label;
 	if (text.length <= ROW_CHARS)
 		return text;
 	return "..." + text.slice(text.length - (ROW_CHARS - 3));
@@ -51,12 +71,17 @@ export class AppBehavior extends Behavior {
 	mode: Mode = "list";
 	kb: CardputerKeyboard | null = null;
 	kbTimer: ReturnType<typeof Timer.repeat> | null = null;
-	catalog: SdCatalog = { root: null, error: "", entries: [], truncated: false };
+	catalog: SdCatalog = { root: null, error: "", entries: [] };
 	index = 0;
 	helpIndex = 0;
 	note = "";
 	scanning = false;
 	hostEnterDown = false;
+	file: File | null = null;
+	installer: Installer | null = null;
+	offset = 0;
+	loadSize = 0;
+	shownPct = -1;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
@@ -88,7 +113,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	startScan(app: AppHost) {
-		if (this.scanning)
+		if (this.scanning || this.mode === "load")
 			return;
 		this.scanning = true;
 		this.note = "";
@@ -105,7 +130,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	handleStroke(app: AppHost, stroke: KeyStroke) {
-		if (this.scanning)
+		if (this.scanning || this.mode === "load")
 			return;
 		if (isHelp(stroke) && this.mode !== "help") {
 			this.enterHelp(app);
@@ -123,6 +148,12 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (isBack(stroke)) {
+			if (this.mode === "arm") {
+				this.mode = "list";
+				this.note = "";
+				this.paint(app);
+				return;
+			}
 			this.startScan(app);
 			return;
 		}
@@ -130,6 +161,7 @@ export class AppBehavior extends Behavior {
 		if (dir !== 0) {
 			const n = this.catalog.entries.length;
 			if (n > 0) {
+				this.mode = "list";
 				this.note = "";
 				this.index = menuStep(this.index, n, dir);
 				this.paint(app);
@@ -137,7 +169,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (isConfirm(stroke))
-			this.readSelected(app);
+			this.confirm(app);
 	}
 
 	stepHelp(app: AppHost, dir: -1 | 1) {
@@ -161,33 +193,121 @@ export class AppBehavior extends Behavior {
 		this.paint(app);
 	}
 
-	readSelected(app: AppHost) {
+	confirm(app: AppHost) {
 		const entry = this.catalog.entries[this.index];
-		const root = this.catalog.root;
-		if (!entry || !root)
+		if (!entry || !this.catalog.root)
 			return;
-		if (entry.directory) {
-			this.note = "目录";
+		if (entry.error) {
+			this.note = installNote(entry.error);
 			this.paint(app);
 			return;
 		}
+		if (this.mode !== "arm") {
+			this.mode = "arm";
+			this.note = "再按载入";
+			this.paint(app);
+			return;
+		}
+		this.beginLoad(app, entry);
+	}
+
+	beginLoad(app: AppHost, entry: SdEntry) {
+		const root = this.catalog.root;
+		if (!root)
+			return;
+		let installer: Installer | null = null;
+		let file: File | null = null;
 		try {
-			const got = readFile(root, entry.path, READ_MAX);
-			entry.size = got.size;
-			entry.error = "";
-			if (got.read === got.size)
-				this.note = "已读 " + formatCount(got.read);
-			else
-				this.note = "已读 " + formatCount(got.read) + "/" + formatCount(got.size);
+			installer = openInstaller();
+			file = openRead(root, entry.path);
+			installer.begin(entry.size);
 		}
 		catch (e) {
-			const message = e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string"
-				? (e as { message: string }).message
-				: "读失败";
-			entry.error = message;
-			this.note = message.length > ERROR_CHARS ? message.slice(0, ERROR_CHARS) : message;
+			try { file?.close(); } catch { /* */ }
+			try { installer?.abort(); } catch { /* */ }
+			this.failLoad(app, errorText(e));
+			return;
 		}
+		if (!installer || !file) {
+			this.failLoad(app, "载入失败");
+			return;
+		}
+		this.installer = installer;
+		this.file = file;
+		this.offset = 0;
+		this.loadSize = entry.size;
+		this.shownPct = -1;
+		this.mode = "load";
+		this.note = entry.size ? "载入 0%" : "载入";
 		this.paint(app);
+		Timer.set(() => this.loadChunk(app), 0);
+	}
+
+	loadChunk(app: AppHost) {
+		const file = this.file;
+		const installer = this.installer;
+		if (!file || !installer) {
+			this.failLoad(app, "载入失败");
+			return;
+		}
+		if (this.offset >= this.loadSize) {
+			this.finishLoad(app);
+			return;
+		}
+		let n = this.loadSize - this.offset;
+		if (n > CHUNK)
+			n = CHUNK;
+		try {
+			const buf = file.read(n, this.offset);
+			if (buf.byteLength <= 0) {
+				this.failLoad(app, "读断了");
+				return;
+			}
+			installer.write(buf);
+			this.offset += buf.byteLength;
+		}
+		catch (e) {
+			this.failLoad(app, errorText(e));
+			return;
+		}
+		const pct = this.loadSize ? Math.floor(this.offset * 100 / this.loadSize) : 100;
+		if (pct !== this.shownPct) {
+			this.shownPct = pct;
+			this.note = "载入 " + pct + "%";
+			this.paint(app);
+		}
+		if (this.offset >= this.loadSize)
+			this.finishLoad(app);
+		else
+			Timer.set(() => this.loadChunk(app), 0);
+	}
+
+	finishLoad(app: AppHost) {
+		const installer = this.installer;
+		this.closeFile();
+		try {
+			installer?.finish();
+		}
+		catch (e) {
+			this.failLoad(app, errorText(e));
+			return;
+		}
+		this.note = "重启";
+		this.paint(app);
+	}
+
+	failLoad(app: AppHost, message: string) {
+		try { this.installer?.abort(); } catch { /* already closed */ }
+		this.installer = null;
+		this.closeFile();
+		this.mode = "list";
+		this.note = installNote(message);
+		this.paint(app);
+	}
+
+	closeFile() {
+		try { this.file?.close(); } catch { /* */ }
+		this.file = null;
 	}
 
 	heading(): string {
@@ -200,13 +320,11 @@ export class AppBehavior extends Behavior {
 		if (this.catalog.error && n === 0)
 			return "无卡";
 		if (n === 0)
-			return "空卡";
+			return "cadv 空";
 		if (this.index < 0 || this.index >= n)
 			this.index = 0;
 		const entry = entries[this.index];
-		const pos = (this.index + 1) + "/" + n + (this.catalog.truncated ? "+" : "");
-		if (entry.directory)
-			return pos + " 目录";
+		const pos = (this.index + 1) + "/" + n;
 		if (entry.error)
 			return pos + " 失败";
 		return pos + " " + formatCount(entry.size);
@@ -239,7 +357,7 @@ export class AppBehavior extends Behavior {
 		}
 		const entries = this.catalog.entries;
 		if (this.scanning) {
-			view.setList(port, "扫描", [{ text: "扫描", selected: false }], "");
+			view.setList(port, "扫描", [{ text: "cadv", selected: false }], "");
 			return;
 		}
 		if (this.catalog.error && entries.length === 0) {
@@ -248,7 +366,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (entries.length === 0) {
-			view.setList(port, "空卡", [{ text: "空卡", selected: false }], "");
+			view.setList(port, "cadv 空", [{ text: "cadv 空", selected: false }], "");
 			return;
 		}
 		if (this.index < 0 || this.index >= entries.length)

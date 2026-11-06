@@ -12,6 +12,7 @@ export type KeyStroke = {
 	down: boolean;
 	left: boolean;
 	right: boolean;
+	fn: boolean;
 };
 
 export class CardputerKeyboard {

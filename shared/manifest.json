@@ -19,7 +19,8 @@
 		"hostkey",
 		"volume",
 		"keyboard",
-		"sound"
+		"sound",
+		"boot"
 	],
 	"creation": {
 		"chunk": {
@@ -45,8 +46,12 @@
 			],
 			"modules": {
 				"keyboard": "./keyboard",
-				"sound": "./sound"
+				"sound": "./sound",
+				"boot": "./boot"
 			},
+			"dependency": [
+				{ "idf": "app_update" }
+			],
 			"config": {
 				"screen": "st7789",
 				"touch": "",
@@ -93,6 +98,9 @@
 						"0xff, 0,"
 					]
 				},
+				"ota": {
+					"autosplit": 1
+				},
 				"audioOut": {
 					"bitsPerSample": 16,
 					"numChannels": 1,
@@ -117,7 +125,8 @@
 		"...": {
 			"modules": {
 				"keyboard": "./keyboard_stub",
-				"sound": "./sound_stub"
+				"sound": "./sound_stub",
+				"boot": "./boot_stub"
 			}
 		}
 	}

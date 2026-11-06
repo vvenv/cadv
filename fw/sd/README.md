@@ -1,44 +1,28 @@
 # SD 卡固件
 
-开机扫一遍卡上的目录和文件，并打开每个文件读开头。列表里 **Enter** 再按块把选中的文件读出来。后面从卡上加载固件，用的就是这套读取。
+这是启动器。芯片一次只跑一个程序；卡上的 `cadv/` 可以放很多个。设备不扫卡上的其它目录。
 
-卡是 Cardputer-Adv 侧面的 microSD，FAT。SPI2，和屏幕的 SPI3 分开：
+卡是 Cardputer-Adv 侧面的 microSD，FAT。SPI2，和屏幕的 SPI3 分开：CS 12、MOSI 14、CLK 40、MISO 39。挂在 `/sdcard`，只打开 `cadv/`。读失败不会格式化卡。
 
-| 信号 | GPIO |
-|------|------|
-| CS | 12 |
-| MOSI | 14 |
-| CLK | 40 |
-| MISO | 39 |
+列表是 `cadv/*.bin`。旁边的 `cadv/<id>.txt` 是屏幕上的名字。**Enter / 空格** 先问一次，再按才写入另一块闪存并重启。**BS / Esc / Fn+H** 取消或重新扫描。
 
-挂在 `/sdcard`。读失败不会格式化卡。
+载入之后，在那个固件里按 **Fn+BS** 回到这个启动器。
 
-| 键 | 作用 |
-|----|------|
-| **j k , .** 或 **Fn+K / Fn+J** | 上下 |
-| **Enter / 空格** | 读取当前文件。目录只标成目录 |
-| **BS / Esc / Fn+H** | 列表里重新扫描。帮助页里回到列表 |
-| **? / /** | 本页按键 |
-| 行首 **!** | 这个文件没打开 |
-
-一次最多列出 400 项。标题上的 `+` 表示后面还有。文件名太长时显示末尾。
-
-桌面模拟没有读卡器。`fw/sd/sample` 当作卡：
+闪存被分成两半，每一半大约 1.9MB。镜像更大就载不进去。卡上的份数不受这个限制。第一次使用，或 USB 烧过别的固件之后，要再烧一次启动器，分区才在：
 
 ```bash
 ./do.sh flash sd
-./do.sh sim sd
 ```
 
-`./do.sh sim` 发现 `sample/` 时，会把模拟器的文件根指到这个目录。
-
-把卡插到电脑（FAT / exFAT）后，可以从这边把镜像和文件放上去。固件镜像是已经编译好的 `xs_esp32.bin`，拷成 `fw/<id>.bin`，不烧进芯片。没有现成镜像时会先编译。
+把卡插到电脑后：
 
 ```bash
-./do.sh sd                 # 列出卡上的文件
-./do.sh sd fw clock        # → fw/clock.bin
-./do.sh sd fw clock words
-./do.sh sd file ./a.txt    # 拷到卡根目录，目录会整份拷
+./do.sh sd              # 列出 cadv/
+./do.sh sd fw           # 全部固件（不含启动器自己）
+./do.sh sd fw clock     # 只要时间天气 → cadv/clock.bin
+./do.sh sd file ./a.txt # 其它文件也放进 cadv/
 ```
 
-多张卡，或系统没认出来：`CADV_SD=/Volumes/名字`。要先重编再拷：`CADV_SD_BUILD=1 ./do.sh sd fw clock`。
+没有现成镜像会先编译，不烧进芯片。`CADV_SD=/Volumes/名字` 指定卡。`CADV_SD_BUILD=1` 先重编再拷。
+
+桌面模拟用 `fw/sd/sample` 当卡，里面已经有一个 `cadv/`。`./do.sh sim sd`。模拟器不能真的载入。

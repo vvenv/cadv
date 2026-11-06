@@ -15,6 +15,7 @@ const CLOCK_HELP = [
 	"- = 音量",
 	"C 倒计时  A 闹钟",
 	"T 刷新天气",
+	"Fn+BS 启动器",
 ];
 
 const MENU_HELP = [

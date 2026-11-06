@@ -6,8 +6,9 @@ const LIST_HELP = Object.freeze([
 	"? / 本页",
 	"j k , . 上下",
 	"Fn+K/J 也是上下",
-	"Enter/空格 读取",
+	"Enter/空格 再按载入",
 	"BS Esc Fn+H 重扫",
+	"载入后 Fn+BS 回来",
 ]);
 
 export function helpTitle(): string {

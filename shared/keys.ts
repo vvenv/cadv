@@ -5,6 +5,7 @@
 	Confirm: Enter or Space.
 	Move: ↑↓ (simulator, or Fn+K / Fn+J), also j/k and ,/.
 	Help: ? or /. Volume: - and =.
+	Launcher: Fn+BS, from an app that was loaded off the card.
 
 	Wi-Fi fields keep Space as a character; Enter still confirms.
 	In a field, BS deletes first. Esc and ← leave the page.
@@ -12,6 +13,11 @@
 
 import type { KeyStroke } from "keyboard";
 import { menuDirFromChars } from "list";
+
+/** Fn+BS. The SD launcher writes apps into the other flash slot. */
+export function isLauncher(stroke: KeyStroke): boolean {
+	return stroke.fn && stroke.del;
+}
 
 /** BS, Esc, or ←. */
 export function isBack(stroke: KeyStroke): boolean {

@@ -16,9 +16,10 @@
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
 #   ./do.sh gen-words               # 从 ../alice/data 生成 fw/words/wordbank.bin
 #   ./do.sh clean                   # 清临时日志
-#   ./do.sh sd                      # 列出已挂载的 SD 卡（FAT / exFAT）
-#   ./do.sh sd fw clock             # 把固件镜像拷到卡上 fw/clock.bin（不烧进芯片）
-#   ./do.sh sd file ./a.txt         # 把文件或目录拷到卡根目录
+#   ./do.sh sd                      # 列出卡上的 cadv/（FAT / exFAT）
+#   ./do.sh sd fw                  # 把除启动器以外的全部固件拷进 cadv/（不烧进芯片）
+#   ./do.sh sd fw clock             # 只拷一个：cadv/clock.bin 和一行名字
+#   ./do.sh sd file ./a.txt         # 把文件或目录拷进 cadv/
 #   多张卡或没自动认出来时：CADV_SD=/Volumes/名字。CADV_SD_BUILD=1 先重编再拷。
 #   ./do.sh help                    # 本说明
 set -euo pipefail
@@ -313,38 +314,43 @@ sd_take() {
   printf '%s\n' "$root"
 }
 
+# The device only opens this directory. The rest of a large card is ignored.
+SD_DIR=cadv
+
 fw_image() {
   need_moddable
   printf '%s\n' "$MODDABLE/build/bin/esp32/esp32s3_cdc/debug/$1/xs_esp32.bin"
 }
 
 cmd_sd_ls() {
-  local root rel dir found=0 f base bytes
+  local root dir rel found=0 f base bytes
   root="$(sd_take)" || return $?
   [ -n "$root" ] || return 0
+  dir="$root/$SD_DIR"
   rel="${1:-.}"
   case "$rel" in
-    /* | .. | ../* | */.. | */../*) log_die "只列出卡内的相对路径" ;;
+    /* | .. | ../* | */.. | */../*) log_die "只列出 ${SD_DIR} 里的相对路径" ;;
   esac
-  if [ "$rel" = "." ]; then
-    dir="$root"
-  else
-    dir="$root/$rel"
+  if [ "$rel" != "." ]; then
+    dir="$dir/$rel"
   fi
-  [ -d "$dir" ] || log_die "没有这个目录：$rel"
-  log_info "SD 卡 $root"
+  log_info "SD 卡 $root/$SD_DIR"
+  if [ ! -d "$dir" ]; then
+    log_info "还没有 ${SD_DIR}。上传固件或文件时会创建。"
+    return 0
+  fi
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     found=1
-    base="${f#"$root"/}"
+    base="${f#"$dir"/}"
     if [ -d "$f" ]; then
       printf '%s/\n' "$base"
     else
       bytes="$(wc -c <"$f" | tr -d ' ')"
       printf '%s\t%s\n' "$base" "$(human_bytes "$bytes")"
     fi
-  done < <(find "$dir" -mindepth 1 -maxdepth 3 \( -type f -o -type d \) ! -name '.*' ! -name '.DS_Store' | sort)
-  [ "$found" -eq 1 ] || log_info "卡是空的"
+  done < <(find "$dir" -mindepth 1 -maxdepth 2 \( -type f -o -type d \) ! -name '.*' ! -name '.DS_Store' | sort)
+  [ "$found" -eq 1 ] || log_info "${SD_DIR} 是空的"
 }
 
 cmd_sd_file() {
@@ -360,6 +366,7 @@ cmd_sd_file() {
   fi
   root="$(sd_take)" || return $?
   [ -n "$root" ] || return 0
+  mkdir -p "$root/$SD_DIR"
   for src in "$@"; do
     src="${src#\"}"
     src="${src%\"}"
@@ -375,7 +382,7 @@ cmd_sd_file() {
     case "$name" in
       "" | . | ..) log_die "路径不对：$src" ;;
     esac
-    dest="$root/$name"
+    dest="$root/$SD_DIR/$name"
     if [ -d "$src" ]; then
       mkdir -p "$dest"
       cp -R -X "$src/." "$dest/"
@@ -389,19 +396,29 @@ cmd_sd_file() {
 }
 
 cmd_sd_fw() {
-  local root id src dest
-  if [ $# -eq 0 ]; then
-    id="$(require_fw)"
-    [ -n "$id" ] || return 0
-    set -- "$id"
+  local root id src dest home ids=()
+  if [ $# -eq 0 ] || [ "${1:-}" = "all" ]; then
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      [ "$id" = "sd" ] && continue
+      ids+=("$id")
+    done < <(fw_ids)
+  else
+    for id in "$@"; do
+      if [ "$id" = "sd" ]; then
+        log_warn "跳过启动器 sd，它留在芯片里"
+        continue
+      fi
+      fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
+      ids+=("$id")
+    done
   fi
-  for id in "$@"; do
-    fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
-  done
+  [ "${#ids[@]}" -gt 0 ] || log_die "没有可上传的固件"
   root="$(sd_take)" || return $?
   [ -n "$root" ] || return 0
-  mkdir -p "$root/fw"
-  for id in "$@"; do
+  home="$root/$SD_DIR"
+  mkdir -p "$home"
+  for id in "${ids[@]}"; do
     src="$(fw_image "$id")"
     if [ ! -f "$src" ] || [ "${CADV_SD_BUILD:-0}" = 1 ]; then
       if [ -f "$src" ]; then
@@ -414,9 +431,10 @@ cmd_sd_fw() {
       log_info "用已有镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')。重编：CADV_SD_BUILD=1 ./do.sh sd fw $id"
     fi
     [ -f "$src" ] || log_die "编译后仍没有镜像：$src"
-    dest="$root/fw/${id}.bin"
+    dest="$home/${id}.bin"
     cp -X -f "$src" "$dest"
-    log_success "$(fw_label "$id") → fw/${id}.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
+    printf '%s\n' "$(fw_label "$id")" > "$home/${id}.txt"
+    log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
   done
   sync || true
 }
@@ -446,11 +464,16 @@ sd_menu() {
   local choice id
   while true; do
     choice="$(prompt_menu "SD 卡" --back --default=1 \
-      "ls:列出文件" \
-      "fw:上传固件" \
-      "file:上传文件")"
+      "all:上传全部固件" \
+      "ls:列出 cadv" \
+      "fw:上传一个固件" \
+      "file:上传文件到 cadv")"
     case "$choice" in
       "") return 0 ;;
+      all)
+        (cmd_sd_fw all) || log_error "执行失败（sd fw）"
+        pause_menu
+        ;;
       ls)
         (cmd_sd_ls) || log_error "执行失败（sd）"
         pause_menu

@@ -12,6 +12,7 @@ const PLAY_HELP = [
 	"\\ 词库",
 	", . 或 Fn+K/J 换题",
 	"- = 音量",
+	"Fn+BS 启动器",
 ];
 
 const MENU_HELP = [
