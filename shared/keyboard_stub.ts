@@ -15,6 +15,24 @@ export type KeyStroke = {
 	fn: boolean;
 };
 
+export type HeldState = {
+	keys: { code: string | number }[];
+	fn: boolean;
+	shift: boolean;
+	ctrl: boolean;
+	alt: boolean;
+	opt: boolean;
+};
+
+const HELD_EMPTY: HeldState = {
+	keys: [],
+	fn: false,
+	shift: false,
+	ctrl: false,
+	alt: false,
+	opt: false,
+};
+
 export class CardputerKeyboard {
 	status = "KB n/a";
 	get available(): boolean {
@@ -23,5 +41,11 @@ export class CardputerKeyboard {
 	close() {}
 	poll(): KeyStroke | null {
 		return null;
+	}
+	pollHeld(): HeldState | null {
+		return null;
+	}
+	get held(): HeldState {
+		return HELD_EMPTY;
 	}
 }

@@ -9,6 +9,8 @@
 	Move (primary K/J): also Fn+K/J, ↑↓, ,/.
 	Help (primary ?): also /. Volume: - and =.
 	Launcher: Fn+BS, from an app that was loaded off the card.
+	fw/kb is the exception: it forwards keys over BLE and only keeps
+	Fn+BS (launcher), Fn+/ (help), and Fn+Tab (forget bonds) local.
 
 	Wi-Fi fields keep Space as a character; Enter still confirms.
 	In a field, BS deletes first. Esc and ← leave the page.

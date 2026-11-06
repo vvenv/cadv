@@ -1,0 +1,56 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json"
+	],
+	"modules": {
+		"*": [
+			"./main",
+			"./behavior",
+			"./hid",
+			"./help"
+		]
+	},
+	"preload": [
+		"hid",
+		"radio",
+		"bonds",
+		"behavior",
+		"help"
+	],
+	"platforms": {
+		"esp32": {
+			"include": [
+				"$(MODDABLE)/modules/io/ble/server"
+			],
+			"modules": {
+				"radio": "./radio",
+				"bonds": "./bonds"
+			},
+			"esp32Config": {
+				"CONFIG_BT_NIMBLE_HANDLE_REPEAT_PAIRING_DELETION": "y",
+				"CONFIG_BT_NIMBLE_NVS_PERSIST": "y"
+			}
+		},
+		"mac": {
+			"modules": {
+				"radio": "./radio_stub",
+				"bonds": "./bonds_stub"
+			}
+		},
+		"lin": {
+			"modules": {
+				"radio": "./radio_stub",
+				"bonds": "./bonds_stub"
+			}
+		},
+		"...": {
+			"modules": {
+				"radio": "./radio_stub",
+				"bonds": "./bonds_stub"
+			}
+		}
+	}
+}

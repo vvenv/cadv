@@ -1,12 +1,14 @@
 # Cardputer ADV（TypeScript）
 
-在 M5Stack Cardputer-Adv 上用 **Moddable + TypeScript** 跑固件。一次只烧一个固件：时间天气、单词拼写、SD 卡各是一个。板子上的程序互相独立，设置也分开存。
+在 M5Stack Cardputer-Adv 上用 **Moddable + TypeScript** 跑固件。一次只烧一个固件：时间天气、单词拼写、蓝牙键盘、SD 卡各是一个。板子上的程序互相独立，设置也分开存。
 
 时间天气：Wi-Fi NTP 校时（默认中国时区 `CST-8`）、键盘配网、天气、闹钟、倒计时、整点报时。时钟界面 **Enter / 空格** 打开功能列表。Cardputer-Adv **没有独立 RTC**，断电后要重新对时。
 
 单词拼写：用 `../alice/data` 的小学词库（闽教版小学）作内置默认。开机就是填空。没在填字时 **Enter / 空格** 打开功能列表；正在填则交卷。列表里可切 **来源**（内置 / 卡上 `cadv/words/*.bin`，`junior.bin` 为「初中」）、词库、乱序和音标。`./do.sh sd fw words` 会拷上镜像和 `fw/words` 里除内置外的词库；只要词库用 `./do.sh sd bank`。不会自动盖过内置。
 
 时间天气和单词拼写按键相同：`BS` / `Esc` / `←` 回退，`Enter` / 空格确认，`j` `k` 或 `,` `.` 上下，`?` 或 `/` 帮助，`-` `=` 音量。板子没有方向键：`Fn`+`H`/`J`/`K`/`L` 是 ←↓↑→。配网时空格仍是字符。
+
+蓝牙键盘把按键发给已连接的手机或 Mac，不打开本机菜单。本机只留 **Fn+/** 帮助、**Fn+Tab** 清除配对、**Fn+BS** 回启动器。名字是 `CADV KB`。说明在 `fw/kb/README.md`。
 
 SD 卡：设备只看卡上的 `cadv/`。里面放各固件的镜像，开机选一个，再按一次就写进另一块闪存并重启。芯片一次只跑一个；卡上可以放很多。从载入的固件回到启动器：按住 **Fn+BS**。先 `./do.sh flash` 把启动器烧进芯片。卡插在电脑上时直接拷文件；卡留在板子里、USB 接着并且启动器在跑时，同一条上传命令经串口写入。
 
@@ -20,7 +22,7 @@ SD 卡：设备只看卡上的 `cadv/`。里面放各固件的镜像，开机选
 | `scripts/` | 词库和字体生成 |
 | `third_party/moddable` | 本机 Moddable SDK（gitignore） |
 
-现在有 `fw/clock`（时间天气）、`fw/words`（单词拼写）和 `fw/sd`（SD 卡）。
+现在有 `fw/clock`（时间天气）、`fw/words`（单词拼写）、`fw/kb`（蓝牙键盘）和 `fw/sd`（SD 卡）。
 
 ## 再加一个固件
 

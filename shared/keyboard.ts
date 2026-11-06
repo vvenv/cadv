@@ -80,6 +80,25 @@ export type KeyStroke = {
 	fn: boolean;
 };
 
+/** Physical keys currently down. Modifiers are flags, not entries in `keys`. */
+export type HeldState = {
+	keys: { code: string | number }[];
+	fn: boolean;
+	shift: boolean;
+	ctrl: boolean;
+	alt: boolean;
+	opt: boolean;
+};
+
+const HELD_EMPTY: HeldState = {
+	keys: [],
+	fn: false,
+	shift: false,
+	ctrl: false,
+	alt: false,
+	opt: false,
+};
+
 type KbConfig = { sda: number; scl: number; address: number };
 
 function readKbConfig(): KbConfig | null {
@@ -101,6 +120,8 @@ export class CardputerKeyboard {
 	#bus: SMBus | undefined;
 	#pressed = new Map<string, { x: number; y: number }>();
 	#lastSig = "";
+	#heldSig = "";
+	#lastHeld: HeldState = HELD_EMPTY;
 	#ok = false;
 	status = "KB?";
 
@@ -155,6 +176,32 @@ export class CardputerKeyboard {
 			return null;
 		this.#lastSig = sig;
 		return this.#buildStroke();
+	}
+
+	/**
+	 * Current physical keys, or null if nothing changed.
+	 * Separate from poll() so a HID firmware can see modifiers and key-up.
+	 */
+	pollHeld(): HeldState | null {
+		if (!this.#bus)
+			return null;
+		try {
+			this.#drainEvents();
+		}
+		catch {
+			return null;
+		}
+		const sig = [...this.#pressed.keys()].sort().join("|");
+		if (sig === this.#heldSig)
+			return null;
+		this.#heldSig = sig;
+		this.#lastHeld = this.#captureHeld();
+		return this.#lastHeld;
+	}
+
+	/** Last polled hold. Empty until the first change. */
+	get held(): HeldState {
+		return this.#lastHeld;
 	}
 
 	#init() {
@@ -270,5 +317,46 @@ export class CardputerKeyboard {
 			chars.push(shift ? String(cell.b) : String(cell.a));
 		}
 		return { chars, enter, del, shift, esc, up, down, left, right, fn };
+	}
+
+	#captureHeld(): HeldState {
+		let fn = false;
+		let shift = false;
+		let ctrl = false;
+		let alt = false;
+		let opt = false;
+		const found: { code: string | number; x: number; y: number }[] = [];
+		for (const { x, y } of this.#pressed.values()) {
+			const cell = KEY_MAP[y]?.[x];
+			if (!cell)
+				continue;
+			const code = cell.a;
+			if (code === KEY_FN) {
+				fn = true;
+				continue;
+			}
+			if (code === KEY_LEFT_SHIFT) {
+				shift = true;
+				continue;
+			}
+			if (code === KEY_LEFT_CTRL) {
+				ctrl = true;
+				continue;
+			}
+			if (code === KEY_LEFT_ALT) {
+				alt = true;
+				continue;
+			}
+			if (code === KEY_OPT) {
+				opt = true;
+				continue;
+			}
+			found.push({ code, x, y });
+		}
+		found.sort((p, q) => p.y - q.y || p.x - q.x);
+		const keys: { code: string | number }[] = [];
+		for (let i = 0; i < found.length; i++)
+			keys.push({ code: found[i].code });
+		return { keys, fn, shift, ctrl, alt, opt };
 	}
 }
