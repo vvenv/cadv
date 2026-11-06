@@ -8,7 +8,7 @@
 
 时间天气和单词拼写按键相同：`BS` / `Esc` / `←` 回退，`Enter` / 空格确认，`j` `k` 或 `,` `.` 上下，`?` 或 `/` 帮助，`-` `=` 音量。板子没有方向键：`Fn`+`H`/`J`/`K`/`L` 是 ←↓↑→。配网时空格仍是字符。
 
-SD 卡：开机列出卡上的目录和文件，并打开每个文件读开头。**Enter** 按块读出选中的那一个，**Esc** 重新扫描。后面从卡上加载固件就用这套读取。卡槽是板载 microSD。
+SD 卡：开机列出卡上的目录和文件，并打开每个文件读开头。**Enter** 按块读出选中的那一个，**Esc** 重新扫描。后面从卡上加载固件就用这套读取。卡槽是板载 microSD。把卡插到电脑后，`./do.sh sd fw <id>` 把镜像放到 `fw/<id>.bin`，`./do.sh sd file` 拷普通文件。
 
 ## 目录
 
@@ -43,6 +43,9 @@ fw/新名字/
 ./do.sh flash words     # 烧单词拼写
 ./do.sh flash sd        # 烧 SD 卡
 ./do.sh sim clock       # 桌面模拟某一个
+./do.sh sd              # 列出已挂载的 SD 卡
+./do.sh sd fw clock     # 把时间天气镜像拷到卡上 fw/clock.bin
+./do.sh sd file ./a.txt # 把文件拷到卡根目录
 ./do.sh ts-check        # Moddable + ESP-IDF 是否就绪
 ./do.sh help
 ```

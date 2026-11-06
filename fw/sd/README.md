@@ -23,7 +23,7 @@
 
 一次最多列出 400 项。标题上的 `+` 表示后面还有。文件名太长时显示末尾。
 
-桌面没有读卡器。`fw/sd/sample` 当作卡：
+桌面模拟没有读卡器。`fw/sd/sample` 当作卡：
 
 ```bash
 ./do.sh flash sd
@@ -31,3 +31,14 @@
 ```
 
 `./do.sh sim` 发现 `sample/` 时，会把模拟器的文件根指到这个目录。
+
+把卡插到电脑（FAT / exFAT）后，可以从这边把镜像和文件放上去。固件镜像是已经编译好的 `xs_esp32.bin`，拷成 `fw/<id>.bin`，不烧进芯片。没有现成镜像时会先编译。
+
+```bash
+./do.sh sd                 # 列出卡上的文件
+./do.sh sd fw clock        # → fw/clock.bin
+./do.sh sd fw clock words
+./do.sh sd file ./a.txt    # 拷到卡根目录，目录会整份拷
+```
+
+多张卡，或系统没认出来：`CADV_SD=/Volumes/名字`。要先重编再拷：`CADV_SD_BUILD=1 ./do.sh sd fw clock`。

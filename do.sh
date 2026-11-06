@@ -16,6 +16,10 @@
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
 #   ./do.sh gen-words               # 从 ../alice/data 生成 fw/words/wordbank.bin
 #   ./do.sh clean                   # 清临时日志
+#   ./do.sh sd                      # 列出已挂载的 SD 卡（FAT / exFAT）
+#   ./do.sh sd fw clock             # 把固件镜像拷到卡上 fw/clock.bin（不烧进芯片）
+#   ./do.sh sd file ./a.txt         # 把文件或目录拷到卡根目录
+#   多张卡或没自动认出来时：CADV_SD=/Volumes/名字。CADV_SD_BUILD=1 先重编再拷。
 #   ./do.sh help                    # 本说明
 set -euo pipefail
 
@@ -222,6 +226,249 @@ refresh_generated() {
   fi
 }
 
+# ---------- SD card ----------
+
+human_bytes() {
+  local n="$1" tenths
+  if [ "$n" -lt 1024 ]; then
+    printf '%sB\n' "$n"
+  elif [ "$n" -lt $((1024 * 1024)) ]; then
+    printf '%sK\n' $(((n + 512) / 1024))
+  else
+    tenths=$(((n * 10 + 524288) / 1048576))
+    printf '%s.%sM\n' $((tenths / 10)) $((tenths % 10))
+  fi
+}
+
+diskutil_field() {
+  local info="$1" label="$2"
+  printf '%s\n' "$info" | sed -n "s/^.*${label}:[[:space:]]*//p" | head -1
+}
+
+# External FAT/exFAT volumes. One path per line. Skips the system disk.
+sd_candidates() {
+  local v info fs where mount
+  for v in /Volumes/*; do
+    [ -d "$v" ] || continue
+    [ -L "$v" ] && continue
+    info="$(diskutil info "$v" 2>/dev/null)" || continue
+    fs="$(diskutil_field "$info" "File System Personality" | tr '[:upper:]' '[:lower:]')"
+    case "$fs" in
+      *fat* | *dos*) ;;
+      *) continue ;;
+    esac
+    where="$(diskutil_field "$info" "Device Location")"
+    case "$where" in
+      Internal) continue ;;
+    esac
+    mount="$(diskutil_field "$info" "Mount Point")"
+    [ -n "$mount" ] && [ "$mount" != "/" ] || continue
+    [ -d "$mount" ] || continue
+    printf '%s\n' "$mount"
+  done
+}
+
+# Prints the card root. Empty stdout and 0 means the user cancelled.
+# CADV_SD overrides detection (also used to point at a directory in tests).
+sd_root() {
+  local root vols=() v opts=() pick
+  if [ -n "${CADV_SD:-}" ]; then
+    root="$(cd "$CADV_SD" 2>/dev/null && pwd)" || log_die "CADV_SD 不是目录：$CADV_SD"
+    case "$root" in
+      / | "$HOME" | "$ROOT") log_die "CADV_SD 不能是 $root" ;;
+    esac
+    printf '%s\n' "$root"
+    return 0
+  fi
+  while IFS= read -r v; do
+    [ -n "$v" ] || continue
+    vols+=("$v")
+  done < <(sd_candidates)
+  case "${#vols[@]}" in
+    0)
+      log_die "没有挂上 FAT/exFAT 的 SD 卡。把卡插到电脑，或 CADV_SD=/Volumes/名字"
+      ;;
+    1)
+      printf '%s\n' "${vols[0]}"
+      ;;
+    *)
+      if [ ! -t 0 ]; then
+        log_die "多张卡：${vols[*]}。指定 CADV_SD=…"
+      fi
+      for v in "${vols[@]}"; do
+        opts+=("$v:$v")
+      done
+      pick="$(prompt_menu "哪张 SD 卡" --back "${opts[@]}")"
+      [ -n "$pick" ] || return 0
+      printf '%s\n' "$pick"
+      ;;
+  esac
+}
+
+sd_take() {
+  local root
+  root="$(sd_root)" || return $?
+  [ -n "$root" ] || return 0
+  [ -w "$root" ] || log_die "SD 卡只读：$root"
+  printf '%s\n' "$root"
+}
+
+fw_image() {
+  need_moddable
+  printf '%s\n' "$MODDABLE/build/bin/esp32/esp32s3_cdc/debug/$1/xs_esp32.bin"
+}
+
+cmd_sd_ls() {
+  local root rel dir found=0 f base bytes
+  root="$(sd_take)" || return $?
+  [ -n "$root" ] || return 0
+  rel="${1:-.}"
+  case "$rel" in
+    /* | .. | ../* | */.. | */../*) log_die "只列出卡内的相对路径" ;;
+  esac
+  if [ "$rel" = "." ]; then
+    dir="$root"
+  else
+    dir="$root/$rel"
+  fi
+  [ -d "$dir" ] || log_die "没有这个目录：$rel"
+  log_info "SD 卡 $root"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    found=1
+    base="${f#"$root"/}"
+    if [ -d "$f" ]; then
+      printf '%s/\n' "$base"
+    else
+      bytes="$(wc -c <"$f" | tr -d ' ')"
+      printf '%s\t%s\n' "$base" "$(human_bytes "$bytes")"
+    fi
+  done < <(find "$dir" -mindepth 1 -maxdepth 3 \( -type f -o -type d \) ! -name '.*' ! -name '.DS_Store' | sort)
+  [ "$found" -eq 1 ] || log_info "卡是空的"
+}
+
+cmd_sd_file() {
+  local root src name dest
+  if [ $# -eq 0 ]; then
+    if [ -t 0 ]; then
+      read -r -p "要拷到 SD 卡的文件或目录: " src </dev/tty || true
+      [ -n "$src" ] || return 0
+      set -- "$src"
+    else
+      log_die "用法：./do.sh sd file <文件或目录>…"
+    fi
+  fi
+  root="$(sd_take)" || return $?
+  [ -n "$root" ] || return 0
+  for src in "$@"; do
+    src="${src#\"}"
+    src="${src%\"}"
+    src="${src#\'}"
+    src="${src%\'}"
+    src="${src/#\~/$HOME}"
+    [ -e "$src" ] || log_die "没有这个路径：$src"
+    src="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
+    case "$src" in
+      "$root" | "$root"/*) log_die "源路径已经在这张卡上：$src" ;;
+    esac
+    name="$(basename "$src")"
+    case "$name" in
+      "" | . | ..) log_die "路径不对：$src" ;;
+    esac
+    dest="$root/$name"
+    if [ -d "$src" ]; then
+      mkdir -p "$dest"
+      cp -R -X "$src/." "$dest/"
+      log_success "已写入 ${name}/"
+    else
+      cp -X -f "$src" "$dest"
+      log_success "已写入 ${name}（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
+    fi
+  done
+  sync || true
+}
+
+cmd_sd_fw() {
+  local root id src dest
+  if [ $# -eq 0 ]; then
+    id="$(require_fw)"
+    [ -n "$id" ] || return 0
+    set -- "$id"
+  fi
+  for id in "$@"; do
+    fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
+  done
+  root="$(sd_take)" || return $?
+  [ -n "$root" ] || return 0
+  mkdir -p "$root/fw"
+  for id in "$@"; do
+    src="$(fw_image "$id")"
+    if [ ! -f "$src" ] || [ "${CADV_SD_BUILD:-0}" = 1 ]; then
+      if [ -f "$src" ]; then
+        log_info "重编 $(fw_label "$id")（不烧进芯片）"
+      else
+        log_info "还没有 $(fw_label "$id") 的镜像，先编译（不烧进芯片）"
+      fi
+      build_fw_image "$id"
+    else
+      log_info "用已有镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')。重编：CADV_SD_BUILD=1 ./do.sh sd fw $id"
+    fi
+    [ -f "$src" ] || log_die "编译后仍没有镜像：$src"
+    dest="$root/fw/${id}.bin"
+    cp -X -f "$src" "$dest"
+    log_success "$(fw_label "$id") → fw/${id}.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
+  done
+  sync || true
+}
+
+cmd_sd() {
+  local sub="${1:-}"
+  case "$sub" in
+    "" | ls | list)
+      [ -n "$sub" ] && shift
+      cmd_sd_ls "$@"
+      ;;
+    fw | firmware)
+      shift
+      cmd_sd_fw "$@"
+      ;;
+    file | files)
+      shift
+      cmd_sd_file "$@"
+      ;;
+    *)
+      log_die "用法：./do.sh sd [ls|fw|file] …"
+      ;;
+  esac
+}
+
+sd_menu() {
+  local choice id
+  while true; do
+    choice="$(prompt_menu "SD 卡" --back --default=1 \
+      "ls:列出文件" \
+      "fw:上传固件" \
+      "file:上传文件")"
+    case "$choice" in
+      "") return 0 ;;
+      ls)
+        (cmd_sd_ls) || log_error "执行失败（sd）"
+        pause_menu
+        ;;
+      fw)
+        id="$(pick_fw "上传哪个固件")"
+        [ -n "$id" ] || continue
+        (cmd_sd_fw "$id") || log_error "执行失败（sd fw）"
+        pause_menu
+        ;;
+      file)
+        (cmd_sd_file) || log_error "执行失败（sd file）"
+        pause_menu
+        ;;
+    esac
+  done
+}
+
 # ---------- Moddable / TypeScript ----------
 
 need_moddable() {
@@ -325,6 +572,46 @@ cmd_ts_sim() {
   (cd "$FW_ROOT/$id" && mcconfig "${mc_args[@]}")
 }
 
+need_idf() {
+  # Prefer brew python@3.12 — system/homebrew python3 may be 3.14 and break IDF venv
+  export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/opt/python@3.12/bin:$PATH"
+  export IDF_GITHUB_ASSETS="${IDF_GITHUB_ASSETS:-dl.espressif.com/github_assets}"
+  if [ -z "${IDF_PATH:-}" ] || [ ! -f "${IDF_PATH}/export.sh" ]; then
+    export IDF_PATH="${HOME}/esp32/esp-idf-v6.1"
+  fi
+  [ -f "$IDF_PATH/export.sh" ] || log_die "缺少 ESP-IDF：${IDF_PATH}（安装未完成）"
+  [ -d "$HOME/.espressif/tools/xtensa-esp-elf" ] || log_die "Espressif 工具未装完（缺 xtensa-esp-elf）。等 install 结束后再试"
+  [ -d "$HOME/.espressif/tools/riscv32-esp-elf" ] || log_die "Espressif 工具未装完（缺 riscv32-esp-elf）。等 install 结束后再试"
+  ls -d "$HOME/.espressif/python_env"/idf* >/dev/null 2>&1 || log_die "IDF python_env 未就绪。等 install-python-env 结束后再试"
+  if [ -z "${CADV_IDF_READY:-}" ]; then
+    # shellcheck disable=SC1091
+    source "$IDF_PATH/export.sh"
+    CADV_IDF_READY=1
+  fi
+}
+
+# Compile the ESP32 image and stop before esptool. Same bin flash writes at 0x10000.
+build_fw_image() {
+  local id="$1" want=0
+  if fw_uses_wordbank "$id"; then
+    want=1
+  fi
+  refresh_generated "$want"
+  need_moddable
+  need_idf
+  local wifi_args=() line
+  if [ -f "$FW_ROOT/$id/wifi.local.json.example" ]; then
+    while IFS= read -r line; do
+      [ -n "$line" ] && wifi_args+=("$line")
+    done < <(ts_wifi_args "$id")
+  fi
+  if [ "${#wifi_args[@]}" -gt 0 ]; then
+    (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p esp32/esp32s3_cdc -t build "${wifi_args[@]}")
+  else
+    (cd "$FW_ROOT/$id" && mcconfig -d -m -dn -p esp32/esp32s3_cdc -t build)
+  fi
+}
+
 cmd_ts_flash() {
   local id want=0
   id="$(require_fw "${1:-}")"
@@ -334,19 +621,7 @@ cmd_ts_flash() {
   fi
   refresh_generated "$want"
   need_moddable
-  # Prefer brew python@3.12 — system/homebrew python3 may be 3.14 and break IDF venv
-  export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/opt/python@3.12/bin:$PATH"
-  export IDF_GITHUB_ASSETS="${IDF_GITHUB_ASSETS:-dl.espressif.com/github_assets}"
-  # ESP-IDF env required
-  if [ -z "${IDF_PATH:-}" ] || [ ! -f "${IDF_PATH}/export.sh" ]; then
-    export IDF_PATH="${HOME}/esp32/esp-idf-v6.1"
-  fi
-  [ -f "$IDF_PATH/export.sh" ] || log_die "缺少 ESP-IDF：${IDF_PATH}（安装未完成）"
-  [ -d "$HOME/.espressif/tools/xtensa-esp-elf" ] || log_die "Espressif 工具未装完（缺 xtensa-esp-elf）。等 install 结束后再试"
-  [ -d "$HOME/.espressif/tools/riscv32-esp-elf" ] || log_die "Espressif 工具未装完（缺 riscv32-esp-elf）。等 install 结束后再试"
-  ls -d "$HOME/.espressif/python_env"/idf* >/dev/null 2>&1 || log_die "IDF python_env 未就绪。等 install-python-env 结束后再试"
-  # shellcheck disable=SC1091
-  source "$IDF_PATH/export.sh"
+  need_idf
 
   local wifi_args=() line
   if [ -f "$FW_ROOT/$id/wifi.local.json.example" ]; then
@@ -396,6 +671,9 @@ run() {
     ts-check | check) cmd_ts_check ;;
     ts-sim | sim) cmd_ts_sim "$@" ;;
     ts-flash | flash) cmd_ts_flash "$@" ;;
+    sd) cmd_sd "$@" ;;
+    sd-fw) cmd_sd_fw "$@" ;;
+    sd-file) cmd_sd_file "$@" ;;
     gen-font | font) cmd_gen_font "$@" ;;
     gen-words) cmd_gen_words ;;
     port) cmd_port ;;
@@ -414,6 +692,7 @@ main_menu() {
     choice="$(prompt_menu "cadv" --back --default=1 \
       "flash:烧录固件" \
       "sim:桌面模拟" \
+      "sd:SD 卡（列出 / 上传）" \
       "ts-check:检查 Moddable / TS 环境" \
       "gen-font:生成 UI BMFont" \
       "gen-words:从 alice/data 生成词库" \
@@ -429,6 +708,9 @@ main_menu() {
         [ -n "$id" ] || continue
         (run "$choice" "$id") || log_error "执行失败（${choice}）"
         pause_menu
+        ;;
+      sd)
+        sd_menu
         ;;
       *)
         (run "$choice") || log_error "执行失败（${choice}）"
