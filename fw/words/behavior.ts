@@ -235,22 +235,22 @@ export class AppBehavior extends Behavior {
 	showPlay(app: AppHost) {
 		this.mode = "play";
 		setVisibleProp(contentByName(app, "listPort"), false);
-		setVisibleProp(contentByName(app, "valueLabel"), true);
+		setVisibleProp(contentByName(app, "puzzleLabel"), true);
 		this.paintWord(app);
 	}
 
 	showList(app: AppHost) {
 		setVisibleProp(contentByName(app, "listPort"), true);
-		setVisibleProp(contentByName(app, "valueLabel"), false);
+		setVisibleProp(contentByName(app, "puzzleLabel"), false);
 	}
 
 	setLabels(app: AppHost, top: string, bottom: string) {
-		setMarqueeText(contentByName(app, "dateLabel"), top);
-		setMarqueeText(contentByName(app, "lunarLabel"), bottom, bottom ? phoneFace() : undefined);
+		setMarqueeText(contentByName(app, "glossLabel"), top);
+		setMarqueeText(contentByName(app, "phoneLabel"), bottom, bottom ? phoneFace() : undefined);
 	}
 
 	tickMarquees(app: AppHost) {
-		for (const name of ["dateLabel", "lunarLabel"]) {
+		for (const name of ["glossLabel", "phoneLabel"]) {
 			const port = contentByName(app, name);
 			const b = asMarquee(port);
 			if (b)
@@ -429,11 +429,11 @@ export class AppBehavior extends Behavior {
 		const top = !entry.word ? "无词库" : (note || entry.gloss);
 		const bottom = entry.word && this.settings.phone ? entry.phone : "";
 		this.setLabels(app, top, bottom);
-		const value = contentByName(app, "valueLabel");
+		const value = contentByName(app, "puzzleLabel");
 		if (hasStyle(value))
 			value.style = puzzleStyle(entry.word ? entry.word.length : 0);
 		const view = entry.word ? renderPuzzle(entry.word, this.wordHidden, this.wordTyped) : "";
-		setStringProp(contentByName(app, "valueLabel"), view);
+		setStringProp(contentByName(app, "puzzleLabel"), view);
 	}
 
 	advanceSolved(app: AppHost) {

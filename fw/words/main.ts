@@ -13,18 +13,18 @@ const WordApplication = Application.template($ => ({
 	Behavior: AppBehavior,
 	contents: [
 		Port($, {
-			name: "dateLabel",
+			name: "glossLabel",
 			left: 0, right: 0, top: 0, height: 32,
 			Behavior: MarqueeBehavior,
 		}),
 		Label($, {
-			name: "valueLabel",
+			name: "puzzleLabel",
 			left: 0, right: 0, top: 32, bottom: 32,
 			style: new Style({ font: FONT_WORD, color: ON, horizontal: "center", vertical: "middle" }),
 			string: "...",
 		}),
 		Port($, {
-			name: "lunarLabel",
+			name: "phoneLabel",
 			left: 0, right: 0, bottom: 0, height: 32,
 			Behavior: MarqueeBehavior,
 		}),
