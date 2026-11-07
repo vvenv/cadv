@@ -5,10 +5,9 @@
 	frame, no brightness setter). shared/manifest.json therefore does not
 	set ili9341 backlight_pin, so this PWM is the only owner of GPIO38.
 	That pin is also the Stamp-S3A LED rail. The pixel is driven from lamp.ts.
-	Cold-boot GRAM is noise. Init waits out SLPOUT before MADCTL and COLMOD.
-	DISPON stays with the driver, after erase_width/height paints black.
-	ili9341.registers merges by index with the 17-entry ST7789 default.
-	A shorter list leaves that default's trailing 0x29.
+	Cold-boot GRAM is noise. boot.c holds RST/CS/backlight until the driver
+	runs; erase_width/height paints black before the first JS frame. The
+	ili9341.registers list fully replaces the ST7789 default (no merge).
 */
 
 import Analog from "embedded:io/analog";

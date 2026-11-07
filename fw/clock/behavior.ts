@@ -147,7 +147,7 @@ export class AppBehavior extends Behavior {
 		const app = content as AppHost;
 		this.settings = loadSettings();
 		this.power = new Power("dim");
-		this.imu = openImu();
+		// Keyboard before IMU so the face can paint; BMI270 bring-up can stall the bus.
 		this.kb = new CardputerKeyboard();
 		this.sound = new ClockSound();
 		this.sound.setVolume(this.settings.volume);
@@ -171,6 +171,9 @@ export class AppBehavior extends Behavior {
 			);
 			this.refreshWeather(app, false);
 		}
+		Timer.set(() => {
+			this.imu = openImu();
+		}, 1);
 	}
 
 	maybeBeep() {
