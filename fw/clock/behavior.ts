@@ -24,6 +24,11 @@ import { contentByName, setVisibleProp, type AppHost } from "ui";
 
 type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "menu" | "help";
 
+function isShown(target: unknown): boolean {
+	return !!target && typeof target === "object" && "visible" in target
+		&& (target as { visible?: boolean }).visible !== false;
+}
+
 /** Digits-only field; empty → 0. */
 function parseFieldDigits(raw: string, max: number): number | null {
 	const s = raw.trim();
@@ -652,7 +657,10 @@ export class AppBehavior extends Behavior {
 	showClock(app: AppHost, on: boolean) {
 		this.showList(app, false);
 		setVisibleProp(contentByName(app, "clockPort"), on);
-		setVisibleProp(contentByName(app, "valueLabel"), !on);
+		const value = contentByName(app, "valueLabel");
+		setVisibleProp(value, !on);
+		if (on)
+			setMarqueeText(value, "");
 	}
 
 	showList(app: AppHost, on: boolean) {
@@ -671,6 +679,8 @@ export class AppBehavior extends Behavior {
 	tickMarquees(app: AppHost) {
 		for (const name of ["dateLabel", "lunarLabel", "valueLabel"]) {
 			const port = contentByName(app, name);
+			if (name === "valueLabel" && !isShown(port))
+				continue;
 			const b = asMarquee(port);
 			if (b)
 				b.tick(port as PortContent);
