@@ -9,6 +9,7 @@
 ```bash
 ./do.sh sim dict
 ./do.sh sd fw dict
+./do.sh sd bank dict
 ```
 
-`sd fw dict` 会把 `lex.bin` 拷到 `cadv/dict/`。模拟读 `fw/dict/sample`。
+`sd fw dict` 会把镜像和 `lex.bin` 一起拷到卡上。只传词库：菜单 SD → 上传词库，选查词或全部。模拟读 `fw/dict/sample`。

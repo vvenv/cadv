@@ -19,7 +19,8 @@
 #                                   # 查词：fw/dict/lex.bin，并同步到 sample
 #   ./do.sh sd fw words             # 固件镜像 + fw/words 下可选词库（*.bin，不含内置 wordbank）
 #   ./do.sh sd fw dict              # 固件镜像 + cadv/dict/lex.bin
-#   ./do.sh sd bank                 # 只传词库到 cadv/words/，不传固件（可再跟名字或 all）
+#   ./do.sh sd bank                 # 只传词库，不传固件。菜单：拼写包、查词、全部
+#   ./do.sh sd bank dict            # 只传 cadv/dict/lex.bin
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh sd                      # 列出卡上的 cadv/
 #   ./do.sh sd fw                  # 把除启动器以外的全部固件拷进 cadv/（不烧进芯片）
@@ -497,32 +498,64 @@ words_pack_exists() {
 }
 
 pick_words_pack() {
-  local title="$1" id opts=()
+  local title="$1" id opts=() n=0
   while IFS= read -r id; do
     [ -n "$id" ] || continue
-    opts+=("$id:${id}.bin → ${WORDS_BANK_DIR}/")
+    opts+=("$id:拼写 ${id}.bin → ${WORDS_BANK_DIR}/")
+    n=$((n + 1))
   done < <(words_pack_ids)
-  [ "${#opts[@]}" -gt 0 ] || log_die "fw/words/ 下没有可选词库（*.bin，不含 wordbank）。先 ./do.sh gen-words"
-  prompt_menu "$title" --back "${opts[@]}"
+  if [ -f "$(dict_lex_src)" ]; then
+    opts+=("dict:查词 lex.bin → ${SD_DIR}/dict/")
+    n=$((n + 1))
+  fi
+  [ "$n" -gt 0 ] || log_die "没有可上传的词库。先 ./do.sh gen-words"
+  if [ "$n" -gt 1 ]; then
+    prompt_menu "$title" --back --default=1 "all:全部" "${opts[@]}"
+  else
+    prompt_menu "$title" --back "${opts[@]}"
+  fi
 }
 
-# Resolve pack ids from args: none / all → every pack; else validate each.
-# Empty stdout + return 0 means the interactive pick was cancelled.
+# none / all → every spelling pack, plus the lookup lexicon when the file exists.
+# "dict" is cadv/dict/lex.bin. A cancelled menu returns empty and does not upload.
 require_words_packs() {
-  local id ids=()
-  if [ $# -eq 0 ] || [ "${1:-}" = "all" ]; then
+  local id ids=() arg all=0
+  for arg in "$@"; do
+    [ "$arg" = "all" ] && all=1
+  done
+  if [ $# -eq 0 ] || [ "$all" -eq 1 ]; then
     while IFS= read -r id; do
       [ -n "$id" ] || continue
       ids+=("$id")
     done < <(words_pack_ids)
-    [ "${#ids[@]}" -gt 0 ] || log_die "fw/words/ 下没有可选词库（*.bin，不含 wordbank）。先 ./do.sh gen-words"
+    if [ -f "$(dict_lex_src)" ]; then
+      ids+=("dict")
+    fi
   else
     for id in "$@"; do
-      words_pack_exists "$id" || log_die "没有词库：$id（可选：$(words_pack_ids | tr '\n' ' ')）"
+      if [ "$id" = "dict" ]; then
+        [ -f "$(dict_lex_src)" ] || log_die "没有查词库 $(dict_lex_src)。先 ./do.sh gen-words"
+        ids+=("dict")
+        continue
+      fi
+      words_pack_exists "$id" || log_die "没有词库：${id}（可选：$(bank_id_list)）"
       ids+=("$id")
     done
   fi
+  [ "${#ids[@]}" -gt 0 ] || log_die "没有可上传的词库。先 ./do.sh gen-words"
   printf '%s\n' "${ids[@]}"
+}
+
+bank_id_list() {
+  local id out=""
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    out="${out}${id} "
+  done < <(words_pack_ids)
+  if [ -f "$(dict_lex_src)" ]; then
+    out="${out}dict "
+  fi
+  printf '%s\n' "${out% }"
 }
 
 # Host-mounted card: copy named packs under cadv/words/ (not auto-override).
@@ -543,40 +576,68 @@ sd_put_words_packs_host() {
   done
 }
 
-# Only word packs — no firmware image. Host mount or USB link.
+# Spelling packs and the lookup lexicon. No firmware image.
 cmd_sd_bank() {
-  local route kind root id src ids=() args=()
+  local route kind root id src ids=() args=() words=() put_dict=0
   if [ $# -eq 0 ] && [ -t 0 ]; then
     id="$(pick_words_pack "上传哪个词库")"
     [ -n "$id" ] || return 0
-    ids=("$id")
-  else
-    while IFS= read -r id; do
-      [ -n "$id" ] || continue
-      ids+=("$id")
-    done < <(require_words_packs "$@")
-    [ "${#ids[@]}" -gt 0 ] || return 0
+    set -- "$id"
   fi
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    ids+=("$id")
+  done < <(require_words_packs "$@")
+  [ "${#ids[@]}" -gt 0 ] || return 0
+  for id in "${ids[@]}"; do
+    if [ "$id" = "dict" ]; then
+      put_dict=1
+    else
+      words+=("$id")
+    fi
+  done
   route="$(sd_route)" || return $?
   [ -n "$route" ] || return 0
   kind="${route%%$'\t'*}"
   root="${route#*$'\t'}"
   if [ "$kind" = "device" ]; then
-    log_info "经 USB 写入 ${WORDS_BANK_DIR}/（${root}）"
+    if [ "$put_dict" -eq 1 ] && [ "${#words[@]}" -eq 0 ]; then
+      log_info "经 USB 写入 ${SD_DIR}/dict/（${root}）"
+    elif [ "$put_dict" -eq 1 ]; then
+      log_info "经 USB 写入词库（${root}）"
+    else
+      log_info "经 USB 写入 ${WORDS_BANK_DIR}/（${root}）"
+    fi
     link_ping "$root"
-    for id in "${ids[@]}"; do
-      src="$(words_pack_src "$id")"
-      args+=("$src" "words/${id}.bin")
-    done
+    if [ "${#words[@]}" -gt 0 ]; then
+      for id in "${words[@]}"; do
+        src="$(words_pack_src "$id")"
+        args+=("$src" "words/${id}.bin")
+      done
+    fi
+    if [ "$put_dict" -eq 1 ]; then
+      args+=("$(dict_lex_src)" "dict/lex.bin")
+    fi
     link_put "$root" "${args[@]}"
-    for id in "${ids[@]}"; do
-      src="$(words_pack_src "$id")"
-      log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
-    done
+    if [ "${#words[@]}" -gt 0 ]; then
+      for id in "${words[@]}"; do
+        src="$(words_pack_src "$id")"
+        log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
+      done
+    fi
+    if [ "$put_dict" -eq 1 ]; then
+      src="$(dict_lex_src)"
+      log_success "查词 → ${SD_DIR}/dict/lex.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
+    fi
     return 0
   fi
   mkdir -p "$root/$SD_DIR"
-  sd_put_words_packs_host "$root/$SD_DIR" "${ids[@]}"
+  if [ "${#words[@]}" -gt 0 ]; then
+    sd_put_words_packs_host "$root/$SD_DIR" "${words[@]}"
+  fi
+  if [ "$put_dict" -eq 1 ]; then
+    sd_put_dict_host "$root/$SD_DIR"
+  fi
   sync || true
 }
 
