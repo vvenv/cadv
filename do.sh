@@ -8,7 +8,7 @@
 #   ./do.sh sim clock               # 桌面模拟某一个固件
 #   fw/<id>/sample 存在时，模拟把文件根指到该目录。
 #   菜单里 Esc、← 或 BS 返回上一级。主菜单再按一次即退出。
-#   模拟不写 id、或上传「一个固件」时，会列出 fw/*/label。取消则什么都不做。
+#   模拟不写 id 时列出 fw/*/label。菜单「上传固件」可多选：空格勾选，a 全选，不含启动器。取消则什么都不做。
 #   构建/模拟时自动判断：词库或字体比源文件旧就重做。拼写或查词才检查词库。
 #   CADV_REFRESH=0 跳过；=ask 改回先问再生成。
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
@@ -29,8 +29,8 @@
 #   卡插在电脑上时直接写卡。没插卡、板子用 USB 连着并且跑着启动器时，经串口写入板子上的卡。
 #   CADV_SD=/Volumes/名字 指定卡。CADV_PORT=/dev/cu.usbmodemXXX 指定串口。
 #   CADV_LINK=device 强制走板子；CADV_LINK=0 只认插在电脑上的卡。
-#   上传一个固件：镜像比 fw/<id> 或 shared 旧时先问要不要重编。
-#   上传全部，或一次传多个：过时的直接重编，不再逐个询问。
+#   只上传一个：镜像比 fw/<id> 或 shared 旧时先问要不要重编。
+#   上传全部，或一次传多个（菜单里勾选多项也一样）：过时的直接重编，不再逐个询问。
 #   CADV_SD_BUILD=1 每个都重编；=0 仍用旧镜像；=ask 改回逐个询问。
 #   启动器要先 ./do.sh flash，这一版才从 USB 收文件。
 #   ./do.sh help                    # 本说明
@@ -136,14 +136,29 @@ fw_exists() {
   [ -n "${1:-}" ] && [ -f "$FW_ROOT/$1/manifest.json" ]
 }
 
+# Optional second arg is an id to leave off the menu (the launcher, when uploading).
 pick_fw() {
-  local title="$1" id opts=()
+  local title="$1" except="${2:-}" id opts=()
   while IFS= read -r id; do
     [ -n "$id" ] || continue
+    [ -n "$except" ] && [ "$id" = "$except" ] && continue
     opts+=("$id:$(fw_label "$id")")
   done < <(fw_ids)
   [ "${#opts[@]}" -gt 0 ] || log_die "fw/ 下没有固件。新增：建 fw/<id>/，放入 manifest.json 和一行 label"
   prompt_menu "$title" --back "${opts[@]}"
+}
+
+# Card images only. Comma-separated ids. Nothing starts checked; a selects every row.
+# Empty stdout means cancel.
+pick_fw_multi() {
+  local title="$1" id opts=()
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    [ "$id" = "sd" ] && continue
+    opts+=("$id:$(fw_label "$id")")
+  done < <(fw_ids)
+  [ "${#opts[@]}" -gt 0 ] || log_die "没有可上传的固件"
+  prompt_multi_menu "$title" --back --default=0 "${opts[@]}"
 }
 
 require_fw() {
@@ -984,28 +999,26 @@ cmd_sd() {
 }
 
 sd_menu() {
-  local choice id
+  local choice csv
+  local -a ids
   while true; do
     choice="$(prompt_menu "SD 卡" --back --default=1 \
-      "all:上传全部固件" \
+      "fw:上传固件" \
       "ls:列出 cadv" \
-      "fw:上传一个固件" \
       "bank:上传词库" \
       "file:上传文件到 cadv")"
     case "$choice" in
       "") return 0 ;;
-      all)
-        (cmd_sd_fw all) || log_error "执行失败（sd fw）"
+      fw)
+        csv="$(pick_fw_multi "上传哪些固件")"
+        [ -n "$csv" ] || continue
+        ids=()
+        IFS=',' read -ra ids <<<"$csv"
+        (cmd_sd_fw "${ids[@]}") || log_error "执行失败（sd fw）"
         pause_menu
         ;;
       ls)
         (cmd_sd_ls) || log_error "执行失败（sd）"
-        pause_menu
-        ;;
-      fw)
-        id="$(pick_fw "上传哪个固件")"
-        [ -n "$id" ] || continue
-        (cmd_sd_fw "$id") || log_error "执行失败（sd fw）"
         pause_menu
         ;;
       bank)

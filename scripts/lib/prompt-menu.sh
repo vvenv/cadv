@@ -251,20 +251,26 @@ prompt_menu() {
 
 # 多选菜单：空格 toggle 选中/取消，a 全选，n 全不选，回车确认
 # 选中项 value（冒号前）按顺序以逗号拼接输出到 stdout
+# --back：Esc、← 或 BS 返回，stdout 为空。--default=0：一开始不勾选
 # 用法:
-#   values=$(prompt_multi_menu "部署环境" --default=1 \
+#   values=$(prompt_multi_menu "部署环境" --back --default=0 \
 #     "production:生产环境" \
 #     "test:测试环境")
 prompt_multi_menu() {
   local title="$1"
   shift
   local default_idx=1
+  local allow_back=0
   local options=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --default=*)
         default_idx="${1#--default=}"
+        shift
+        ;;
+      --back)
+        allow_back=1
         shift
         ;;
       *)
@@ -280,8 +286,12 @@ prompt_multi_menu() {
     return 1
   fi
 
-  if [ "$default_idx" -lt 1 ] || [ "$default_idx" -gt "$count" ]; then
-    default_idx=1
+  # --default=0：不预选。越界则回到第 1 项并预选。
+  local cursor=1 preselect=1
+  if [ "$default_idx" -eq 0 ]; then
+    preselect=0
+  elif [ "$default_idx" -ge 1 ] && [ "$default_idx" -le "$count" ]; then
+    cursor=$default_idx
   fi
 
   # 提取 value（冒号前）与 label（冒号后）
@@ -291,26 +301,36 @@ prompt_multi_menu() {
     labels+=("${opt#*:}")
   done
 
-  # 单选项直接返回
-  if [ "$count" -eq 1 ]; then
+  # 单选项、且不能返回时直接确认。--back 仍要能取消。
+  if [ "$count" -eq 1 ] && [ "$allow_back" -eq 0 ]; then
     echo "${values[0]}"
     return 0
   fi
+  # 只有一行时勾上，回车即确认。
+  if [ "$count" -eq 1 ]; then
+    preselect=1
+    cursor=1
+  fi
 
-  # 选中状态数组（1=选中，0=未选中），默认项预选
+  # 选中状态数组（1=选中，0=未选中）
   local selected=() i
   for ((i = 0; i < count; i++)); do
     selected+=("0")
   done
-  selected[$((default_idx - 1))]="1"
+  if [ "$preselect" -eq 1 ]; then
+    selected[$((cursor - 1))]="1"
+  fi
 
-  # 非 TTY（管道/CI）：返回默认项（单值）
+  # 非 TTY（管道/CI）：有预选则返回该项，否则空
   if [ ! -t 0 ]; then
-    echo "${values[$((default_idx - 1))]}"
+    if [ "$preselect" -eq 1 ]; then
+      echo "${values[$((cursor - 1))]}"
+    fi
     return 0
   fi
 
-  local sel=$default_idx
+  local sel=$cursor
+  local cancelled=0
 
   local use_tui=0
   local esc_t="0.1"
@@ -352,10 +372,27 @@ prompt_multi_menu() {
 
     echo "" >&2
     printf '%s%s%s\n' "$bold" "$title" "$sgr0" >&2
-    printf '  %s↑/↓ 或 j/k 移动 · 空格 选中/取消 · a 全选 · n 全不选 · 回车确认%s\n' "$cyan" "$sgr0" >&2
+    if [ "$allow_back" -eq 1 ]; then
+      printf '  %s↑/↓ 或 j/k 移动 · 空格 选中/取消 · a 全选 · n 全不选 · 回车确认 · Esc/←/BS 返回%s\n' "$cyan" "$sgr0" >&2
+    else
+      printf '  %s↑/↓ 或 j/k 移动 · 空格 选中/取消 · a 全选 · n 全不选 · 回车确认%s\n' "$cyan" "$sgr0" >&2
+    fi
     echo "" >&2
 
     [ -n "$civis" ] && printf '%s' "$civis" >&2
+
+    # Mac 的退格是 DEL（^?），正好是 tty 的 erase。不改掉的话 read 收不到 BS。
+    local _pmm_stty=""
+    _pmm_stty=$(stty -g </dev/tty 2>/dev/null || true)
+    if [ -n "$_pmm_stty" ]; then
+      stty erase undef </dev/tty 2>/dev/null || true
+    fi
+    _pmm_restore_stty() {
+      if [ -n "${_pmm_stty:-}" ]; then
+        stty "$_pmm_stty" </dev/tty 2>/dev/null || true
+        _pmm_stty=""
+      fi
+    }
 
     _pmm_render() {
       local i=1 marker box line n_selected=0
@@ -382,9 +419,10 @@ prompt_multi_menu() {
     }
 
     _pmm_sigint_cleanup() {
+      _pmm_restore_stty
       [ -n "$cnorm" ] && printf '%s' "$cnorm" >&2
       [ -n "$sgr0" ] && printf '%s' "$sgr0" >&2
-      unset -f _pmm_render _pmm_sigint_cleanup _pmm_join_selected
+      unset -f _pmm_render _pmm_sigint_cleanup _pmm_restore_stty _pmm_join_selected
       exit 130
     }
     local _pmm_prev_int
@@ -398,14 +436,30 @@ prompt_multi_menu() {
       IFS= read -rsn1 key </dev/tty || true
       case "$key" in
         $'\x1b')
+          # 方向键：ESC [ A/B/D，或 ESC O A/B/D。单独 Esc 在超时内没有后续字节。
           seq1=""; seq2=""
           read -rsn1 -t "$esc_t" seq1 </dev/tty || true
-          read -rsn1 -t "$esc_t" seq2 </dev/tty || true
           if [ "$seq1" = "[" ] || [ "$seq1" = "O" ]; then
+            read -rsn1 -t "$esc_t" seq2 </dev/tty || true
             case "$seq2" in
               A) sel=$((sel - 1)); [ "$sel" -lt 1 ] && sel=$count ;;
               B) sel=$((sel + 1)); [ "$sel" -gt "$count" ] && sel=1 ;;
+              D)
+                if [ "$allow_back" -eq 1 ]; then
+                  cancelled=1
+                  break
+                fi
+                ;;
             esac
+          elif [ -z "$seq1" ] && [ "$allow_back" -eq 1 ]; then
+            cancelled=1
+            break
+          fi
+          ;;
+        $'\x7f'|$'\x08')
+          if [ "$allow_back" -eq 1 ]; then
+            cancelled=1
+            break
           fi
           ;;
         "")
@@ -444,9 +498,10 @@ prompt_multi_menu() {
       _pmm_render
     done
 
+    _pmm_restore_stty
     [ -n "$cnorm" ] && printf '%s' "$cnorm" >&2
     eval "${_pmm_prev_int:-trap - SIGINT}"
-    unset -f _pmm_render _pmm_sigint_cleanup
+    unset -f _pmm_render _pmm_sigint_cleanup _pmm_restore_stty
     echo "" >&2
   else
     # ===== 经典数字菜单（bash 3.2 或无 tput 降级，多选）=====
@@ -466,9 +521,15 @@ prompt_multi_menu() {
 
     echo "" >&2
     local choice=""
-    read -r -p "请选择（逗号分隔多个，直接回车用默认）: " choice </dev/tty || true
+    if [ "$allow_back" -eq 1 ]; then
+      read -r -p "请选择（逗号分隔多个，直接回车返回）: " choice </dev/tty || true
+    else
+      read -r -p "请选择（逗号分隔多个，直接回车用默认）: " choice </dev/tty || true
+    fi
 
-    if [ -n "$choice" ]; then
+    if [ "$allow_back" -eq 1 ] && [ -z "$choice" ]; then
+      cancelled=1
+    elif [ -n "$choice" ]; then
       local -a picks=() p
       IFS=',' read -ra picks <<<"$choice"
       # 重置默认选择，按输入重新勾选
@@ -479,12 +540,18 @@ prompt_multi_menu() {
           selected[$((p - 1))]="1"
         fi
       done
-      # 输入无效导致全空时回退默认
-      [ -z "$(_pmm_join_selected)" ] && selected[$((default_idx - 1))]="1"
+      # 输入无效导致全空时，有预选才回退
+      if [ -z "$(_pmm_join_selected)" ] && [ "$preselect" -eq 1 ]; then
+        selected[$((cursor - 1))]="1"
+      fi
     fi
   fi
 
-  echo "$(_pmm_join_selected)"
+  if [ "$cancelled" -eq 1 ]; then
+    echo ""
+  else
+    echo "$(_pmm_join_selected)"
+  fi
   unset -f _pmm_join_selected 2>/dev/null || true
 }
 
