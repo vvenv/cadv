@@ -9,7 +9,7 @@
 #   fw/<id>/sample 存在时，模拟把文件根指到该目录。
 #   菜单里 Esc、← 或 BS 返回上一级。主菜单再按一次即退出。
 #   模拟不写 id、或上传「一个固件」时，会列出 fw/*/label。取消则什么都不做。
-#   构建/模拟时自动判断：词库或字体比源文件旧就重做。单词拼写或查词才检查词库。
+#   构建/模拟时自动判断：词库或字体比源文件旧就重做。拼写或查词才检查词库。
 #   CADV_REFRESH=0 跳过；=ask 改回先问再生成。
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
 #   ./do.sh port                    # 列出可用串口
@@ -166,7 +166,7 @@ fw_uses_wordbank() {
   grep -q 'wordbank\.bin' "$FW_ROOT/$1/manifest.json"
 }
 
-# 单词拼写 embeds a bank. 查词 reads cadv/dict/lex.bin, built by the same script.
+# 拼写 embeds a bank. 查词 reads cadv/dict/lex.bin, built by the same script.
 fw_needs_bank() {
   if fw_uses_wordbank "$1"; then
     return 0
