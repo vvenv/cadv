@@ -353,7 +353,10 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (this.offset >= this.loadSize) {
-			this.finishLoad(app);
+			this.shownPct = 100;
+			this.note = "校验…";
+			this.paint(app);
+			Timer.set(() => this.finishLoad(app), 50);
 			return;
 		}
 		let n = this.loadSize - this.offset;
@@ -372,22 +375,32 @@ export class AppBehavior extends Behavior {
 			this.failLoad(app, errorText(e));
 			return;
 		}
-		const pct = this.loadSize ? Math.floor(this.offset * 100 / this.loadSize) : 100;
-		if (pct !== this.shownPct) {
-			this.shownPct = pct;
-			this.note = "载入 " + pct + "%";
+		// Cap the bar at 99% until the last byte is in; 100% is easy to miss
+		// because finish() verifies then reboots without returning.
+		if (this.offset >= this.loadSize) {
+			this.shownPct = 100;
+			this.note = "校验…";
+			this.paint(app);
+			// Yield so the label reaches the screen before esp_ota_end blocks.
+			Timer.set(() => this.finishLoad(app), 50);
+			return;
+		}
+		const pct = Math.floor(this.offset * 100 / this.loadSize);
+		const shown = pct >= 100 ? 99 : pct;
+		if (shown !== this.shownPct) {
+			this.shownPct = shown;
+			this.note = "载入 " + shown + "%";
 			this.paint(app);
 		}
-		if (this.offset >= this.loadSize)
-			this.finishLoad(app);
-		else
-			Timer.set(() => this.loadChunk(app), 0);
+		Timer.set(() => this.loadChunk(app), 0);
 	}
 
 	finishLoad(app: AppHost) {
 		const installer = this.installer;
 		this.closeFile();
+		this.installer = null;
 		try {
+			// Never returns on success: sets boot slot and esp_restart().
 			installer?.finish();
 		}
 		catch (e) {
