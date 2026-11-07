@@ -3,7 +3,7 @@
 #
 # 固件在 fw/<id>/（manifest.json + 一行 label）。do.sh 按目录发现，不写死名单。
 #   ./do.sh                         # 交互菜单。烧录直接烧启动器；模拟会再选固件
-#   ./do.sh flash                   # 把启动器烧进芯片。其它固件放 SD 卡，在设备上选
+#   ./do.sh flash                   # 把启动器烧进芯片，然后回到菜单。其它固件放 SD 卡，在设备上选
 #   ./do.sh flash <id>              # 仍可把某一个直接烧进芯片，会盖掉启动器
 #   ./do.sh sim clock               # 桌面模拟某一个固件
 #   fw/<id>/sample 存在时，模拟把文件根指到该目录。
@@ -1432,6 +1432,61 @@ build_fw_image() {
   fi
 }
 
+# Release launcher stays in idf.py monitor after a good flash. The last boot
+# line is "sd cadv N images". The monitor then holds the USB port, so the
+# menu never returns and a later upload cannot open the port.
+flash_log_booted() {
+  [ -f "${1:-}" ] || return 1
+  grep -qE 'sd cadv [0-9]+ images|sd mount:|sd scan:|sd cadv:' "$1"
+}
+
+flash_log_verified() {
+  [ -f "${1:-}" ] || return 1
+  grep -qE 'Hash of data verified|Hard resetting via RTS pin' "$1"
+}
+
+is_flash_monitor_cmd() {
+  case "$1" in
+    *do.sh*) return 1 ;;
+    *esp_idf_monitor*|*idf_monitor.py*|*idf-monitor*|*idf.py*monitor*) return 0 ;;
+  esac
+  return 1
+}
+
+kill_idf_monitor() {
+  local pid cmd killed=1
+  while read -r pid cmd; do
+    [ -n "${pid:-}" ] || continue
+    if is_flash_monitor_cmd "$cmd"; then
+      kill -TERM "$pid" 2>/dev/null || true
+      killed=0
+    fi
+  done < <(ps -axww -o pid=,command=)
+  return "$killed"
+}
+
+release_flash_watch() {
+  local log="$1" reset_at=0 now
+  while true; do
+    if flash_log_booted "$log"; then
+      sleep 0.2
+      if kill_idf_monitor; then
+        return 0
+      fi
+    elif flash_log_verified "$log"; then
+      now=$(date +%s)
+      if [ "$reset_at" -eq 0 ]; then
+        reset_at=$now
+      elif [ $((now - reset_at)) -ge 15 ]; then
+        if kill_idf_monitor; then
+          return 0
+        fi
+      fi
+    fi
+    sleep 0.4
+  done
+}
+
 cmd_ts_flash() {
   local id want=0
   # The chip only holds the launcher. Other firmware is chosen on the device.
@@ -1463,9 +1518,15 @@ cmd_ts_flash() {
   # exits non-zero after a successful flash. esptool 4 prints "Hash of data
   # verified"; esptool 5 prints "verified" and "Hard resetting via RTS pin".
   # The launcher is not a debug image: its USB port carries file uploads.
-  # bash 3.2 + set -u: empty "${arr[@]}" is "unbound variable" — branch instead.
-  local log rc
+  # A release build still stays in idf.py monitor after reset, stopped on
+  # "sd cadv N images", so the menu cannot return. release_flash_watch ends
+  # that monitor. bash 3.2 + set -u: empty "${arr[@]}" is unbound — branch.
+  local log rc watch_pid=""
   log="$(mktemp "${TMPDIR:-/tmp}/cadv-flash.XXXXXX")"
+  if [ "$id" = "sd" ]; then
+    release_flash_watch "$log" &
+    watch_pid=$!
+  fi
   set +e
   set +o pipefail
   if [ "${#wifi_args[@]}" -gt 0 ]; then
@@ -1474,10 +1535,16 @@ cmd_ts_flash() {
     (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}") 2>&1 | tee "$log"
   fi
   rc=${PIPESTATUS[0]}
+  if [ -n "$watch_pid" ]; then
+    kill "$watch_pid" 2>/dev/null || true
+    wait "$watch_pid" 2>/dev/null || true
+  fi
   set -o pipefail
   set -e
-  if [ "$rc" -ne 0 ] && grep -qE "Hash of data verified|Hard resetting via RTS pin" "$log"; then
-    log_warn "xsbug 没开，调试器连接失败。固件已经写入。"
+  if [ "$rc" -ne 0 ] && flash_log_verified "$log"; then
+    if [ "$id" != "sd" ]; then
+      log_warn "xsbug 没开，调试器连接失败。固件已经写入。"
+    fi
     rc=0
   fi
   rm -f "$log"

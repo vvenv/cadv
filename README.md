@@ -65,7 +65,7 @@ fw/新名字/
 
 ```bash
 ./do.sh                 # 交互菜单。Esc、← 或 BS 返回上一级。烧录不再选固件
-./do.sh flash           # 烧启动器到芯片
+./do.sh flash           # 烧启动器到芯片，然后回到菜单
 ./do.sh sim clock       # 桌面模拟某一个
 ./do.sh sd              # 列出卡上的 cadv/。没插卡时问板子
 ./do.sh sd fw           # 把全部固件拷进 cadv/（不含启动器）
