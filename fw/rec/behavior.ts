@@ -43,6 +43,7 @@ export class AppBehavior extends Behavior {
 	helpIndex = 0;
 	playAt = 44;
 	playSize = 0;
+	playPcm: Uint8Array | null = null;
 	audio: InstanceType<typeof AudioOut> | null = null;
 	note = "";
 	hostEnterDown = false;
@@ -292,10 +293,20 @@ export class AppBehavior extends Behavior {
 		if (n > CHUNK)
 			n = CHUNK;
 		try {
-			const buf = file.read(n, this.playAt);
-			this.playAt += buf.byteLength;
+			if (!this.playPcm)
+				this.playPcm = new Uint8Array(new SharedArrayBuffer(CHUNK));
+			const got = file.read(this.playPcm.subarray(0, n), this.playAt);
+			const samples = got >> 1;
+			if (samples <= 0) {
+				this.stopPlay();
+				this.mode = "list";
+				this.showList(app, true);
+				this.paint(app);
+				return;
+			}
+			this.playAt += samples << 1;
 			audio.enqueue(0, AudioOut.Volume, 256);
-			audio.enqueue(0, AudioOut.Samples, buf as unknown as HostBuffer);
+			audio.enqueue(0, AudioOut.RawSamples, this.playPcm as unknown as HostBuffer, 1, 0, samples);
 			audio.enqueue(0, AudioOut.Callback, 0);
 		}
 		catch {
