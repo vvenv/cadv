@@ -2,7 +2,8 @@
 	Fill-in-the-blank English words. Flash wordbank.bin by default;
 	optional SD packs under cadv/words/*.bin (e.g. junior.bin). Generated
 	from ../../alice/data. Glosses prefer library.json, then
-	ecdict-meta.json. Phonetics come from ECDICT.
+	ecdict-meta.json, with part of speech before the meaning.
+	Phonetics come from ECDICT.
 */
 
 import {

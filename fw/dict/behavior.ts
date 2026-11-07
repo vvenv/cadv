@@ -1,6 +1,6 @@
 /*
 	Type an English prefix. The screen shows one matching headword,
-	its gloss, and its phonetic. ,/. or Fn+K/J move inside that prefix.
+	part of speech then gloss, and its phonetic. ,/. or Fn+K/J move inside that prefix.
 	j and k are letters.
 */
 

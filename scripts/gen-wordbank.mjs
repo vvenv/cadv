@@ -7,13 +7,15 @@
  * Pack B — 初中2182 (merged) → fw/words/junior.bin and
  *          fw/words/sample/cadv/words/junior.bin (manual SD load).
  * Pack C — unique sorted lookup of A and B → fw/dict/lex.bin and
- *          fw/dict/sample/cadv/dict/lex.bin. Same 8-character gloss.
+ *          fw/dict/sample/cadv/dict/lex.bin. Same gloss as the quiz packs.
  *          32-byte records, ASCII headword inline. Prefix search matches
  *          fw/dict/lex.ts (successor: 'az' -> 'b'; a run of z ends at count).
  *
  * Chinese gloss: a `word | pos | meaning` line in
  * ../alice/assets/data/library.json when one exists, otherwise the first
- * sense of ../alice/assets/data/ecdict-meta.json. Capped at 8 characters.
+ * sense of ../alice/assets/data/ecdict-meta.json. The meaning is capped at
+ * 8 characters. Part of speech, when the source has one, is written in
+ * front: `n. 名字`, `num. & pron. 一`. Empty pos stays a bare meaning.
  *
  * Phonetic: ECDICT `phonetic` column (cadv/.cache/ecdict.csv, else alice's
  * cache; downloaded only when neither exists). ECDICT's ASCII `^` is mapped
@@ -144,7 +146,6 @@ function collectJunior() {
 
 function firstClause(text) {
 	let s = String(text || "").trim();
-	s = s.replace(/^[a-z]+\.\s+/i, "");
 	s = s.replace(/\([^)]*\)/g, "").replace(/（[^）]*）/g, "");
 	s = s.replace(/\[[^\]]*\]/g, "").replace(/［[^］]*］/g, "");
 	s = s.replace(/\s+/g, "");
@@ -152,12 +153,92 @@ function firstClause(text) {
 	return s;
 }
 
+/** Same abbreviations as alice dictation.dart normalizePos / posPrefixRe. */
+const POS_PREFIX = /^(n\.|v\.|vt\.|vi\.|adj\.|adv\.|prep\.|conj\.|pron\.|num\.|art\.|int\.|interj\.|aux\.|abbr\.|contr\.|pl\.|a\.|na\.|un\.|vbl\.|pp\.|pn\.|exclam\.|pref\.|suf\.|suff\.|comb\.|quant\.|phr\.|ph\.|st\.|pr\.|ind\.|pers\.|col\.|ing\.|pla\.|stuff\.)\s*/i;
+
+const POS_BARE = new Set([
+	"n", "v", "vt", "vi", "adj", "adv", "prep", "conj", "pron", "num", "art",
+	"int", "interj", "aux", "abbr", "contr", "pl", "a", "na", "un", "vbl",
+	"pp", "pn", "exclam", "pref", "suf", "suff", "comb", "quant", "phr", "ph",
+	"st", "pr", "ind", "pers", "col", "ing", "pla",
+]);
+
+function normalizePosToken(raw) {
+	let key = String(raw || "").trim().toLowerCase();
+	if (key && !key.endsWith(".") && POS_BARE.has(key))
+		key += ".";
+	switch (key) {
+		case "a.":
+			return "adj.";
+		case "pl.":
+		case "na.":
+		case "un.":
+		case "pla.":
+		case "pn.":
+			return "n.";
+		case "interj.":
+		case "exclam.":
+			return "int.";
+		case "vbl.":
+		case "pp.":
+			return "v.";
+		case "pref.":
+		case "suf.":
+		case "suff.":
+		case "comb.":
+		case "stuff.":
+			return "abbr.";
+		default:
+			return key;
+	}
+}
+
+/** `n. & v.` stays both tags. `a.` becomes `adj.`. `n` becomes `n.`. `v.aux.` is one tag. */
+function normalizePosField(raw) {
+	const parts = String(raw || "").trim().split(/\s*[&＆,，]\s*/).map(normalizePosToken).filter(Boolean);
+	const uniq = [];
+	for (const part of parts) {
+		if (uniq[uniq.length - 1] !== part)
+			uniq.push(part);
+	}
+	return uniq.join(" & ");
+}
+
+function stripLeadingPos(text) {
+	const s = String(text || "");
+	const m = s.match(POS_PREFIX);
+	if (!m)
+		return { pos: "", rest: s };
+	return { pos: normalizePosToken(m[1]), rest: s.slice(m[0].length) };
+}
+
+function decodeMeta(raw) {
+	const text = String(raw || "");
+	const bar = text.indexOf("|");
+	let pos = "";
+	let body = text;
+	if (bar >= 0) {
+		pos = normalizePosField(text.slice(0, bar));
+		body = text.slice(bar + 1);
+	}
+	const led = stripLeadingPos((body.split("；")[0] || ""));
+	if (!pos)
+		pos = led.pos;
+	return { pos, meaning: led.rest };
+}
+
 function glossOf(lib, metaRaw) {
-	let s = lib ? firstClause(lib) : "";
+	let pos = "";
+	let s = "";
+	if (lib && lib.meaning) {
+		pos = normalizePosField(lib.pos);
+		s = firstClause(stripLeadingPos(lib.meaning).rest);
+	}
 	if (!/[\u4e00-\u9fff]/.test(s) && metaRaw) {
-		const bar = metaRaw.indexOf("|");
-		const body = bar >= 0 ? metaRaw.slice(bar + 1) : metaRaw;
-		s = firstClause((body.split("；")[0] || ""));
+		const meta = decodeMeta(metaRaw);
+		if (!pos)
+			pos = meta.pos;
+		s = firstClause(meta.meaning);
 		if (/[A-Za-z]/.test(s) && /be的|的现在|的过去|人称/.test(s))
 			s = "是";
 		else if (/[A-Za-z]/.test(s))
@@ -165,7 +246,36 @@ function glossOf(lib, metaRaw) {
 	}
 	if (!/[\u4e00-\u9fff]/.test(s))
 		return "";
-	return [...s].slice(0, GLOSS_CAP).join("");
+	s = [...s].slice(0, GLOSS_CAP).join("");
+	return pos ? pos + " " + s : s;
+}
+
+function checkGloss() {
+	const cases = [
+		[null, "n.|苹果；果实", "n. 苹果"],
+		[null, "|苹果", "苹果"],
+		[null, "a.|好的", "adj. 好的"],
+		[null, "vt.|放置；n. 放任", "vt. 放置"],
+		[null, "|n. 苹果", "n. 苹果"],
+		[{ pos: "n.", meaning: "名字" }, "v.|动词", "n. 名字"],
+		[{ pos: "n.", meaning: "n. 苹果；果实" }, "", "n. 苹果"],
+		[{ pos: "", meaning: "什么" }, "v.|是", "什么"],
+		[{ pos: "n. & v.", meaning: "书；预订" }, "", "n. & v. 书"],
+		[{ pos: "a. & n.", meaning: "好" }, "", "adj. & n. 好"],
+		[{ pos: "num. & pron.", meaning: "一；用来代替单数的人或物" }, "", "num. & pron. 一"],
+		[{ pos: "interj.", meaning: "喂" }, "", "int. 喂"],
+		[{ pos: "v.aux.", meaning: "将要" }, "", "v.aux. 将要"],
+		[{ pos: "n", meaning: "旅行 旅游" }, "", "n. 旅行旅游"],
+		[{ pos: "v, n", meaning: "书" }, "", "v. & n. 书"],
+		[{ pos: "pl, n", meaning: "词" }, "", "n. 词"],
+		[{ pos: "prep.", meaning: "在...里(内,上)；用...(表达)" }, "", "prep. 在...里"],
+		[{ pos: "", meaning: "what is 的缩写形式" }, "n.|缩写", "whatis的缩"],
+	];
+	for (const [lib, meta, want] of cases) {
+		const got = glossOf(lib, meta);
+		if (got !== want)
+			throw new Error(`gloss ${JSON.stringify(meta)}: ${JSON.stringify(got)} != ${JSON.stringify(want)}`);
+	}
 }
 
 function loadLibraryGloss() {
@@ -186,7 +296,7 @@ function loadLibraryGloss() {
 				continue;
 			const meaning = parts.slice(2).join("|").trim();
 			if (meaning)
-				out.set(word, meaning);
+				out.set(word, { pos: parts[1].trim(), meaning });
 		}
 	}
 	return out;
@@ -397,9 +507,10 @@ function materialize(banks, library, meta, phones) {
 	let fromLib = 0;
 	let fromMeta = 0;
 	for (const word of lexWord) {
-		const lib = library.get(word) || "";
+		const lib = library.get(word) || null;
 		const gloss = glossOf(lib, meta[word] || "");
-		if (gloss && lib && /[\u4e00-\u9fff]/.test(firstClause(lib)))
+		const libMeaning = lib ? firstClause(stripLeadingPos(lib.meaning).rest) : "";
+		if (gloss && lib && /[\u4e00-\u9fff]/.test(libMeaning))
 			fromLib++;
 		else if (gloss)
 			fromMeta++;
@@ -448,6 +559,7 @@ function reportPack(tag, outPath, pack) {
 }
 
 function build() {
+	checkGloss();
 	if (!fs.existsSync(DATA))
 		throw new Error(`missing ${DATA}`);
 
@@ -488,7 +600,7 @@ function build() {
 	console.log(`wrote ${path.relative(ROOT, OUT_SD_JUNIOR)}`);
 	console.log(`wrote ${path.relative(ROOT, OUT_CHARS)} (${han.size} chars)`);
 	console.log(`wrote ${path.relative(ROOT, OUT_PHONE)} (${[...phoneChars].length} chars)`);
-	for (const sample of ["ruler", "book", "are", "can", "pen", "what", "name"]) {
+	for (const sample of ["ruler", "book", "are", "can", "pen", "what", "name", "one"]) {
 		const id = packA.indexOf.get(sample) ?? packB.indexOf.get(sample);
 		const pack = packA.indexOf.has(sample) ? packA : packB.indexOf.has(sample) ? packB : null;
 		if (!pack || id === undefined)
@@ -614,7 +726,7 @@ function writeDict(groups, library, meta, phones) {
 	const glosses = [];
 	const phoneList = [];
 	for (const word of words) {
-		const gloss = glossOf(library.get(word) || "", meta[word] || "");
+		const gloss = glossOf(library.get(word) || null, meta[word] || "");
 		const phone = phones.get(word) || "";
 		if (Buffer.byteLength(gloss, "utf8") > 255)
 			throw new Error(`gloss too long: ${word}`);

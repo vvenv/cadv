@@ -6,6 +6,7 @@
 	Header 16: magic u32 'WDLX', version u16 = 1, count u16, indexAt u32, blobAt u32.
 	Record stride 32, sorted by headword: 16 ASCII bytes, wordLen u8, glossLen u8,
 	phoneLen u8, pad u8, glossOff u32, phoneOff u32, pad u32.
+	Gloss text is part of speech, then the meaning (`n. 名字`), when a pos exists.
 	Prefix end is the lower bound of the successor. 'az' -> 'b'. A prefix of
 	only z has no successor; the end is count. Same rules as verifyLex.
 */

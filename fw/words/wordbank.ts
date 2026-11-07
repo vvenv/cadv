@@ -1,6 +1,6 @@
 /*
 	Lexicon: flash Resource by default; optional SD packs under cadv/words/*.bin.
-	Headword, Chinese gloss, phonetic. The ESP32 XS heap is 4928 slots and
+	Headword, part of speech plus Chinese gloss, phonetic. The ESP32 XS heap is 4928 slots and
 	77KB; materializing the lists as JS arrays aborts before the first frame,
 	so the backlight stays off. Reads below copy only a few bytes. Generated
 	by scripts/gen-wordbank.mjs. Do not edit the binary.
