@@ -9,12 +9,13 @@ import { bootLauncher } from "boot";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
-import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
+import { isBack, isConfirm, isHelp, isLauncher, navDir, volumeDelta } from "keys";
 import { MENU_VISIBLE } from "list";
 import { asMenu } from "menu-view";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { imuError, openImu, type ImuHandle } from "imu";
 import { ClockSound } from "sound";
+import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
 import { asLevel, TOLERANCE, type LevelMode } from "view";
 
 type Mode = "level" | "help";
@@ -44,6 +45,7 @@ export class AppBehavior extends Behavior {
 	mode: Mode = "level";
 	kb: CardputerKeyboard | null = null;
 	sound: ClockSound | null = null;
+	volume = VOL_DEFAULT;
 	imu: ImuHandle | null = null;
 	warnOn = true;
 	wasLevel = true;
@@ -188,6 +190,8 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (this.mode === "help") {
+			if (this.adjustVolume(app, stroke.chars))
+				return;
 			if (isBack(stroke) || isConfirm(stroke)) {
 				this.mode = "level";
 				this.showLevel(app);
@@ -199,6 +203,8 @@ export class AppBehavior extends Behavior {
 				this.stepHelp(app, dir);
 			return;
 		}
+		if (this.adjustVolume(app, stroke.chars))
+			return;
 		for (let i = 0; i < stroke.chars.length; i++) {
 			const ch = stroke.chars[i];
 			if (ch === "g" || ch === "G") {
@@ -215,6 +221,23 @@ export class AppBehavior extends Behavior {
 				return;
 			}
 		}
+	}
+
+	adjustVolume(app: AppHost, chars: string[]): boolean {
+		const delta = volumeDelta(chars);
+		if (delta === 0)
+			return false;
+		let v = this.volume + delta;
+		if (v < VOL_MIN)
+			v = VOL_MIN;
+		if (v > VOL_MAX)
+			v = VOL_MAX;
+		this.volume = v;
+		this.sound?.setVolume(v);
+		this.flash(app, "音量 " + v);
+		if (v > 0)
+			this.sound?.click();
+		return true;
 	}
 
 	tiltDeg(): number {
