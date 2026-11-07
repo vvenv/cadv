@@ -58,9 +58,16 @@ usage() {
   exit "${1:-0}"
 }
 
+# read -n / a raw tty (min 0) makes the next line read return EOF at once.
+# Callers were treating that EOF as "n".
+tty_cook() {
+  stty icanon echo icrnl isig iexten </dev/tty 2>/dev/null || true
+}
+
 pause_menu() {
   [ -t 0 ] || return 0
   echo ""
+  tty_cook
   read -r -p "按回车返回菜单…" _ </dev/tty || true
 }
 
@@ -293,6 +300,7 @@ refresh_generated() {
       ;;
     ask)
       if [ -t 0 ] || [ -t 1 ]; then
+        tty_cook
         read -r -p "${msg}。现在生成？ [Y/n] " ans </dev/tty || ans=n
         case "${ans:-Y}" in
           n|N|no|NO|否)
@@ -1080,7 +1088,12 @@ ensure_fw_image() {
       log_info "$(fw_label "$id") 比镜像新（${newer}）。重编（不烧进芯片）"
       build_fw_image "$id"
     elif [ -t 0 ] || [ -t 1 ]; then
-      read -r -p "$(fw_label "$id") 比镜像新（${newer}）。现在重编？ [Y/n] " ans </dev/tty || ans=n
+      # Default is Y. A failed read used to become ans=n and upload the old image.
+      tty_cook
+      if ! read -r -p "$(fw_label "$id") 比镜像新（${newer}）。现在重编？ [Y/n] " ans </dev/tty; then
+        log_warn "没有读到回答，已取消，不上传"
+        return 1
+      fi
       case "${ans:-Y}" in
         n|N|no|NO|否)
           log_warn "已跳过，继续用 $(date -r "$src" '+%Y-%m-%d %H:%M') 的镜像"

@@ -130,6 +130,9 @@ prompt_menu() {
         stty "$_pm_stty" </dev/tty 2>/dev/null || true
         _pm_stty=""
       fi
+      # read -n leaves the tty raw on some bashes. A later line read then
+      # sees EOF at once. Cook so the next question waits for a key.
+      stty icanon echo icrnl isig iexten </dev/tty 2>/dev/null || true
     }
 
     # Ctrl-C 中断时恢复终端（光标/颜色/erase），再 exit 终止
@@ -392,6 +395,8 @@ prompt_multi_menu() {
         stty "$_pmm_stty" </dev/tty 2>/dev/null || true
         _pmm_stty=""
       fi
+      # Same as prompt_menu: don't hand a raw tty (min 0) to the next read.
+      stty icanon echo icrnl isig iexten </dev/tty 2>/dev/null || true
     }
 
     _pmm_render() {
