@@ -14,6 +14,8 @@ import { MENU_VISIBLE } from "list";
 import { asMenu } from "menu-view";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { imuError, openImu, type ImuHandle } from "imu";
+import { Power } from "power";
+import { acceptStroke, titleWithPower } from "session";
 import { ClockSound } from "sound";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
 import { asLevel, TOLERANCE, type LevelMode } from "view";
@@ -64,10 +66,16 @@ export class AppBehavior extends Behavior {
 	candidate: LevelMode = "flat";
 	candidateSince = 0;
 	calib: Calib = { pitch: 0, roll: 0, edgeY: 0, edgeX: 0 };
+	power: Power | null = null;
+	rateX = 0;
+	rateY = 0;
+	rateZ = 0;
+	peak = 0;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
 		this.note = "读取";
+		this.power = new Power("blank");
 		this.paint(app);
 		/* Open the IMU before the keyboard so the BMI270 is the first device on the shared bus. */
 		Timer.set(() => this.openSensor(app), 1);
@@ -87,7 +95,12 @@ export class AppBehavior extends Behavior {
 	}
 
 	onKeyboardTick(app: AppHost) {
-		const stroke = this.kb?.poll();
+		const raw = this.kb?.poll() ?? null;
+		const power = this.power;
+		const stroke = power ? acceptStroke(power, raw, true) : raw;
+		const note = power?.takeNote() ?? "";
+		if (note)
+			this.flash(app, note);
 		if (stroke)
 			this.handleStroke(app, stroke);
 	}
@@ -99,8 +112,13 @@ export class AppBehavior extends Behavior {
 			this.hostEnterDown = true;
 		}
 		const stroke = hostStroke(key);
-		if (stroke)
-			this.handleStroke(content as AppHost, stroke);
+		const power = this.power;
+		const use = power ? acceptStroke(power, stroke, true) : stroke;
+		const note = power?.takeNote() ?? "";
+		if (note)
+			this.flash(content as AppHost, note);
+		if (use)
+			this.handleStroke(content as AppHost, use);
 	}
 
 	onKeyUp(_content: unknown, key: string) {
@@ -123,6 +141,9 @@ export class AppBehavior extends Behavior {
 		const sample = this.imu?.sample();
 		if (!sample)
 			return;
+		this.rateX = sample.gx;
+		this.rateY = sample.gy;
+		this.rateZ = sample.gz;
 		if (!this.primed) {
 			this.gx = sample.x;
 			this.gy = sample.y;
@@ -213,6 +234,11 @@ export class AppBehavior extends Behavior {
 			}
 			if (ch === "r" || ch === "R") {
 				this.resetCalib(app);
+				return;
+			}
+			if (ch === "p" || ch === "P") {
+				this.peak = 0;
+				this.flash(app, "峰值清");
 				return;
 			}
 			if (ch === "m" || ch === "M") {
@@ -369,7 +395,8 @@ export class AppBehavior extends Behavior {
 				if (row)
 					lines.push({ text: row.key, right: row.action, selected: false });
 			}
-			view.setList(port, `${helpTitle()} ${start + 1}/${n}`, lines, "");
+			const title = this.power ? titleWithPower(this.power, `${helpTitle()} ${start + 1}/${n}`) : `${helpTitle()} ${start + 1}/${n}`;
+			view.setList(port, title, lines, "");
 			return;
 		}
 		const port = contentByName(app, "levelPort");
@@ -384,6 +411,8 @@ export class AppBehavior extends Behavior {
 				edge: 0,
 				level: false,
 				note: this.note || "无芯片",
+				rate: 0,
+				peak: 0,
 			});
 			return;
 		}
@@ -395,13 +424,20 @@ export class AppBehavior extends Behavior {
 			level = abs(pitch) < TOLERANCE && abs(roll) < TOLERANCE;
 		else
 			level = abs(edge) < TOLERANCE;
+		const tilt = this.tiltDeg();
+		if (this.primed && tilt > this.peak)
+			this.peak = tilt;
+		const banner = this.power?.banner() ?? "";
+		const note = banner ? (this.note ? banner + " " + this.note : banner) : this.note;
 		view.setFrame(port, {
 			mode: this.levelMode,
 			pitch,
 			roll,
 			edge,
 			level,
-			note: this.note,
+			note,
+			rate: Math.sqrt(this.rateX * this.rateX + this.rateY * this.rateY + this.rateZ * this.rateZ),
+			peak: this.peak,
 		});
 	}
 }

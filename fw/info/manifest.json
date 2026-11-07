@@ -24,10 +24,32 @@
 	"platforms": {
 		"esp32": {
 			"include": [
-				"$(MODDABLE)/modules/io/analog/manifest.json"
+				"$(MODDABLE)/modules/io/analog/manifest.json",
+				"$(MODDABLE)/modules/io/audioin/manifest.json",
+				"$(MODDABLE)/modules/io/files/posix/manifest.json",
+				"$(MODDABLE)/modules/io/files/esp32/manifest_sdspi.json",
+				"$(MODDABLE)/modules/drivers/sensors/bmi270"
 			],
+			"defines": {
+				"sdcard": {
+					"cs": 12,
+					"mosi": 14,
+					"miso": 39,
+					"sck": 40,
+					"hz": 20000000,
+					"spi_port": "SPI2_HOST"
+				},
+				"file": {
+					"root": "#/sdcard",
+					"maxOpen": 4,
+					"format": 0
+				}
+			},
 			"modules": {
-				"board": "./board"
+				"board": "./board",
+				"card": "../../shared/card",
+				"mic": "../../shared/mic",
+				"imu": "../../shared/imu"
 			},
 			"dependency": [
 				{ "idf": "esp_driver_tsens" }
@@ -35,17 +57,26 @@
 		},
 		"mac": {
 			"modules": {
-				"board": "./board_stub"
+				"board": "./board_stub",
+				"card": "../../shared/card_stub",
+				"mic": "../../shared/mic_stub",
+				"imu": "../../shared/imu_stub"
 			}
 		},
 		"lin": {
 			"modules": {
-				"board": "./board_stub"
+				"board": "./board_stub",
+				"card": "../../shared/card_stub",
+				"mic": "../../shared/mic_stub",
+				"imu": "../../shared/imu_stub"
 			}
 		},
 		"...": {
 			"modules": {
-				"board": "./board_stub"
+				"board": "./board_stub",
+				"card": "../../shared/card_stub",
+				"mic": "../../shared/mic_stub",
+				"imu": "../../shared/imu_stub"
 			}
 		}
 	}

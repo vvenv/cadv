@@ -6,6 +6,11 @@
 import {} from "piu/MC";
 import Timer from "timer";
 import { readBoard } from "board";
+import { cardSpace } from "card";
+import { openImu, type ImuHandle } from "imu";
+import { openMic, type MicFeed } from "mic";
+import { Power } from "power";
+import { acceptStroke, titleWithPower } from "session";
 import { bootLauncher } from "boot";
 import { infoRows, type BoardSnap } from "format";
 import { helpFor, helpTitle } from "help";
@@ -19,6 +24,19 @@ import { asInfo } from "view";
 
 type Mode = "info" | "help";
 
+function countPair(free: number, total: number): string {
+	const one = (n: number) => {
+		if (n >= 1024 * 1024)
+			return (n / (1024 * 1024)).toFixed(1) + "MB";
+		return Math.round(n / 1024) + "KB";
+	};
+	return one(free) + "/" + one(total);
+}
+
+function axisText(x: number, y: number, z: number): string {
+	return x.toFixed(1) + " " + y.toFixed(1) + " " + z.toFixed(1);
+}
+
 function errorText(e: unknown): string {
 	if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string")
 		return (e as { message: string }).message;
@@ -28,6 +46,11 @@ function errorText(e: unknown): string {
 export class AppBehavior extends Behavior {
 	mode: Mode = "info";
 	kb: CardputerKeyboard | null = null;
+	power: Power | null = null;
+	imu: ImuHandle | null = null;
+	mic: MicFeed | null = null;
+	sdFree = -1;
+	sdTotal = -1;
 	kbTimer: ReturnType<typeof Timer.repeat> | null = null;
 	tickTimer: ReturnType<typeof Timer.repeat> | null = null;
 	snap: BoardSnap | null = null;
@@ -40,8 +63,11 @@ export class AppBehavior extends Behavior {
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
+		this.power = new Power("blank");
 		this.reload(false);
+		this.imu = openImu();
 		this.kb = new CardputerKeyboard();
+		this.mic = openMic();
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		this.tickTimer = Timer.repeat(() => this.onSecond(app), 1000);
 		this.paint(app);
@@ -50,6 +76,9 @@ export class AppBehavior extends Behavior {
 	reload(mark: boolean) {
 		try {
 			this.snap = readBoard();
+			const space = cardSpace();
+			this.sdFree = space ? space.free : -1;
+			this.sdTotal = space ? space.total : -1;
 			this.error = "";
 			if (mark) {
 				this.note = "已刷新";
@@ -66,7 +95,14 @@ export class AppBehavior extends Behavior {
 	}
 
 	onKeyboardTick(app: AppHost) {
-		const stroke = this.kb?.poll();
+		const raw = this.kb?.poll() ?? null;
+		const stroke = this.power ? acceptStroke(this.power, raw, true) : raw;
+		const note = this.power?.takeNote() ?? "";
+		if (note) {
+			this.note = note;
+			this.noteUntil = Date.now() + 700;
+			this.paint(app);
+		}
 		if (stroke)
 			this.handleStroke(app, stroke);
 	}
@@ -78,8 +114,16 @@ export class AppBehavior extends Behavior {
 			this.hostEnterDown = true;
 		}
 		const stroke = hostStroke(key);
-		if (stroke)
-			this.handleStroke(content as AppHost, stroke);
+		const app = content as AppHost;
+		const use = this.power ? acceptStroke(this.power, stroke, true) : stroke;
+		const note = this.power?.takeNote() ?? "";
+		if (note) {
+			this.note = note;
+			this.noteUntil = Date.now() + 700;
+			this.paint(app);
+		}
+		if (use)
+			this.handleStroke(app, use);
 	}
 
 	onKeyUp(_content: unknown, key: string) {
@@ -160,10 +204,23 @@ export class AppBehavior extends Behavior {
 		this.paint(app);
 	}
 
+	sdText(): string {
+		if (this.sdTotal <= 0)
+			return "无";
+		return countPair(this.sdFree, this.sdTotal);
+	}
+
 	rows() {
 		if (!this.snap)
 			return [{ label: "读取", value: this.error || "失败" }];
-		return infoRows(this.snap);
+		const rows = infoRows(this.snap);
+		rows.push({ label: "SD", value: this.sdText() });
+		rows.push({ label: "麦克", value: this.mic ? this.mic.peak() + "%" : "无" });
+		const sample = this.imu?.sample();
+		rows.push({ label: "加速度", value: sample ? axisText(sample.x, sample.y, sample.z) : "无" });
+		rows.push({ label: "角速度", value: sample ? axisText(sample.gx, sample.gy, sample.gz) : "无" });
+		rows.push({ label: "亮度", value: this.power ? String(this.power.step()) : "无" });
+		return rows;
 	}
 
 	showInfo(app: AppHost) {
@@ -220,7 +277,7 @@ export class AppBehavior extends Behavior {
 		const lines = [];
 		for (let i = 0; i < vis && start + i < n; i++)
 			lines.push(page[start + i]);
-		const title = this.note || `设备信息 ${start + 1}/${n}`;
+		const title = this.power ? titleWithPower(this.power, this.note || `设备信息 ${start + 1}/${n}`) : (this.note || `设备信息 ${start + 1}/${n}`);
 		view.setRows(port, title, lines);
 	}
 }

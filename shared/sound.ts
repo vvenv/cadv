@@ -24,6 +24,42 @@ const ES8311_ON: number[][] = [
 	[0x37, 0x08],
 ];
 
+/* ADC path. DAC registers above stay. Mic data is I2S ASDOUT on GPIO46. */
+const ES8311_MIC: number[][] = [
+	[0x09, 0x0c],
+	[0x0e, 0x02],
+	[0x14, 0x1a],
+	[0x15, 0x00],
+	[0x17, 0xbf],
+	[0x1c, 0x6a],
+];
+
+/** Program the codec and release the bus. The chip keeps the setup. */
+export function writeCodec(mic: boolean) {
+	const pins = readI2cPins();
+	if (!pins)
+		return;
+	let bus: SMBus | undefined;
+	try {
+		bus = new SMBus({
+			hz: 400_000,
+			address: ES8311_ADDR,
+			data: pins.sda,
+			clock: pins.scl,
+		});
+		for (const [reg, val] of ES8311_ON)
+			bus.writeUint8(reg, val);
+		if (mic) {
+			for (const [reg, val] of ES8311_MIC)
+				bus.writeUint8(reg, val);
+		}
+	}
+	catch {
+		/* no codec on the desktop, or the bus is busy */
+	}
+	try { bus?.close(); } catch { /* */ }
+}
+
 type Tone = { hz: number; ms: number };
 
 function readI2cPins(): { sda: number; scl: number } | null {
@@ -129,6 +165,20 @@ export class ClockSound {
 			{ hz: 1319, ms: 280 },
 			{ hz: 988, ms: 220 },
 		]);
+	}
+
+	/** Turn the ADC on without dropping the speaker path. */
+	enableMic() {
+		if (!this.#codec)
+			return;
+		for (const [reg, val] of ES8311_MIC) {
+			try {
+				this.#codec.writeUint8(reg, val);
+			}
+			catch {
+				/* */
+			}
+		}
 	}
 
 	play(tones: Tone[]) {

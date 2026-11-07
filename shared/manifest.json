@@ -8,7 +8,9 @@
 			"./ui",
 			"./ink",
 			"./hostkey",
-			"./volume"
+			"./volume",
+			"./session",
+			"./battery"
 		]
 	},
 	"preload": [
@@ -20,6 +22,8 @@
 		"ink",
 		"hostkey",
 		"volume",
+		"session",
+		"battery",
 		"keyboard",
 		"sound",
 		"boot"
@@ -44,12 +48,18 @@
 			"include": [
 				"$(MODULES)/drivers/st7789",
 				"$(MODULES)/io/i2c",
-				"$(MODULES)/pins/i2s"
+				"$(MODULES)/pins/i2s",
+				"$(MODULES)/files/preference",
+				"$(MODULES)/io/analog/manifest.json",
+				"$(MODULES)/pins/pwm/manifest.json",
+				"$(MODULES)/drivers/neopixel/manifest.json"
 			],
 			"modules": {
 				"keyboard": "./keyboard",
 				"sound": "./sound",
-				"boot": "./boot"
+				"boot": "./boot",
+				"power": "./power",
+				"lamp": "./lamp"
 			},
 			"dependency": [
 				{ "idf": "app_update" }
@@ -84,8 +94,6 @@
 					"row_offset": 53,
 					"spi_port": "SPI3_HOST",
 					"spi_mode": 0,
-					"backlight_pin": 38,
-					"backlight_on": 1,
 					"registers": [
 						"0x01, 0,",
 						"0xff, 150,",
@@ -117,6 +125,20 @@
 						"slot": "I2S_STD_SLOT_LEFT",
 						"format_i2s": 1
 					}
+				},
+				"audioIn": {
+					"bitsPerSample": 16,
+					"numChannels": 1,
+					"sampleRate": 16000,
+					"i2s": {
+						"num": 1,
+						"bitsPerSample": 16,
+						"bck_pin": 41,
+						"lr_pin": 43,
+						"datain": 46,
+						"slot": "I2S_STD_SLOT_LEFT",
+						"format_i2s": 1
+					}
 				}
 			},
 			"build": {
@@ -128,7 +150,9 @@
 			"modules": {
 				"keyboard": "./keyboard_stub",
 				"sound": "./sound_stub",
-				"boot": "./boot_stub"
+				"boot": "./boot_stub",
+				"power": "./power_stub",
+				"lamp": "./lamp_stub"
 			}
 		}
 	}

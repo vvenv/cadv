@@ -2,6 +2,8 @@
 	Desktop stub: no speaker.
 */
 
+export function writeCodec(_mic: boolean) {}
+
 export class ClockSound {
 	status = "AU n/a";
 	get available(): boolean {
@@ -9,6 +11,7 @@ export class ClockSound {
 	}
 	close() {}
 	setVolume(_level: number) {}
+	enableMic() {}
 	click() {}
 	tick() {}
 	hourlyChime() {}

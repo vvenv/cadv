@@ -18,7 +18,11 @@
 			"./netboot",
 			"./settings",
 			"./weather",
-			"./help"
+			"./help",
+			"./when",
+			"./pose",
+			"./city",
+			"./desk"
 		]
 	},
 	"preload": [
@@ -29,8 +33,37 @@
 		"netboot",
 		"settings",
 		"weather",
-		"help"
+		"help",
+		"when",
+		"pose",
+		"city",
+		"desk"
 	],
+	"platforms": {
+		"esp32": {
+			"include": [
+				"$(MODDABLE)/modules/drivers/sensors/bmi270"
+			],
+			"modules": {
+				"imu": "../../shared/imu"
+			}
+		},
+		"mac": {
+			"modules": {
+				"imu": "../../shared/imu_stub"
+			}
+		},
+		"lin": {
+			"modules": {
+				"imu": "../../shared/imu_stub"
+			}
+		},
+		"...": {
+			"modules": {
+				"imu": "../../shared/imu_stub"
+			}
+		}
+	},
 	"config": {
 		"sntp": "ntp.aliyun.com",
 		"weatherLat": 25.7212,

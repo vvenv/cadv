@@ -25,22 +25,22 @@
 				"$(MODDABLE)/modules/drivers/sensors/bmi270"
 			],
 			"modules": {
-				"imu": "./imu"
+				"imu": "../../shared/imu"
 			}
 		},
 		"mac": {
 			"modules": {
-				"imu": "./imu_stub"
+				"imu": "../../shared/imu_stub"
 			}
 		},
 		"lin": {
 			"modules": {
-				"imu": "./imu_stub"
+				"imu": "../../shared/imu_stub"
 			}
 		},
 		"...": {
 			"modules": {
-				"imu": "./imu_stub"
+				"imu": "../../shared/imu_stub"
 			}
 		}
 	}

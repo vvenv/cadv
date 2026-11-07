@@ -6,6 +6,7 @@
 import { Request } from "http";
 import Timer from "timer";
 import config from "mc/config";
+import { loadSettings } from "settings";
 
 export type WeatherSnapshot = {
 	tempC: number;
@@ -53,11 +54,13 @@ function endpoint(): { host: string; port?: number; lat: number; lon: number } {
 	const root = config as Record<string, unknown>;
 	const host = cfgString(root, "weatherHost", DEFAULT_HOST);
 	const port = cfgNumber(root, "weatherPort", 0);
+	const saved = loadSettings();
+	const named = saved.cityName.length > 0;
 	return {
 		host,
 		port: port > 0 ? port : undefined,
-		lat: cfgNumber(root, "weatherLat", DEFAULT_LAT),
-		lon: cfgNumber(root, "weatherLon", DEFAULT_LON),
+		lat: named ? saved.cityLat : cfgNumber(root, "weatherLat", DEFAULT_LAT),
+		lon: named ? saved.cityLon : cfgNumber(root, "weatherLon", DEFAULT_LON),
 	};
 }
 

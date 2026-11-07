@@ -14,7 +14,9 @@ const PLAY_HELP: HelpRow[] = [
 	{ key: "[/]", action: "更易/更难" },
 	{ key: "\\", action: "换词库" },
 	{ key: ",/.", action: "换词" },
+	{ key: "错题", action: "列表里只练错的" },
 	{ key: "-/=", action: "小声/大声" },
+	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "Fn+BS", action: "回选应用" },
 ];
 

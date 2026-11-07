@@ -17,6 +17,10 @@ export type LevelFrame = {
 	edge: number;
 	level: boolean;
 	note: string;
+	/** Gyro magnitude, °/s. */
+	rate: number;
+	/** Peak |tilt| since it was cleared, degrees. */
+	peak: number;
 };
 
 const TOLERANCE = 0.5;
@@ -102,6 +106,8 @@ export class LevelViewBehavior extends Behavior {
 		edge: 0,
 		level: false,
 		note: "",
+		rate: 0,
+		peak: 0,
 	};
 
 	setFrame(port: unknown, frame: LevelFrame) {
@@ -161,10 +167,10 @@ export class LevelViewBehavior extends Behavior {
 		const tx = cx + r + 14;
 		const textTop = bodyTop + Math.floor((bodyH - ROW_PITCH * 4) / 2);
 		const valueColor = f.level ? ON : AMBER;
-		drawString(port, "俯仰", INK, tx, textTop - ROW_LEAD);
-		drawString(port, formatDeg(f.pitch), valueColor, tx, textTop + ROW_PITCH - ROW_LEAD);
-		drawString(port, "横滚", INK, tx, textTop + ROW_PITCH * 2 - ROW_LEAD);
-		drawString(port, formatDeg(f.roll), valueColor, tx, textTop + ROW_PITCH * 3 - ROW_LEAD);
+		drawString(port, "俯仰 " + formatDeg(f.pitch), valueColor, tx, textTop - ROW_LEAD);
+		drawString(port, "横滚 " + formatDeg(f.roll), valueColor, tx, textTop + ROW_PITCH - ROW_LEAD);
+		drawString(port, "角速度 " + Math.round(f.rate), INK, tx, textTop + ROW_PITCH * 2 - ROW_LEAD);
+		drawString(port, "峰值 " + f.peak.toFixed(1), INK, tx, textTop + ROW_PITCH * 3 - ROW_LEAD);
 	}
 
 	drawEdge(port: PortContent, f: LevelFrame) {
@@ -196,9 +202,9 @@ export class LevelViewBehavior extends Behavior {
 		const bx = cx + Math.floor(fx * (tubeW / 2 - 18));
 		drawBubble(port, bx, cy, rad - 4, f.level);
 
-		const text = formatDeg(f.edge);
+		const text = formatDeg(f.edge) + "  " + Math.round(f.rate) + "  峰" + f.peak.toFixed(1);
 		const tw = port.measureString(text, style()).width;
-		drawString(port, text, f.level ? ON : AMBER, Math.floor((port.width - tw) / 2), cy + 22);
+		drawString(port, text, f.level ? ON : AMBER, Math.max(0, Math.floor((port.width - tw) / 2)), cy + 22);
 	}
 }
 

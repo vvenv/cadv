@@ -13,6 +13,8 @@ export type KeyStroke = {
 	left: boolean;
 	right: boolean;
 	fn: boolean;
+	/** Fn+[ dims, Fn+] brightens. Desktop keys never set this. */
+	bright: -1 | 0 | 1;
 };
 
 export type HeldState = {

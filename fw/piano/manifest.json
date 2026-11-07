@@ -1,0 +1,10 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json"
+	],
+	"modules": { "*": ["./main", "./behavior", "./help"] },
+	"preload": ["behavior", "help"]
+}

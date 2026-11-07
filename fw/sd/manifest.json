@@ -43,7 +43,8 @@
 				"CONFIG_FATFS_API_ENCODING_UTF_8": "y"
 			},
 			"modules": {
-				"link": "./link"
+				"link": "./link",
+				"card": "../../shared/card"
 			},
 			"dependency": [
 				{ "idf": "esp_driver_usb_serial_jtag" }
@@ -51,7 +52,8 @@
 		},
 		"mac": {
 			"modules": {
-				"link": "./link_stub"
+				"link": "./link_stub",
+				"card": "../../shared/card_stub"
 			},
 			"config": {
 				"files": "/sdcard-sim-sample"
@@ -59,7 +61,8 @@
 		},
 		"lin": {
 			"modules": {
-				"link": "./link_stub"
+				"link": "./link_stub",
+				"card": "../../shared/card_stub"
 			},
 			"config": {
 				"files": "/sdcard-sim-sample"

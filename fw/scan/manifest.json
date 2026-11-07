@@ -1,0 +1,23 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"$(MODDABLE)/examples/manifest_net.json",
+		"../../shared/manifest.json"
+	],
+	"modules": { "*": ["./main", "./behavior", "./help"] },
+	"preload": ["behavior", "help", "air"],
+	"platforms": {
+		"esp32": {
+			"include": ["$(MODDABLE)/modules/io/ble/client/manifest.json"],
+			"modules": { "air": "./air" }
+		},
+		"mac": {
+			"include": ["$(MODDABLE)/modules/io/ble/client/manifest.json"],
+			"modules": { "air": "./air" }
+		},
+		"lin": { "modules": { "air": "./air_stub" } },
+		"...": { "modules": { "air": "./air_stub" } }
+	}
+}

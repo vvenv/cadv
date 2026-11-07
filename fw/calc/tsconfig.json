@@ -1,0 +1,37 @@
+{
+	"extends": "../../third_party/moddable/typings/tsconfig.es2025.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"types": [
+			"../../third_party/moddable/typings/xs"
+		],
+		"paths": {
+			"embedded:io/*": ["../../third_party/moddable/typings/embedded_io/*"],
+			"embedded:io/socket/*": ["../../third_party/moddable/typings/embedded_io/socket/*"],
+			"embedded:io/audio/*": ["../../third_party/moddable/typings/embedded_io/audio/*"],
+			"embedded:io/bluetoothle/*": ["../../third_party/moddable/typings/embedded_io/ble/*"],
+			"embedded:io/crypt/*": ["../../third_party/moddable/typings/embedded_io/crypt/*"],
+			"embedded:network/*": ["../../third_party/moddable/typings/embedded_network/*"],
+			"embedded:network/http/*": ["../../third_party/moddable/typings/embedded_network/http/*"],
+			"embedded:network/interface/*": ["../../third_party/moddable/typings/embedded_network/interface/*"],
+			"embedded:network/mqtt/*": ["../../third_party/moddable/typings/embedded_network/mqtt/*"],
+			"embedded:network/websocket/*": ["../../third_party/moddable/typings/embedded_network/websocket/*"],
+			"embedded:network/dns/resolver/*": ["../../third_party/moddable/typings/embedded_network/dns/resolver/*"],
+			"embedded:network/ntp/*": ["../../third_party/moddable/typings/embedded_network/ntp/*"],
+			"embedded:storage/*": ["../../third_party/moddable/typings/embedded/storage/*"],
+			"embedded:provider/*": ["../../third_party/moddable/typings/embedded_provider/*"],
+			"embedded:*": ["../../third_party/moddable/typings/embedded/*"],
+			"mc/*": ["../../third_party/moddable/typings/mc/*"],
+			"mod/*": ["../../third_party/moddable/typings/mod/*"],
+			"pins/*": ["../../third_party/moddable/typings/pins/*"],
+			"piu/*": ["../../third_party/moddable/typings/piu/*"],
+			"commodetto/*": ["../../third_party/moddable/typings/commodetto/*"],
+			"text/*": ["../../third_party/moddable/typings/text/*"],
+			"*": ["./*", "../../shared/*", "../../third_party/moddable/typings/*"]
+		}
+	},
+	"include": [
+		"./**/*.ts",
+		"../../shared/**/*.ts"
+	]
+}

@@ -13,16 +13,23 @@ import { bootLauncher } from "boot";
 import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir, volumeDelta } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
-import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
+import { connectAndSync, loadWifiCreds, saveWifiCreds, wifiRssi, type WifiCreds } from "netboot";
+import { Power } from "power";
+import { acceptStroke, titleWithPower } from "session";
+import { openImu, type ImuHandle } from "imu";
+import { searchCity, type CityHit } from "city";
+import { Desk } from "desk";
+import { poseRotation } from "pose";
+import { alarmLine, cycleDays, dueAlarm, inQuiet, quietLabel } from "when";
 import { ClockSound } from "sound";
 import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_MIN, type ClockSettings } from "settings";
 import { fetchWeather, formatLunarWithWeather, weatherLabel, WEATHER_REFRESH_MS } from "weather";
-import { beijingParts, formatClockTop, formatHMS, formatLunar, formatNow, pad2, timeSynced } from "lunar";
+import { beijingParts, formatClockTop, formatHMS, formatLunar, formatNow, pad2, setManualClock, timeSynced } from "lunar";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { ON } from "ink";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 
-type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "menu" | "help";
+type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "alarms" | "hits" | "desk" | "menu" | "help";
 
 function isShown(target: unknown): boolean {
 	return !!target && typeof target === "object" && "visible" in target
@@ -49,7 +56,26 @@ export class AppBehavior extends Behavior {
 	mode: Mode = "clock";
 	kb: CardputerKeyboard | null = null;
 	sound: ClockSound | null = null;
-	settings: ClockSettings = { sound: true, hourly: true, volume: 6, alarmOn: false, alarmHH: 7, alarmMM: 0 };
+	settings: ClockSettings = {
+		sound: true, hourly: true, volume: 6,
+		alarms: [
+			{ on: false, hh: 7, mm: 0, days: 0x7f },
+			{ on: false, hh: 8, mm: 0, days: 0x7f },
+			{ on: false, hh: 9, mm: 0, days: 0x7f },
+			{ on: false, hh: 12, mm: 0, days: 0x7f },
+		],
+		quietStart: -1, quietEnd: -1, cityName: "", cityLat: 25.7212, cityLon: 119.3841,
+	};
+	power: Power | null = null;
+	desk = new Desk();
+	imu: ImuHandle | null = null;
+	alarmIndex = 0;
+	snoozeAt = 0;
+	snoozeIndex = -1;
+	cityHits: CityHit[] = [];
+	cityIndex = 0;
+	rotation = 0;
+	rssiText = "";
 	kbTimer: unknown = null;
 	labelTimer: unknown = null;
 	marqueeTimer: unknown = null;
@@ -89,14 +115,22 @@ export class AppBehavior extends Behavior {
 			return this.alSlotsText();
 		if (this.mode === "cd_run" || this.mode === "cd_done")
 			return formatHMS(this.cdRemainSec);
-		if (this.mode === "al_ring")
-			return `${pad2(this.settings.alarmHH)}:${pad2(this.settings.alarmMM)}:00`;
+		if (this.mode === "desk")
+			return this.desk.face();
+		if (this.mode === "al_ring") {
+			const alarm = this.settings.alarms[this.snoozeIndex >= 0 ? this.snoozeIndex : this.alarmIndex];
+			const hh = alarm ? alarm.hh : 0;
+			const mm = alarm ? alarm.mm : 0;
+			return `${pad2(hh)}:${pad2(mm)}:00`;
+		}
 		return formatNow();
 	}
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
 		this.settings = loadSettings();
+		this.power = new Power("dim");
+		this.imu = openImu();
 		this.kb = new CardputerKeyboard();
 		this.sound = new ClockSound();
 		this.sound.setVolume(this.settings.volume);
@@ -133,13 +167,14 @@ export class AppBehavior extends Behavior {
 		const p = beijingParts();
 		const day = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
 		const wx = weatherLabel() || "-";
-		if (!this.settings.alarmOn)
-			return `${day}|off|${wx}`;
-		return `${day}|A${this.settings.alarmHH}:${this.settings.alarmMM}|${wx}`;
+		return `${day}|${formatAlarm(this.settings)}|${wx}|${this.power?.short() ?? ""}|${this.rssiText}`;
 	}
 
 	paintClockLabels(app: AppHost) {
-		this.setLabels(app, formatClockTop(this.settings), formatLunarWithWeather(formatLunar()));
+		const rssi = wifiRssi();
+		this.rssiText = rssi === null ? "" : String(rssi);
+		const tail = [this.power?.short() ?? "", this.rssiText].filter(part => part.length > 0).join(" ");
+		this.setLabels(app, formatClockTop(this.settings, tail), formatLunarWithWeather(formatLunar()));
 		this.dateKey = this.clockLabelKey();
 		this.weatherKey = weatherLabel();
 	}
@@ -153,13 +188,20 @@ export class AppBehavior extends Behavior {
 	}
 
 	onKeyboardTick(app: AppHost) {
-		let stroke;
+		let stroke: KeyStroke | null = null;
 		try {
 			stroke = this.kb?.poll() ?? null;
 		}
 		catch {
 			return;
 		}
+		const power = this.power;
+		if (power)
+			stroke = acceptStroke(power, stroke, true);
+		const note = power?.takeNote() ?? "";
+		if (note && (this.mode === "clock" || this.mode === "desk"))
+			this.flashStatus(app, note, "");
+		this.applyPose(app);
 		if (!stroke)
 			return;
 		this.handleStroke(app, stroke);
@@ -178,7 +220,15 @@ export class AppBehavior extends Behavior {
 		const stroke = hostStroke(key);
 		if (!stroke)
 			return;
-		this.handleStroke(content as AppHost, stroke);
+		const power = this.power;
+		const use = power ? acceptStroke(power, stroke, true) : stroke;
+		const note = power?.takeNote() ?? "";
+		const app = content as AppHost;
+		if (note && (this.mode === "clock" || this.mode === "desk"))
+			this.flashStatus(app, note, "");
+		if (!use)
+			return;
+		this.handleStroke(app, use);
 	}
 
 	onKeyUp(_content: unknown, key: unknown) {
@@ -238,7 +288,7 @@ export class AppBehavior extends Behavior {
 			}
 			const dir = navDir(stroke);
 			if (dir !== 0) {
-				const n = menuItems(this.settings.sound, this.settings.hourly).length;
+				const n = menuItems(this.settings.sound, this.settings.hourly, this.quietText()).length;
 				this.menuIndex = menuStep(this.menuIndex, n, dir);
 				this.paintMenu(app);
 				this.maybeBeep();
@@ -246,6 +296,19 @@ export class AppBehavior extends Behavior {
 			}
 			if (isConfirm(stroke))
 				this.activateMenu(app);
+			return;
+		}
+
+		if (this.mode === "alarms") {
+			this.onAlarms(app, stroke);
+			return;
+		}
+		if (this.mode === "hits") {
+			this.onHits(app, stroke);
+			return;
+		}
+		if (this.mode === "desk") {
+			this.onDesk(app, stroke);
 			return;
 		}
 
@@ -258,7 +321,16 @@ export class AppBehavior extends Behavior {
 		}
 
 		if (this.mode === "al_ring") {
-			if (isBack(stroke) || isConfirm(stroke) || chars.some(ch => ch === "a" || ch === "A")) {
+			if (isConfirm(stroke)) {
+				this.snoozeAt = Date.now() + 5 * 60_000;
+				this.snoozeIndex = this.alarmIndex;
+				this.resumeClock(app);
+				this.flashStatus(app, "贪睡 5 分", "");
+				this.maybeBeep();
+				return;
+			}
+			if (isBack(stroke) || chars.some(ch => ch === "a" || ch === "A")) {
+				this.snoozeAt = 0;
 				this.resumeClock(app);
 				this.maybeBeep();
 			}
@@ -288,10 +360,13 @@ export class AppBehavior extends Behavior {
 						this.prompt = "";
 				}
 				else {
-					// BS on empty hour → clear saved alarm
-					this.settings.alarmOn = false;
+					const alarm = this.settings.alarms[this.alarmIndex];
+					if (alarm) {
+						alarm.on = false;
+						alarm.days = 0;
+					}
 					saveSettings(this.settings);
-					this.resumeClock(app);
+					this.enterAlarms(app);
 					this.flashStatus(app, "闹钟关", "");
 					this.maybeBeep();
 					return;
@@ -466,8 +541,9 @@ export class AppBehavior extends Behavior {
 		this.statusUntil = 0;
 		this.mode = "al_edit";
 		this.alStep = 0;
-		this.alHours = this.settings.alarmOn ? this.settings.alarmHH : 0;
-		this.alMinutes = this.settings.alarmOn ? this.settings.alarmMM : 0;
+		const alarm = this.settings.alarms[this.alarmIndex];
+		this.alHours = alarm ? alarm.hh : 0;
+		this.alMinutes = alarm ? alarm.mm : 0;
 		this.prompt = "";
 		this.showClock(app, true);
 		this.paintAlarmPrompt(app);
@@ -502,17 +578,20 @@ export class AppBehavior extends Behavior {
 			this.paintAlarmPrompt(app);
 			return;
 		}
-		this.settings.alarmOn = true;
-		this.settings.alarmHH = this.alHours;
-		this.settings.alarmMM = n;
+		const alarm = this.settings.alarms[this.alarmIndex] ?? this.settings.alarms[0];
+		alarm.on = true;
+		alarm.hh = this.alHours;
+		alarm.mm = n;
+		if (!alarm.days)
+			alarm.days = 0x7f;
 		saveSettings(this.settings);
-		this.resumeClock(app);
+		this.enterAlarms(app);
 		this.flashStatus(app, formatAlarm(this.settings), "saved");
 		this.maybeBeep();
 	}
 
 	paintAlarmPrompt(app: AppHost, err?: string) {
-		const top = err ?? (this.settings.alarmOn ? formatAlarm(this.settings) : "设闹钟");
+		const top = err ?? ("闹钟 " + (this.alarmIndex + 1));
 		this.setLabels(app, top, "");
 	}
 
@@ -672,7 +751,8 @@ export class AppBehavior extends Behavior {
 	}
 
 	setLabels(app: AppHost, top: string, bottom: string) {
-		setMarqueeText(contentByName(app, "dateLabel"), top);
+		const titled = this.power ? titleWithPower(this.power, top) : top;
+		setMarqueeText(contentByName(app, "dateLabel"), titled);
 		setMarqueeText(contentByName(app, "lunarLabel"), bottom);
 	}
 
@@ -696,7 +776,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	paintMenu(app: AppHost) {
-		const items = menuItems(this.settings.sound, this.settings.hourly);
+		const items = menuItems(this.settings.sound, this.settings.hourly, this.quietText());
 		if (this.menuIndex < 0 || this.menuIndex >= items.length)
 			this.menuIndex = 0;
 		const lines = [];
@@ -726,6 +806,20 @@ export class AppBehavior extends Behavior {
 		if (from === "menu") {
 			this.showList(app, true);
 			this.paintMenu(app);
+			return;
+		}
+		if (from === "alarms") {
+			this.showList(app, true);
+			this.paintAlarms(app);
+			return;
+		}
+		if (from === "hits") {
+			this.showList(app, true);
+			this.paintHits(app);
+			return;
+		}
+		if (from === "desk") {
+			this.paintDesk(app);
 			return;
 		}
 		if (from === "cd_edit") {
@@ -784,7 +878,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	activateMenu(app: AppHost) {
-		const items = menuItems(this.settings.sound, this.settings.hourly);
+		const items = menuItems(this.settings.sound, this.settings.hourly, this.quietText());
 		const id = items[this.menuIndex] ? items[this.menuIndex].id : "";
 		this.maybeBeep();
 		if (id === "cd") {
@@ -792,7 +886,11 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (id === "al") {
-			this.enterAlarmEdit(app);
+			this.enterAlarms(app);
+			return;
+		}
+		if (id === "sw" || id === "pomo" || id === "cal" || id === "zone" || id === "city" || id === "manual" || id === "quiet") {
+			this.enterDesk(app, id);
 			return;
 		}
 		if (id === "wx") {
@@ -838,6 +936,10 @@ export class AppBehavior extends Behavior {
 	}
 
 	onClockTick(app: AppHost) {
+		if (this.mode === "desk" && this.desk.tick()) {
+			this.sound?.alarmChime();
+			this.paintDesk(app);
+		}
 		if (this.mode === "menu" || (this.mode === "help" && this.helpFrom === "menu"))
 			return;
 
@@ -855,7 +957,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 
-		if (this.mode !== "clock" && !(this.mode === "help" && this.helpFrom === "clock"))
+		if (this.mode !== "clock" && this.mode !== "desk" && !(this.mode === "help" && this.helpFrom === "clock"))
 			return;
 
 		const p = beijingParts();
@@ -864,25 +966,22 @@ export class AppBehavior extends Behavior {
 		if (p.ss !== this.lastTickSec) {
 			this.lastTickSec = p.ss;
 			const alarmKey = `${p.y}-${p.m}-${p.d}-${p.hh}-${p.mm}`;
-			const hitAlarm = timeSynced()
-				&& this.settings.alarmOn
-				&& p.hh === this.settings.alarmHH
-				&& p.mm === this.settings.alarmMM
-				&& p.ss === 0
-				&& alarmKey !== this.lastAlarmKey;
-			if (hitAlarm) {
-				this.lastAlarmKey = alarmKey;
-				if (this.mode === "help")
-					this.helpFrom = "al_ring";
-				else {
-					this.mode = "al_ring";
-					this.statusUntil = 0;
-					this.showClock(app, true);
-					this.setLabels(app, formatAlarm(this.settings), "");
-				}
-				this.sound?.alarmChime();
+			const minute = p.hh * 60 + p.mm;
+			const quiet = inQuiet(minute, this.settings.quietStart, this.settings.quietEnd);
+			const hitIndex = dueAlarm(this.settings.alarms, p.w, p.hh, p.mm, p.ss);
+			const snoozeDue = this.snoozeAt > 0 && Date.now() >= this.snoozeAt;
+			const hitAlarm = timeSynced() && !quiet && hitIndex >= 0 && alarmKey !== this.lastAlarmKey;
+			if (snoozeDue && !quiet) {
+				this.snoozeAt = 0;
+				this.alarmIndex = this.snoozeIndex >= 0 ? this.snoozeIndex : 0;
+				this.ring(app);
 			}
-			else if (this.settings.sound) {
+			else if (hitAlarm) {
+				this.lastAlarmKey = alarmKey;
+				this.alarmIndex = hitIndex;
+				this.ring(app);
+			}
+			else if (this.settings.sound && !quiet) {
 				if (timeSynced() && this.settings.hourly && p.mm === 0 && p.ss === 0) {
 					const chimeKey = `${p.y}-${p.m}-${p.d}-${p.hh}`;
 					if (chimeKey !== this.lastChimeKey) {
@@ -898,6 +997,11 @@ export class AppBehavior extends Behavior {
 			}
 		}
 
+		if (this.mode === "desk") {
+			this.paintDesk(app);
+			return;
+		}
+
 		if (this.mode === "help" || Date.now() < this.statusUntil)
 			return;
 
@@ -905,5 +1009,201 @@ export class AppBehavior extends Behavior {
 		if (key === this.dateKey)
 			return;
 		this.paintClockLabels(app);
+	}
+
+	quietText(): string {
+		return quietLabel(this.settings.quietStart, this.settings.quietEnd);
+	}
+
+	applyPose(_app: AppHost) {
+		const sample = this.imu?.sample();
+		if (!sample)
+			return;
+		const rot = poseRotation(sample.x, sample.y, sample.z);
+		if (rot === null || rot === this.rotation)
+			return;
+		this.rotation = rot;
+		const app = _app as AppHost & { rotation?: number };
+		app.rotation = rot;
+	}
+
+	ring(app: AppHost) {
+		if (this.mode === "help")
+			this.helpFrom = "al_ring";
+		else {
+			this.mode = "al_ring";
+			this.statusUntil = 0;
+			this.showClock(app, true);
+			this.setLabels(app, formatAlarm(this.settings), "Enter 贪睡");
+		}
+		this.sound?.alarmChime();
+	}
+
+	enterAlarms(app: AppHost) {
+		this.mode = "alarms";
+		this.statusUntil = 0;
+		this.showList(app, true);
+		this.paintAlarms(app);
+	}
+
+	paintAlarms(app: AppHost) {
+		const lines = [];
+		const alarms = this.settings.alarms;
+		for (let i = 0; i < alarms.length; i++)
+			lines.push({ text: alarmLine(i, alarms[i]), selected: i === this.alarmIndex });
+		const port = contentByName(app, "listPort");
+		const view = asMenu(port);
+		if (view)
+			view.setList(port, `闹钟 ${this.alarmIndex + 1}/${alarms.length}`, lines, "");
+	}
+
+	onAlarms(app: AppHost, stroke: KeyStroke) {
+		if (isBack(stroke)) {
+			this.resumeClock(app);
+			this.maybeBeep();
+			return;
+		}
+		const dir = navDir(stroke);
+		if (dir !== 0) {
+			this.alarmIndex = menuStep(this.alarmIndex, this.settings.alarms.length, dir);
+			this.paintAlarms(app);
+			this.maybeBeep();
+			return;
+		}
+		if (isConfirm(stroke)) {
+			this.enterAlarmEdit(app);
+			return;
+		}
+		if (stroke.chars.some(ch => ch === "d" || ch === "D")) {
+			const alarm = this.settings.alarms[this.alarmIndex];
+			if (!alarm)
+				return;
+			alarm.days = cycleDays(alarm.days);
+			alarm.on = alarm.days !== 0;
+			saveSettings(this.settings);
+			this.paintAlarms(app);
+			this.maybeBeep();
+		}
+	}
+
+	enterDesk(app: AppHost, name: "sw" | "pomo" | "cal" | "zone" | "city" | "manual" | "quiet") {
+		const blocked = this.desk.enter(name);
+		if (blocked) {
+			this.resumeClock(app);
+			this.flashStatus(app, blocked, "");
+			return;
+		}
+		this.mode = "desk";
+		this.statusUntil = 0;
+		this.paintDesk(app);
+	}
+
+	paintDesk(app: AppHost) {
+		const paint = this.desk.paint();
+		if (paint.kind === "list") {
+			this.showList(app, true);
+			const port = contentByName(app, "listPort");
+			const view = asMenu(port);
+			if (view)
+				view.setList(port, paint.title, paint.lines, "");
+			return;
+		}
+		if (paint.kind === "text") {
+			this.showClock(app, false);
+			this.setLabels(app, paint.title, "");
+			setMarqueeText(contentByName(app, "valueLabel"), paint.line, undefined, ON);
+			return;
+		}
+		this.showClock(app, true);
+		this.setLabels(app, paint.title, paint.bottom);
+	}
+
+	onDesk(app: AppHost, stroke: KeyStroke) {
+		const result = this.desk.onStroke(stroke);
+		if (result === "back") {
+			this.resumeClock(app);
+			this.maybeBeep();
+			return;
+		}
+		if (result === "search") {
+			this.lookupCity(app);
+			return;
+		}
+		if (result === "manual") {
+			const p = this.desk.manualParts();
+			setManualClock(p.y, p.m, p.d, p.hh, p.mm);
+			this.resumeClock(app);
+			this.flashStatus(app, "已设", "");
+			this.maybeBeep();
+			return;
+		}
+		if (result === "quiet") {
+			const q = this.desk.quietMinutes();
+			this.settings.quietStart = q.start;
+			this.settings.quietEnd = q.end;
+			saveSettings(this.settings);
+			this.resumeClock(app);
+			this.flashStatus(app, quietLabel(q.start, q.end), "");
+			this.maybeBeep();
+			return;
+		}
+		this.paintDesk(app);
+	}
+
+	lookupCity(app: AppHost) {
+		const query = this.desk.cityText.trim();
+		this.mode = "busy";
+		this.showClock(app, false);
+		this.setLabels(app, "查询", query);
+		searchCity(query, (hits, detail) => {
+			if (!hits.length) {
+				this.mode = "desk";
+				this.paintDesk(app);
+				this.flashStatus(app, detail || "没有", "");
+				return;
+			}
+			this.cityHits = hits;
+			this.cityIndex = 0;
+			this.mode = "hits";
+			this.showList(app, true);
+			this.paintHits(app);
+		});
+	}
+
+	paintHits(app: AppHost) {
+		const lines = [];
+		for (let i = 0; i < this.cityHits.length; i++)
+			lines.push({ text: this.cityHits[i].name, selected: i === this.cityIndex });
+		const port = contentByName(app, "listPort");
+		const view = asMenu(port);
+		if (view)
+			view.setList(port, `城市 ${this.cityIndex + 1}/${this.cityHits.length}`, lines, "");
+	}
+
+	onHits(app: AppHost, stroke: KeyStroke) {
+		if (isBack(stroke)) {
+			this.mode = "desk";
+			this.paintDesk(app);
+			return;
+		}
+		const dir = navDir(stroke);
+		if (dir !== 0) {
+			this.cityIndex = menuStep(this.cityIndex, this.cityHits.length, dir);
+			this.paintHits(app);
+			return;
+		}
+		if (!isConfirm(stroke))
+			return;
+		const hit = this.cityHits[this.cityIndex];
+		if (!hit)
+			return;
+		this.settings.cityName = hit.name;
+		this.settings.cityLat = hit.lat;
+		this.settings.cityLon = hit.lon;
+		saveSettings(this.settings);
+		this.resumeClock(app);
+		this.flashStatus(app, hit.name, "");
+		this.refreshWeather(app, true);
+		this.maybeBeep();
 	}
 }

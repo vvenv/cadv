@@ -1,0 +1,70 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json",
+		"$(MODDABLE)/modules/io/files/posix/manifest.json",
+		"$(MODDABLE)/modules/io/files/esp32/manifest_sdspi.json",
+		"$(MODDABLE)/modules/io/audioin/manifest.json"
+	],
+	"modules": {
+		"*": [
+			"./main",
+			"./behavior",
+			"./view",
+			"./clips",
+			"./wav",
+			"./help"
+		]
+	},
+	"preload": [
+		"behavior",
+		"view",
+		"clips",
+		"wav",
+		"help",
+		"mic"
+	],
+	"platforms": {
+		"esp32": {
+			"defines": {
+				"sdcard": {
+					"cs": 12,
+					"mosi": 14,
+					"miso": 39,
+					"sck": 40,
+					"hz": 20000000,
+					"spi_port": "SPI2_HOST"
+				},
+				"file": {
+					"root": "#/sdcard",
+					"maxOpen": 4,
+					"format": 0
+				}
+			},
+			"esp32Config": {
+				"CONFIG_FATFS_LFN_HEAP": "y",
+				"CONFIG_FATFS_API_ENCODING_UTF_8": "y"
+			},
+			"modules": {
+				"mic": "../../shared/mic"
+			}
+		},
+		"mac": {
+			"modules": {
+				"mic": "../../shared/mic_stub"
+			}
+		},
+		"lin": {
+			"modules": {
+				"mic": "../../shared/mic_stub"
+			}
+		},
+		"...": {
+			"modules": {
+				"mic": "../../shared/mic_stub"
+			}
+		}
+	}
+}

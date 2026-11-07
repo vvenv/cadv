@@ -28,12 +28,26 @@ import { MENU_VISIBLE } from "list";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { asMenu } from "menu-view";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
+import { Power } from "power";
 import { openRadio, type KeyboardRadio, type LinkState } from "radio";
 
 type Mode = "type" | "help";
 
 const FLASH_MS = 450;
 const ZERO_SLOTS = [0, 0, 0, 0, 0, 0];
+
+function brightDir(held: HeldState): -1 | 0 | 1 {
+	if (!held.fn)
+		return 0;
+	for (let i = 0; i < held.keys.length; i++) {
+		const code = held.keys[i].code;
+		if (code === "[")
+			return -1;
+		if (code === "]")
+			return 1;
+	}
+	return 0;
+}
 
 function zeroReport(): Uint8Array {
 	return new Uint8Array(8);
@@ -43,6 +57,7 @@ export class AppBehavior extends Behavior {
 	mode: Mode = "type";
 	kb: CardputerKeyboard | null = null;
 	radio: KeyboardRadio | null = null;
+	power: Power | null = null;
 	kbTimer: unknown = null;
 	marqueeTimer: unknown = null;
 	link: LinkState = "wait";
@@ -59,6 +74,7 @@ export class AppBehavior extends Behavior {
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
+		this.power = new Power("blank");
 		this.kb = new CardputerKeyboard();
 		try {
 			this.radio = openRadio({
@@ -93,9 +109,11 @@ export class AppBehavior extends Behavior {
 		const kb = this.kb;
 		if (!kb?.available || this.leaving)
 			return;
+		this.power?.tick();
 		const curr = kb.pollHeld();
 		if (!curr)
 			return;
+		this.power?.activity();
 		const prev = this.prev;
 		this.prev = curr;
 		this.apply(app, prev, curr);
@@ -124,6 +142,16 @@ export class AppBehavior extends Behavior {
 	apply(app: AppHost, prev: HeldState, curr: HeldState) {
 		if (this.leaving)
 			return;
+		const bright = brightDir(curr);
+		if (bright !== 0 && brightDir(prev) === 0) {
+			const note = this.power?.bump(bright) ?? "";
+			if (note) {
+				this.flash = note;
+				this.flashUntil = Date.now() + 700;
+				this.paint(app);
+			}
+			return;
+		}
 		const action = localAction(prev, curr);
 		if (action === "launcher") {
 			this.releaseHost();

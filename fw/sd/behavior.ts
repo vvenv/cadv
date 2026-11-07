@@ -7,6 +7,10 @@ import {} from "piu/MC";
 import Timer from "timer";
 import { openInstaller, type Installer } from "boot";
 import { loadCatalog, openRead, type SdCatalog, type SdEntry } from "catalog";
+import { cardSpace } from "card";
+import { Power } from "power";
+import { acceptStroke, titleWithPower } from "session";
+import { fitsSlot } from "slot";
 import { pollLink, setLinkBusy, type LinkEvent } from "link";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
@@ -50,7 +54,8 @@ function installNote(message: string): string {
 }
 
 function rowText(entry: SdEntry): string {
-	let text = entry.error ? "!" + entry.label : entry.label;
+	const big = entry.size > 0 && !fitsSlot(entry.size);
+	let text = (entry.error ? "!" : "") + (big ? "超 " : "") + entry.label;
 	if (text.length <= ROW_CHARS)
 		return text;
 	return "..." + text.slice(text.length - (ROW_CHARS - 3));
@@ -71,6 +76,8 @@ function wrapText(text: string, width: number): string[] {
 export class AppBehavior extends Behavior {
 	mode: Mode = "list";
 	kb: CardputerKeyboard | null = null;
+	power: Power | null = null;
+	freeBytes = -1;
 	kbTimer: ReturnType<typeof Timer.repeat> | null = null;
 	catalog: SdCatalog = { root: null, error: "", entries: [] };
 	index = 0;
@@ -89,6 +96,7 @@ export class AppBehavior extends Behavior {
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
+		this.power = new Power("blank");
 		this.kb = new CardputerKeyboard();
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		this.startScan(app);
@@ -96,7 +104,8 @@ export class AppBehavior extends Behavior {
 
 	onKeyboardTick(app: AppHost) {
 		this.onLink(app, false);
-		const stroke = this.kb?.poll();
+		const raw = this.kb?.poll() ?? null;
+		const stroke = this.power ? acceptStroke(this.power, raw, true) : raw;
 		if (stroke)
 			this.handleStroke(app, stroke);
 	}
@@ -173,8 +182,9 @@ export class AppBehavior extends Behavior {
 			this.hostEnterDown = true;
 		}
 		const stroke = hostStroke(key);
-		if (stroke)
-			this.handleStroke(content as AppHost, stroke);
+		const use = this.power ? acceptStroke(this.power, stroke, true) : stroke;
+		if (use)
+			this.handleStroke(content as AppHost, use);
 	}
 
 	onKeyUp(_content: unknown, key: string) {
@@ -194,6 +204,8 @@ export class AppBehavior extends Behavior {
 
 	finishScan(app: AppHost) {
 		this.catalog = loadCatalog();
+		const space = cardSpace();
+		this.freeBytes = space ? space.free : -1;
 		this.index = 0;
 		this.scanning = false;
 		this.paint(app);
@@ -408,7 +420,8 @@ export class AppBehavior extends Behavior {
 		const pos = (this.index + 1) + "/" + n;
 		if (entry.error)
 			return pos + " 失败";
-		return pos + " " + formatCount(entry.size);
+		const free = this.freeBytes >= 0 ? " 余" + formatCount(this.freeBytes) : "";
+		return pos + " " + formatCount(entry.size) + free;
 	}
 
 	paint(app: AppHost) {
@@ -440,7 +453,8 @@ export class AppBehavior extends Behavior {
 				if (row)
 					lines.push({ text: row.key, right: row.action, selected: false });
 			}
-			view.setList(port, `${helpTitle()} ${start + 1}/${n}`, lines, "");
+			const title = this.power ? titleWithPower(this.power, `${helpTitle()} ${start + 1}/${n}`) : `${helpTitle()} ${start + 1}/${n}`;
+			view.setList(port, title, lines, "");
 			return;
 		}
 		const entries = this.catalog.entries;

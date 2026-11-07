@@ -10,7 +10,7 @@ function stroke(
 	left: boolean,
 	right: boolean,
 ): KeyStroke {
-	return { chars, enter, del, shift: false, esc, up, down, left, right, fn: false };
+	return { chars, enter, del, shift: false, esc, up, down, left, right, fn: false, bright: 0 };
 }
 
 /** Desktop simulator keys. Hardware polling owns the keypad when it is up. */

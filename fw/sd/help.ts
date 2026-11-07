@@ -9,6 +9,8 @@ const LIST_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "K/J", action: "上下" },
 	{ key: "Enter", action: "再按载入" },
+	{ key: "超", action: "镜像写不进槽" },
+	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "BS", action: "重扫" },
 	{ key: "USB", action: "挂到 cadv" },
 	{ key: "Fn+BS", action: "载入后回来" },

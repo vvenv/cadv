@@ -15,6 +15,8 @@ import { bootLauncher } from "boot";
 import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir, volumeDelta } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
+import { Power } from "power";
+import { acceptStroke, titleWithPower } from "session";
 import { ClockSound } from "sound";
 import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from "settings";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
@@ -24,6 +26,36 @@ import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, listWordSour
 import { SOURCE_FLASH } from "wordbank";
 
 type Mode = "play" | "menu" | "help";
+
+function dayKey(): string {
+	const t = new Date();
+	const m = t.getMonth() + 1;
+	const d = t.getDate();
+	return t.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (d < 10 ? "0" + d : d);
+}
+
+function missSet(raw: string): Set<string> {
+	const set = new Set<string>();
+	for (const part of raw.split(",")) {
+		if (part)
+			set.add(part);
+	}
+	return set;
+}
+
+function addMiss(raw: string, word: string): string {
+	const parts = raw ? raw.split(",").filter(part => part && part !== word) : [];
+	parts.push(word);
+	while (parts.length > 40)
+		parts.shift();
+	return parts.join(",");
+}
+
+function dropMiss(raw: string, word: string): string {
+	if (!raw)
+		return "";
+	return raw.split(",").filter(part => part && part !== word).join(",");
+}
 
 const WORD_HOLD_MS = 700;
 
@@ -59,6 +91,7 @@ export class AppBehavior extends Behavior {
 	mode: Mode = "play";
 	kb: CardputerKeyboard | null = null;
 	sound: ClockSound | null = null;
+	power: Power | null = null;
 	settings: WordSettings = {
 		sound: true,
 		volume: 6,
@@ -67,7 +100,14 @@ export class AppBehavior extends Behavior {
 		wordSource: SOURCE_FLASH,
 		shuffle: false,
 		phone: true,
+		onlyMiss: false,
+		misses: "",
+		streak: 0,
+		today: 0,
+		todayKey: "",
 	};
+	sessionOk = 0;
+	sessionBad = 0;
 	kbTimer: unknown = null;
 	tickTimer: unknown = null;
 	marqueeTimer: unknown = null;
@@ -98,6 +138,7 @@ export class AppBehavior extends Behavior {
 			this.settings.wordBank = 0;
 			saveSettings(this.settings);
 		}
+		this.power = new Power("blank");
 		this.kb = new CardputerKeyboard();
 		this.sound = new ClockSound();
 		this.sound.setVolume(this.settings.volume);
@@ -111,7 +152,7 @@ export class AppBehavior extends Behavior {
 
 	menuList() {
 		const s = this.settings;
-		return menuItems(s.sound, s.wordLevel, s.wordBank, s.wordSource, s.shuffle, s.phone);
+		return menuItems(s.sound, s.wordLevel, s.wordBank, s.wordSource, s.shuffle, s.phone, s.onlyMiss);
 	}
 
 	lexIndex(): number {
@@ -124,7 +165,12 @@ export class AppBehavior extends Behavior {
 	rebuildOrder(keepLex = -1) {
 		const n = wordCount(this.settings.wordBank);
 		const salt = Date.now() + this.settings.wordBank * 131 + (this.settings.shuffle ? 1 : 0);
-		this.wordOrder = quizOrder(n, this.settings.shuffle, salt);
+		let order = quizOrder(n, this.settings.shuffle, salt);
+		if (this.settings.onlyMiss) {
+			const miss = missSet(this.settings.misses);
+			order = order.filter(index => miss.has(wordAt(this.settings.wordBank, index).word.toLowerCase()));
+		}
+		this.wordOrder = order;
 		if (keepLex >= 0 && n > 0) {
 			for (let i = 0; i < this.wordOrder.length; i++) {
 				if (this.wordOrder[i] === keepLex) {
@@ -140,7 +186,15 @@ export class AppBehavior extends Behavior {
 		const kb = this.kb;
 		if (!kb)
 			return;
-		const stroke = kb.poll();
+		const raw = kb.poll();
+		const stroke = this.power ? acceptStroke(this.power, raw, true) : raw;
+		const note = this.power?.takeNote() ?? "";
+		if (note) {
+			this.wordNote = note;
+			this.wordNoteUntil = Date.now() + 700;
+			if (this.mode === "play")
+				this.paintWord(app);
+		}
 		if (stroke)
 			this.handleStroke(app, stroke);
 	}
@@ -152,8 +206,17 @@ export class AppBehavior extends Behavior {
 			this.hostEnterDown = true;
 		}
 		const stroke = hostStroke(key);
-		if (stroke)
-			this.handleStroke(content as AppHost, stroke);
+		const app = content as AppHost;
+		const use = this.power ? acceptStroke(this.power, stroke, true) : stroke;
+		const note = this.power?.takeNote() ?? "";
+		if (note) {
+			this.wordNote = note;
+			this.wordNoteUntil = Date.now() + 700;
+			if (this.mode === "play")
+				this.paintWord(app);
+		}
+		if (use)
+			this.handleStroke(app, use);
 	}
 
 	onKeyUp(_content: unknown, key: string) {
@@ -255,7 +318,8 @@ export class AppBehavior extends Behavior {
 	}
 
 	setLabels(app: AppHost, top: string, bottom: string) {
-		setMarqueeText(contentByName(app, "glossLabel"), top);
+		const titled = this.power ? titleWithPower(this.power, top) : top;
+		setMarqueeText(contentByName(app, "glossLabel"), titled);
 		setMarqueeText(contentByName(app, "phoneLabel"), bottom, bottom ? phoneFace() : undefined);
 	}
 
@@ -361,6 +425,15 @@ export class AppBehavior extends Behavior {
 			this.paintMenu(app);
 			return;
 		}
+		if (id === "miss") {
+			this.settings.onlyMiss = !this.settings.onlyMiss;
+			saveSettings(this.settings);
+			this.rebuildOrder();
+			this.wordTyped = "";
+			this.wordNote = "";
+			this.paintMenu(app);
+			return;
+		}
 		if (id === "snd") {
 			this.settings.sound = !this.settings.sound;
 			saveSettings(this.settings);
@@ -400,14 +473,12 @@ export class AppBehavior extends Behavior {
 	}
 
 	loadWord() {
-		const n = wordCount(this.settings.wordBank);
+		const n = this.wordOrder.length;
 		if (n <= 0) {
 			this.wordHidden = [];
 			this.wordTyped = "";
 			return;
 		}
-		if (this.wordOrder.length !== n)
-			this.rebuildOrder();
 		if (this.wordIndex < 0 || this.wordIndex >= n)
 			this.wordIndex = 0;
 		const lex = this.lexIndex();
@@ -457,7 +528,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	stepWord(app: AppHost, dir: -1 | 1) {
-		const n = wordCount(this.settings.wordBank);
+		const n = this.wordOrder.length;
 		if (n <= 0)
 			return;
 		this.wordIndex = (this.wordIndex + dir + n) % n;
@@ -469,10 +540,18 @@ export class AppBehavior extends Behavior {
 	}
 
 	paintWord(app: AppHost) {
+		if (!this.wordOrder.length) {
+			const top = wordCount(this.settings.wordBank) <= 0 ? "无词库" : "无错题";
+			this.setLabels(app, top, "");
+			setStringProp(contentByName(app, "puzzleLabel"), "");
+			return;
+		}
 		const entry = wordAt(this.settings.wordBank, this.lexIndex());
 		const note = this.wordNote && Date.now() < this.wordNoteUntil ? this.wordNote : "";
 		const top = !entry.word ? "无词库" : (note || entry.gloss);
-		const bottom = entry.word && this.settings.phone ? entry.phone : "";
+		const stats = `今${this.todayCount()} 连${this.settings.streak} 对${this.sessionOk} 错${this.sessionBad}`;
+		const phone = entry.word && this.settings.phone ? entry.phone : "";
+		const bottom = phone ? `${phone} ${stats}` : stats;
 		this.setLabels(app, top, bottom);
 		const value = contentByName(app, "puzzleLabel");
 		if (hasStyle(value))
@@ -484,7 +563,7 @@ export class AppBehavior extends Behavior {
 	advanceSolved(app: AppHost) {
 		this.wordAdvance = false;
 		this.wordNote = "";
-		const n = wordCount(this.settings.wordBank);
+		const n = this.wordOrder.length;
 		this.wordIndex = n > 0 ? (this.wordIndex + 1) % n : 0;
 		this.loadWord();
 		this.paintWord(app);
@@ -550,12 +629,14 @@ export class AppBehavior extends Behavior {
 				this.wordNote = "正确";
 				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
 				this.wordAdvance = true;
+				this.noteResult(entry.word, true);
 				this.paintWord(app);
 				this.maybeBeep();
 			}
 			else {
 				this.wordNote = "不对";
 				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
+				this.noteResult(entry.word, false);
 				this.paintWord(app);
 			}
 			return;
@@ -564,6 +645,31 @@ export class AppBehavior extends Behavior {
 			this.wordNote = "";
 			this.paintWord(app);
 		}
+	}
+
+	noteResult(word: string, ok: boolean) {
+		const key = word.toLowerCase();
+		const today = dayKey();
+		if (this.settings.todayKey !== today) {
+			this.settings.todayKey = today;
+			this.settings.today = 0;
+		}
+		this.settings.today += 1;
+		if (ok) {
+			this.sessionOk += 1;
+			this.settings.streak += 1;
+			this.settings.misses = dropMiss(this.settings.misses, key);
+		}
+		else {
+			this.sessionBad += 1;
+			this.settings.streak = 0;
+			this.settings.misses = addMiss(this.settings.misses, key);
+		}
+		saveSettings(this.settings);
+	}
+
+	todayCount(): number {
+		return this.settings.todayKey === dayKey() ? this.settings.today : 0;
 	}
 
 	onTick(app: AppHost) {

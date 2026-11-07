@@ -16,8 +16,14 @@ const CHIP_ID = 0x24;
 const REG_CHIP = 0x00;
 const REG_STATUS = 0x03;
 const REG_ACC = 0x0C;
+const REG_STEP = 0x1F;
+const REG_FEAT_PAGE = 0x2F;
+const REG_FEAT = 0x30;
+const REG_STEP_CFG = 0x32;
 const REG_ACC_CONF = 0x40;
 const REG_ACC_RANGE = 0x41;
+const REG_GYR_CONF = 0x42;
+const REG_GYR_RANGE = 0x43;
 const REG_INIT_CTRL = 0x59;
 const REG_INIT_ADDR = 0x5B;
 const REG_INIT_DATA = 0x5E;
@@ -28,12 +34,25 @@ const REG_CMD = 0x7E;
 const SOFT_RESET = 0xB6;
 /** ±2 g, 16-bit. */
 const SCALE = 2 / 32768;
+/** ±2000 °/s, 16-bit. */
+const SCALE_GYRO = 2000 / 32768;
 
-export type AccelSample = { x: number; y: number; z: number };
+export type AccelSample = {
+	x: number;
+	y: number;
+	z: number;
+	/** °/s */
+	gx: number;
+	gy: number;
+	gz: number;
+	/** Hardware step count since the counter was enabled. */
+	steps: number;
+};
 
 export type ImuHandle = {
 	sample(): AccelSample | null;
 	close(): void;
+	pedometer: boolean;
 };
 
 let lastError = "无芯片";
@@ -166,20 +185,37 @@ function bringUp(io: SMBus): ImuHandle {
 	upload(io, configBytes());
 	write8(io, REG_ACC_CONF, 0xa8);
 	write8(io, REG_ACC_RANGE, 0x00);
-	write8(io, REG_PWR_CTRL, 0x04);
+	write8(io, REG_GYR_CONF, 0xa9);
+	write8(io, REG_GYR_RANGE, 0x00);
+	write8(io, REG_PWR_CTRL, 0x06);
+	const pedometer = enableSteps(io);
 
-	const raw = new Uint8Array(6);
+	const raw = new Uint8Array(12);
 	raw[0] = 0;
 	const view = new DataView(raw.buffer);
+	const stepRaw = new Uint8Array(2);
 	let last: AccelSample | null = null;
 	return {
+		pedometer,
 		sample() {
 			try {
 				io.readBuffer(REG_ACC, raw);
+				let steps = 0;
+				try {
+					io.readBuffer(REG_STEP, stepRaw);
+					steps = stepRaw[0] | (stepRaw[1] << 8);
+				}
+				catch {
+					steps = last ? last.steps : 0;
+				}
 				last = {
 					x: view.getInt16(0, true) * SCALE,
 					y: view.getInt16(2, true) * SCALE,
 					z: view.getInt16(4, true) * SCALE,
+					gx: view.getInt16(6, true) * SCALE_GYRO,
+					gy: view.getInt16(8, true) * SCALE_GYRO,
+					gz: view.getInt16(10, true) * SCALE_GYRO,
+					steps,
 				};
 				return last;
 			}
@@ -191,6 +227,24 @@ function bringUp(io: SMBus): ImuHandle {
 			try { io.close(); } catch { /* */ }
 		},
 	};
+}
+
+/** Page 6, SC_26 bit 12 enables the hardware step counter. */
+function enableSteps(io: SMBus): boolean {
+	try {
+		write8(io, REG_FEAT_PAGE, 6);
+		const page = new Uint8Array(16);
+		io.readBuffer(REG_FEAT, page);
+		const view = new DataView(page.buffer);
+		const value = (view.getUint16(REG_STEP_CFG - REG_FEAT, true) | 0x1000) & 0xffff;
+		const out = new Uint8Array(2);
+		new DataView(out.buffer).setUint16(0, value, true);
+		io.writeBuffer(REG_STEP_CFG, out);
+		return true;
+	}
+	catch {
+		return false;
+	}
 }
 
 function errorText(e: unknown): string {

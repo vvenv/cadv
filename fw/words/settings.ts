@@ -22,6 +22,16 @@ export type WordSettings = {
 	shuffle: boolean;
 	/** Show IPA in the bottom bar when true. */
 	phone: boolean;
+	/** Practice only the saved misses. */
+	onlyMiss: boolean;
+	/** Comma-separated headwords, newest last. */
+	misses: string;
+	/** Correct answers since the last miss. */
+	streak: number;
+	/** Answers finished on todayKey. */
+	today: number;
+	/** YYYY-MM-DD of `today`. */
+	todayKey: string;
 };
 
 function readBool(name: string, fallback: boolean): boolean {
@@ -82,6 +92,11 @@ export function loadSettings(): WordSettings {
 		wordSource: readString("wordSource", SOURCE_FLASH),
 		shuffle: readBool("shuffle", false),
 		phone: readBool("phone", true),
+		onlyMiss: readBool("onlyMiss", false),
+		misses: readString("misses", ""),
+		streak: readInt("streak", 0, 0, 9999),
+		today: readInt("today", 0, 0, 9999),
+		todayKey: readString("todayKey", ""),
 	};
 }
 
@@ -93,4 +108,9 @@ export function saveSettings(s: WordSettings) {
 	Preference.set(PREF, "wordSource", s.wordSource || SOURCE_FLASH);
 	Preference.set(PREF, "shuffle", s.shuffle ? 1 : 0);
 	Preference.set(PREF, "phone", s.phone ? 1 : 0);
+	Preference.set(PREF, "onlyMiss", s.onlyMiss ? 1 : 0);
+	Preference.set(PREF, "misses", s.misses);
+	Preference.set(PREF, "streak", s.streak);
+	Preference.set(PREF, "today", s.today);
+	Preference.set(PREF, "todayKey", s.todayKey);
 }

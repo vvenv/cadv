@@ -6,6 +6,29 @@ import type { ClockSettings } from "settings";
 
 const BEIJING_OFFSET_SEC = 8 * 3600;
 
+let manualBase = 0;
+let manualAt = 0;
+let manualOn = false;
+
+/** Wall clock while the chip still thinks it is 1970. NTP clears this. */
+export function setManualClock(year: number, month: number, day: number, hh: number, mm: number) {
+	const utc = Date.UTC(year, month - 1, day, hh, mm, 0) - BEIJING_OFFSET_SEC * 1000;
+	manualBase = utc;
+	manualAt = Date.now();
+	manualOn = true;
+}
+
+function wallUtcMs(): number {
+	const now = Date.now();
+	if (now >= Date.UTC(2020, 0, 1)) {
+		manualOn = false;
+		return now;
+	}
+	if (manualOn)
+		return manualBase + (now - manualAt);
+	return now;
+}
+
 /** Top-line weekday codes (Sun→Sat), matching `YYYY-MM-DD MO …`. */
 const WEEKDAYS_EN = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 const LM = ["正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"];
@@ -50,8 +73,12 @@ export function formatHMS(totalSec: number): string {
 	return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
 }
 
+export function beijingNowUtc(): number {
+	return wallUtcMs();
+}
+
 export function beijingParts(): { y: number; m: number; d: number; w: number; hh: number; mm: number; ss: number } {
-	const ms = Date.now() + BEIJING_OFFSET_SEC * 1000;
+	const ms = wallUtcMs() + BEIJING_OFFSET_SEC * 1000;
 	const t = new Date(ms);
 	return {
 		y: t.getUTCFullYear(),
@@ -80,12 +107,31 @@ function formatDate(): string {
 	return `${p.y}-${pad2(p.m)}-${pad2(p.d)} ${WEEKDAYS_EN[p.w]}`;
 }
 
-/** Top line: `YYYY-MM-DD MO` or `YYYY-MM-DD MO AL:HH:MM` when alarm armed. */
-export function formatClockTop(s: ClockSettings): string {
+/** Top line: date, armed alarms, then battery / signal. */
+export function formatClockTop(s: ClockSettings, tail = ""): string {
 	const base = formatDate();
-	if (!s.alarmOn)
-		return base;
-	return `${base} AL:${pad2(s.alarmHH)}:${pad2(s.alarmMM)}`;
+	let shown = false;
+	let extra = 0;
+	let hh = 0;
+	let mm = 0;
+	for (let i = 0; i < s.alarms.length; i++) {
+		const alarm = s.alarms[i];
+		if (!alarm.on || !alarm.days)
+			continue;
+		if (!shown) {
+			shown = true;
+			hh = alarm.hh;
+			mm = alarm.mm;
+		}
+		else
+			extra++;
+	}
+	let line = base;
+	if (shown)
+		line += ` AL:${pad2(hh)}:${pad2(mm)}` + (extra ? `+${extra}` : "");
+	if (tail)
+		line += " " + tail;
+	return line;
 }
 
 function leapMonth(y: number): number {

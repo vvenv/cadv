@@ -1,0 +1,20 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"$(MODULES)/files/preference",
+		"../../shared/manifest.json"
+	],
+	"modules": { "*": ["./main", "./behavior", "./help"] },
+	"preload": ["behavior", "help", "imu"],
+	"platforms": {
+		"esp32": {
+			"include": ["$(MODDABLE)/modules/drivers/sensors/bmi270"],
+			"modules": { "imu": "../../shared/imu" }
+		},
+		"mac": { "modules": { "imu": "../../shared/imu_stub" } },
+		"lin": { "modules": { "imu": "../../shared/imu_stub" } },
+		"...": { "modules": { "imu": "../../shared/imu_stub" } }
+	}
+}

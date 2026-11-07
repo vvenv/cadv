@@ -1,0 +1,17 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json",
+		"$(MODDABLE)/modules/io/audioin/manifest.json"
+	],
+	"modules": { "*": ["./main", "./behavior", "./pitch", "./help"] },
+	"preload": ["behavior", "pitch", "help", "mic"],
+	"platforms": {
+		"esp32": { "modules": { "mic": "../../shared/mic" } },
+		"mac": { "modules": { "mic": "../../shared/mic_stub" } },
+		"lin": { "modules": { "mic": "../../shared/mic_stub" } },
+		"...": { "modules": { "mic": "../../shared/mic_stub" } }
+	}
+}

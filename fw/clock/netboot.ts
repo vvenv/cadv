@@ -12,6 +12,23 @@ import config from "mc/config";
 const PREF = "wifi";
 const WIFI_TIMEOUT_MS = 15000;
 
+let station: InstanceType<typeof WiFi> | undefined;
+
+/** RSSI of the association left open by connectWifi. Null when down. */
+export function wifiRssi(): number | null {
+	if (!station)
+		return null;
+	try {
+		if (station.connection < 500)
+			return null;
+		const value = station.RSSI;
+		return typeof value === "number" ? value : null;
+	}
+	catch {
+		return null;
+	}
+}
+
 export type WifiCreds = { ssid: string; password: string };
 
 function cfgString(obj: Record<string, unknown>, key: string): string | undefined {
@@ -53,7 +70,13 @@ export function connectWifi(creds: WifiCreds, done: (ok: boolean, detail: string
 		finished = true;
 		if (timer !== undefined)
 			Timer.clear(timer);
-		try { w?.close(); } catch { /* */ }
+		if (ok && w) {
+			try { station?.close(); } catch { /* */ }
+			station = w;
+		}
+		else {
+			try { w?.close(); } catch { /* */ }
+		}
 		done(ok, detail);
 	};
 

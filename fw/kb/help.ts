@@ -16,6 +16,7 @@ const ROWS: HelpRow[] = [
 	{ key: "Fn+I/N", action: "上页/下页" },
 	{ key: "Fn+P", action: "Delete" },
 	{ key: "Fn+/", action: "本页" },
+	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "BS", action: "关掉本页" },
 	{ key: "K/J", action: "翻页" },
 	{ key: "Fn+Tab", action: "清配对" },
