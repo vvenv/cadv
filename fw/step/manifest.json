@@ -6,8 +6,8 @@
 		"$(MODULES)/files/preference",
 		"../../shared/manifest.json"
 	],
-	"modules": { "*": ["./main", "./behavior", "./help"] },
-	"preload": ["behavior", "help", "imu"],
+	"modules": { "*": ["./main", "./behavior", "./view", "./help"] },
+	"preload": ["behavior", "view", "help", "imu"],
 	"platforms": {
 		"esp32": {
 			"include": ["$(MODDABLE)/modules/drivers/sensors/bmi270"],

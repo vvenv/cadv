@@ -5,6 +5,6 @@
 		"$(MODDABLE)/examples/manifest_piu.json",
 		"../../shared/manifest.json"
 	],
-	"modules": { "*": ["./main", "./behavior", "./help"] },
-	"preload": ["behavior", "help"]
+	"modules": { "*": ["./main", "./behavior", "./view", "./help"] },
+	"preload": ["behavior", "view", "help"]
 }

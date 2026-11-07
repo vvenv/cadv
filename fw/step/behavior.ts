@@ -15,7 +15,8 @@ import { asMenu } from "menu-view";
 import { openImu, type ImuHandle } from "imu";
 import { Power } from "power";
 import { acceptStroke, titleWithPower } from "session";
-import { contentByName, type AppHost } from "ui";
+import { contentByName, setVisibleProp, type AppHost } from "ui";
+import { asStep } from "view";
 
 const PREF = "step";
 
@@ -175,20 +176,23 @@ export class AppBehavior extends Behavior {
 	}
 
 	paint(app: AppHost) {
-		const port = contentByName(app, "listPort");
-		const view = asMenu(port);
-		if (!view)
-			return;
+		const list = contentByName(app, "listPort");
+		const face = contentByName(app, "facePort");
 		if (this.mode === "help") {
-			view.setList(port, helpTitle(), helpFor().map(row => ({ text: row.key, right: row.action, selected: false })), "");
+			setVisibleProp(face, false);
+			setVisibleProp(list, true);
+			const view = asMenu(list);
+			if (view)
+				view.setList(list, helpTitle(), helpFor().map(row => ({ text: row.key, right: row.action, selected: false })), "");
 			return;
 		}
+		setVisibleProp(list, false);
+		setVisibleProp(face, true);
+		const view = asStep(face);
+		if (!view)
+			return;
 		const meters = Math.round(this.steps * this.stride / 100);
 		const title = this.power ? titleWithPower(this.power, this.note || this.day) : (this.note || this.day);
-		view.setList(port, title, [
-			{ text: this.steps + " 步", selected: true },
-			{ text: "约 " + meters + " 米", selected: false },
-			{ text: "步幅 " + this.stride + "cm", selected: false },
-		], "");
+		view.setStep(face, title, this.steps, meters, this.stride);
 	}
 }

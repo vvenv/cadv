@@ -11,7 +11,8 @@ import { Power } from "power";
 import { acceptStroke, titleWithPower } from "session";
 import { ClockSound } from "sound";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
-import { contentByName, type AppHost } from "ui";
+import { contentByName, setVisibleProp, type AppHost } from "ui";
+import { asPiano } from "view";
 
 const KEYS = "awsedftgyhuj";
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -27,6 +28,9 @@ export class AppBehavior extends Behavior {
 	kbTimer: ReturnType<typeof Timer.repeat> | null = null;
 	volume = VOL_DEFAULT;
 	note = "按键";
+	/** Semitone of the last key, or -1. */
+	key = -1;
+	hz = 0;
 	helpIndex = 0;
 	hostEnterDown = false;
 
@@ -96,26 +100,32 @@ export class AppBehavior extends Behavior {
 			const at = KEYS.indexOf(ch.toLowerCase());
 			if (at < 0)
 				continue;
-			this.note = NAMES[at];
+			this.key = at;
+			this.note = NAMES[at] + "4";
+			this.hz = FREQ[at];
 			this.sound?.play([{ hz: FREQ[at], ms: 280 }]);
 		}
 		this.paint(app);
 	}
 
 	paint(app: AppHost) {
-		const port = contentByName(app, "listPort");
-		const view = asMenu(port);
-		if (!view)
-			return;
+		const list = contentByName(app, "listPort");
+		const face = contentByName(app, "facePort");
 		if (this.mode === "help") {
-			view.setList(port, helpTitle(), helpPage(helpFor(), this), "");
+			setVisibleProp(face, false);
+			setVisibleProp(list, true);
+			const view = asMenu(list);
+			if (view)
+				view.setList(list, helpTitle(), helpPage(helpFor(), this), "");
 			return;
 		}
+		setVisibleProp(list, false);
+		setVisibleProp(face, true);
+		const view = asPiano(face);
+		if (!view)
+			return;
 		const title = this.power ? titleWithPower(this.power, "琴") : "琴";
-		view.setList(port, title, [
-			{ text: this.note, selected: true },
-			{ text: "音量 " + this.volume, selected: false },
-		], "");
+		view.setKey(face, title, this.note, this.hz, this.key, this.volume);
 	}
 }
 

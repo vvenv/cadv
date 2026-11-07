@@ -5,7 +5,8 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { BG, FONT_UI, INK, MID, ON } from "ink";
+import { fillDisk, strokeDisk } from "draw";
+import { AMBER, BG, FONT_UI, INK, MID, ON, WELL } from "ink";
 import { ROW_LEAD, ROW_PITCH, rowOrigin, rowTextY } from "list";
 
 export type LevelMode = "flat" | "edgeY" | "edgeX" | "none";
@@ -25,7 +26,6 @@ export type LevelFrame = {
 
 const TOLERANCE = 0.5;
 const MAX_DEG = 12;
-const AMBER = "#FFB000";
 
 let faceStyle: /* Style */ object | undefined;
 function style(): /* Style */ any {
@@ -40,39 +40,6 @@ function clamp(v: number, lo: number, hi: number): number {
 	if (v > hi)
 		return hi;
 	return v;
-}
-
-function fillDisk(port: PortContent, cx: number, cy: number, r: number, color: string) {
-	if (r <= 0)
-		return;
-	for (let dy = -r; dy <= r; dy++) {
-		const rr = r * r - dy * dy;
-		if (rr < 0)
-			continue;
-		const w = Math.floor(Math.sqrt(rr));
-		port.fillColor(color, cx - w, cy + dy, w * 2 + 1, 1);
-	}
-}
-
-function strokeDisk(port: PortContent, cx: number, cy: number, r: number, color: string) {
-	if (r <= 0)
-		return;
-	for (let dy = -r; dy <= r; dy++) {
-		const rr = r * r - dy * dy;
-		if (rr < 0)
-			continue;
-		const w = Math.floor(Math.sqrt(rr));
-		const inner = (r - 1) * (r - 1) - dy * dy;
-		if (inner < 0) {
-			port.fillColor(color, cx - w, cy + dy, w * 2 + 1, 1);
-			continue;
-		}
-		const wi = Math.floor(Math.sqrt(inner));
-		if (w > wi) {
-			port.fillColor(color, cx - w, cy + dy, w - wi, 1);
-			port.fillColor(color, cx + wi + 1, cy + dy, w - wi, 1);
-		}
-	}
 }
 
 function drawString(port: PortContent, text: string, color: string, x: number, y: number) {
@@ -151,6 +118,7 @@ export class LevelViewBehavior extends Behavior {
 		const cx = 8 + r;
 		const cy = bodyTop + Math.floor(bodyH / 2);
 		const ring = f.level ? ON : MID;
+		fillDisk(port, cx, cy, r - 2, WELL);
 		strokeDisk(port, cx, cy, r, MID);
 		strokeDisk(port, cx, cy, Math.floor(r * 2 / 3), MID);
 		strokeDisk(port, cx, cy, Math.floor(r / 3), ring);
@@ -190,9 +158,9 @@ export class LevelViewBehavior extends Behavior {
 		port.fillColor(MID, x0 + rad, y0, tubeW - rad * 2, tubeH);
 		fillDisk(port, x0 + rad, cy, rad, MID);
 		fillDisk(port, x0 + tubeW - rad, cy, rad, MID);
-		port.fillColor(BG, x0 + rad, y0 + 2, tubeW - rad * 2, tubeH - 4);
-		fillDisk(port, x0 + rad, cy, rad - 2, BG);
-		fillDisk(port, x0 + tubeW - rad, cy, rad - 2, BG);
+		port.fillColor(WELL, x0 + rad, y0 + 2, tubeW - rad * 2, tubeH - 4);
+		fillDisk(port, x0 + rad, cy, rad - 2, WELL);
+		fillDisk(port, x0 + tubeW - rad, cy, rad - 2, WELL);
 
 		port.fillColor(ON, cx, y0 - 4, 2, tubeH + 8);
 		port.fillColor(MID, cx - 14, y0 + 5, 1, tubeH - 10);

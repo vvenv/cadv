@@ -382,6 +382,6 @@ export class AppBehavior extends Behavior {
 		const title = this.file && this.mode === "live" ? "录音中" : (this.mode === "play" ? "播放" : "录音");
 		const banner = this.power?.banner() ?? "";
 		const sub = [banner, this.note, this.file ? Math.floor(this.pcm / 32000) + "s" : ""].filter(part => part).join(" ");
-		view.setMeter(port, title, this.mode === "play" ? 40 : peak, sub);
+		view.setMeter(port, title, this.mode === "play" ? -1 : peak, sub);
 	}
 }

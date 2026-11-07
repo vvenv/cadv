@@ -12,6 +12,9 @@ export function setStringProp(target: unknown, value: string) {
 }
 
 export function setVisibleProp(target: unknown, value: boolean) {
-	if (target && typeof target === "object" && "visible" in target)
-		(target as { visible: boolean }).visible = value;
+	if (!target || typeof target !== "object" || !("visible" in target))
+		return;
+	const node = target as { visible: boolean };
+	if (node.visible !== value)
+		node.visible = value;
 }

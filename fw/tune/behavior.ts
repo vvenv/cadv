@@ -10,7 +10,8 @@ import { openMic, type MicFeed } from "mic";
 import { fundamental, noteName } from "pitch";
 import { Power } from "power";
 import { acceptStroke, titleWithPower } from "session";
-import { contentByName, type AppHost } from "ui";
+import { contentByName, setVisibleProp, type AppHost } from "ui";
+import { asTune } from "view";
 
 type Mode = "tune" | "help";
 
@@ -25,8 +26,9 @@ export class AppBehavior extends Behavior {
 	kbTimer: ReturnType<typeof Timer.repeat> | null = null;
 	buf = new Int16Array(N);
 	filled = 0;
-	line = "听";
-	cents = "";
+	name = "听";
+	cents: number | null = null;
+	hz = 0;
 	measured = 0;
 	hostEnterDown = false;
 
@@ -34,7 +36,7 @@ export class AppBehavior extends Behavior {
 		const app = content as AppHost;
 		this.power = new Power("blank");
 		this.mic = openMic(pcm => this.push(pcm));
-		this.line = this.mic ? "听" : "无麦克风";
+		this.name = this.mic ? "听" : "无麦克风";
 		this.kb = new CardputerKeyboard();
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		this.paint(app);
@@ -65,13 +67,14 @@ export class AppBehavior extends Behavior {
 		const freq = fundamental(this.buf, RATE);
 		const note = noteName(freq);
 		if (!note) {
-			this.line = "无声";
-			this.cents = "";
+			this.name = "无声";
+			this.cents = null;
+			this.hz = 0;
 			return;
 		}
-		const sign = note.cents > 0 ? "+" : "";
-		this.line = note.name;
-		this.cents = Math.round(freq) + "Hz " + sign + note.cents;
+		this.name = note.name;
+		this.cents = note.cents;
+		this.hz = Math.round(freq);
 	}
 
 	onKeyDown(content: unknown, key: string) {
@@ -105,18 +108,22 @@ export class AppBehavior extends Behavior {
 	}
 
 	paint(app: AppHost) {
-		const port = contentByName(app, "listPort");
-		const view = asMenu(port);
-		if (!view)
-			return;
+		const list = contentByName(app, "listPort");
+		const face = contentByName(app, "facePort");
 		if (this.mode === "help") {
-			view.setList(port, helpTitle(), helpFor().map(row => ({ text: row.key, right: row.action, selected: false })), "");
+			setVisibleProp(face, false);
+			setVisibleProp(list, true);
+			const view = asMenu(list);
+			if (view)
+				view.setList(list, helpTitle(), helpFor().map(row => ({ text: row.key, right: row.action, selected: false })), "");
 			return;
 		}
+		setVisibleProp(list, false);
+		setVisibleProp(face, true);
+		const view = asTune(face);
+		if (!view)
+			return;
 		const title = this.power ? titleWithPower(this.power, "调音") : "调音";
-		view.setList(port, title, [
-			{ text: this.line, selected: true },
-			{ text: this.cents || " ", selected: false },
-		], "");
+		view.setTune(face, title, this.name, this.cents, this.hz);
 	}
 }

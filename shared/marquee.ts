@@ -4,7 +4,7 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { BG, FONT_UI, INK } from "ink";
+import { BG, FONT_UI, INK, MID } from "ink";
 
 /** Lazily built — Moddable link rejects top-level `new Style` outside main. */
 let marqueeStyle: /* Style */ object | undefined;
@@ -86,19 +86,26 @@ export class MarqueeBehavior extends Behavior {
 	}
 
 	onDraw(port: PortContent) {
-		port.fillColor(BG, 0, 0, port.width, port.height);
+		const width = port.width;
+		const height = port.height;
+		port.fillColor(BG, 0, 0, width, height);
 		const text = this.string;
-		if (!text)
+		if (text) {
+			const face = this.fontFace ?? getMarqueeStyle();
+			const measured = port.measureString(text, face);
+			const textW = measured.width;
+			const maxScroll = textW - width;
+			const x = maxScroll <= 0
+				? Math.floor((width - textW) / 2)
+				: -Math.floor(this.offset);
+			const y = Math.max(0, Math.floor((height - measured.height) / 2));
+			const drawW = Math.max(textW, width);
+			port.drawString(text, face, this.color, x, y, drawW);
+		}
+		if (height > 36 || width <= 24)
 			return;
-		const face = this.fontFace ?? getMarqueeStyle();
-		const measured = port.measureString(text, face);
-		const textW = measured.width;
-		const maxScroll = textW - port.width;
-		const x = maxScroll <= 0
-			? Math.floor((port.width - textW) / 2)
-			: -Math.floor(this.offset);
-		const y = Math.max(0, Math.floor((port.height - measured.height) / 2));
-		const drawW = Math.max(textW, port.width);
-		port.drawString(text, face, this.color, x, y, drawW);
+		const rule = width - 20;
+		port.fillColor(MID, 10, 1, rule, 1);
+		port.fillColor(MID, 10, height - 2, rule, 1);
 	}
 }

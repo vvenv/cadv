@@ -6,8 +6,8 @@
 		"../../shared/manifest.json",
 		"$(MODDABLE)/modules/io/audioin/manifest.json"
 	],
-	"modules": { "*": ["./main", "./behavior", "./pitch", "./help"] },
-	"preload": ["behavior", "pitch", "help", "mic"],
+	"modules": { "*": ["./main", "./behavior", "./view", "./pitch", "./help"] },
+	"preload": ["behavior", "view", "pitch", "help", "mic"],
 	"platforms": {
 		"esp32": { "modules": { "mic": "../../shared/mic" } },
 		"mac": { "modules": { "mic": "../../shared/mic_stub" } },

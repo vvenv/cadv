@@ -211,7 +211,8 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		const lines = this.rows.map((row, i) => ({
-			text: row.name + " " + row.extra,
+			text: row.name,
+			right: row.extra,
 			selected: i === this.index,
 		}));
 		view.setList(port, title, lines, "");

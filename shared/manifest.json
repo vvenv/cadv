@@ -3,6 +3,7 @@
 		"*": [
 			"./marquee",
 			"./menu-view",
+			"./draw",
 			"./list",
 			"./keys",
 			"./ui",
@@ -16,6 +17,7 @@
 	"preload": [
 		"marquee",
 		"menu-view",
+		"draw",
 		"list",
 		"keys",
 		"ui",

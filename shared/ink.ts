@@ -9,6 +9,10 @@ export const ON = "#39FF14";
 export const DIM = "#143214";
 /** Vial rings and ticks. Visible, quieter than ON. */
 export const MID = "#208F18";
+/** Off-pitch, hot meter, tilted bubble. */
+export const AMBER = "#FFB000";
+/** Vial liquid and unpressed key faces. */
+export const WELL = "#0E2C10";
 
 export const FONT_UI = "bold 20px UI";
 export const FONT_WORD = "bold 48px Word";

@@ -11,7 +11,8 @@ import { Power } from "power";
 import { acceptStroke, titleWithPower } from "session";
 import { ClockSound } from "sound";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
-import { contentByName, type AppHost } from "ui";
+import { contentByName, setVisibleProp, type AppHost } from "ui";
+import { asMetro } from "view";
 
 type Mode = "run" | "help";
 
@@ -29,9 +30,11 @@ export class AppBehavior extends Behavior {
 	on = false;
 	helpIndex = 0;
 	hostEnterDown = false;
+	app: AppHost | null = null;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
+		this.app = app;
 		this.power = new Power("blank");
 		this.sound = new ClockSound();
 		this.sound.setVolume(this.volume);
@@ -124,23 +127,28 @@ export class AppBehavior extends Behavior {
 		const accent = this.beat === 0;
 		this.sound?.play([{ hz: accent ? 1760 : 880, ms: accent ? 40 : 24 }]);
 		this.beat = (this.beat + 1) % this.beats;
+		if (this.app && this.mode === "run")
+			this.paint(this.app);
 	}
 
 	paint(app: AppHost) {
-		const port = contentByName(app, "listPort");
-		const view = asMenu(port);
-		if (!view)
-			return;
+		const list = contentByName(app, "listPort");
+		const face = contentByName(app, "facePort");
 		if (this.mode === "help") {
-			view.setList(port, helpTitle(), helpPage(helpFor(), this), "");
+			setVisibleProp(face, false);
+			setVisibleProp(list, true);
+			const view = asMenu(list);
+			if (view)
+				view.setList(list, helpTitle(), helpPage(helpFor(), this), "");
 			return;
 		}
+		setVisibleProp(list, false);
+		setVisibleProp(face, true);
+		const view = asMetro(face);
+		if (!view)
+			return;
 		const title = this.power ? titleWithPower(this.power, this.on ? "进行" : "节拍") : (this.on ? "进行" : "节拍");
-		view.setList(port, title, [
-			{ text: this.bpm + " BPM", selected: true },
-			{ text: this.beats + " 拍", selected: false },
-			{ text: "音量 " + this.volume, selected: false },
-		], "");
+		view.setRun(face, title, this.bpm, this.beats, this.beat, this.on, this.volume);
 	}
 }
 
