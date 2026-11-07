@@ -9,6 +9,7 @@
 	Move (primary K/J): also Fn+K/J, ↑↓, ,/.
 	Help (primary ?): also /. Volume: - and =.
 	Brightness: Fn+[ / Fn+].
+	Note QR: Fn+Q. Q alone is a letter.
 	Launcher: Fn+BS, from an app that was loaded off the card.
 	fw/kb is the exception: it forwards keys over BLE and only keeps
 	Fn+BS (launcher), Fn+/ (help), and Fn+Tab (forget bonds) local.

@@ -80,6 +80,8 @@ export type KeyStroke = {
 	fn: boolean;
 	/** Fn+[ dims, Fn+] brightens. */
 	bright: -1 | 0 | 1;
+	/** Fn+Q. The note app draws a short QR. Q alone stays a letter. */
+	qr: boolean;
 };
 
 /** Physical keys currently down. Modifiers are flags, not entries in `keys`. */
@@ -279,6 +281,7 @@ export class CardputerKeyboard {
 		let left = false;
 		let right = false;
 		let bright: -1 | 0 | 1 = 0;
+		let qr = false;
 		const fn = mods.has(KEY_FN);
 		const ctrl = mods.has(KEY_LEFT_CTRL);
 		for (const { x, y } of this.#pressed.values()) {
@@ -323,11 +326,15 @@ export class CardputerKeyboard {
 				bright = 1;
 				continue;
 			}
+			if (fn && code === "q") {
+				qr = true;
+				continue;
+			}
 			if (fn || ctrl || mods.has(KEY_LEFT_ALT) || mods.has(KEY_OPT))
 				continue;
 			chars.push(shift ? String(cell.b) : String(cell.a));
 		}
-		return { chars, enter, del, shift, esc, up, down, left, right, fn, bright };
+		return { chars, enter, del, shift, esc, up, down, left, right, fn, bright, qr };
 	}
 
 	#captureHeld(): HeldState {

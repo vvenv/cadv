@@ -5,7 +5,7 @@ const ROWS: HelpRow[] = [
 	{ key: "N", action: "新建" },
 	{ key: "Enter", action: "打开文本" },
 	{ key: "D", action: "删除" },
-	{ key: "编辑+Q", action: "短文本二维码" },
+	{ key: "Fn+Q", action: "短文本二维码" },
 	{ key: "BS", action: "保存并返回" },
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "Fn+BS", action: "回选应用" },

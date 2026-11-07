@@ -1,5 +1,5 @@
 /*
-	Edit cadv/*.txt. Other files show their size. Q draws a short QR.
+	Edit cadv/*.txt. Other files show their size. Fn+Q draws a short QR.
 */
 
 import {} from "piu/MC";
@@ -132,9 +132,9 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 			return;
 		}
-		if (stroke.chars.some(ch => ch === "q" || ch === "Q")) {
-			const bits = utf8Length(this.text) <= 17 ? qrBits(this.text) : null;
-			this.note = bits ? "" : "太长";
+		if (stroke.qr) {
+			const bits = this.text.length && utf8Length(this.text) <= 17 ? qrBits(this.text) : null;
+			this.note = bits ? "" : (this.text.length ? "太长" : "空");
 			if (!bits) {
 				this.paint(app);
 				return;

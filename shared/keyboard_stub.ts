@@ -15,6 +15,8 @@ export type KeyStroke = {
 	fn: boolean;
 	/** Fn+[ dims, Fn+] brightens. Desktop keys never set this. */
 	bright: -1 | 0 | 1;
+	/** Fn+Q. Desktop keys never set this. */
+	qr: boolean;
 };
 
 export type HeldState = {
