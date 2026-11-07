@@ -47,6 +47,10 @@ export class SevenSegBehavior extends Behavior {
 		port.invalidate();
 	}
 	onDraw(port: PortContent) {
+		// Sample at paint time so a mode change is visible on this frame,
+		// not one 250 ms tick later.
+		this.blink = secondBlink();
+		this.string = faceFromPort(port);
 		port.fillColor(BG, 0, 0, port.width, port.height);
 		const text = this.string;
 		const span = readoutSpan(text, DIGIT_W, COLON_W, GAP);

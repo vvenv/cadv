@@ -31,6 +31,17 @@ import { contentByName, setVisibleProp, type AppHost } from "ui";
 
 type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "alarms" | "hits" | "desk" | "menu" | "help";
 
+/** One bright digit walking across four ghosts, then back. */
+const NET_SPIN = ["8   ", " 8  ", "  8 ", "   8"];
+
+function netSpinFace(now: number): string {
+	const step = Math.floor(now / 250);
+	const n = NET_SPIN.length;
+	const phase = step % (n * 2 - 2);
+	const i = phase < n ? phase : n * 2 - 2 - phase;
+	return NET_SPIN[i];
+}
+
 function isShown(target: unknown): boolean {
 	return !!target && typeof target === "object" && "visible" in target
 		&& (target as { visible?: boolean }).visible !== false;
@@ -84,6 +95,10 @@ export class AppBehavior extends Behavior {
 	maskPass = false;
 	dateKey = "";
 	busy = false;
+	/** Wi-Fi / NTP wait. 7-seg chases; labels stay on 正在连接 / 正在对时. */
+	spinning = false;
+	spinTitle = "";
+	spinDetail = "";
 	lastChimeKey = "";
 	lastTickSec = -1;
 	statusUntil = 0;
@@ -109,6 +124,8 @@ export class AppBehavior extends Behavior {
 	hostEnterDown = false;
 
 	faceText(): string {
+		if (this.spinning)
+			return netSpinFace(Date.now());
 		if (this.mode === "cd_edit")
 			return this.cdSlotsText();
 		if (this.mode === "al_edit")
@@ -251,6 +268,7 @@ export class AppBehavior extends Behavior {
 		const wantWifi = chars.some(ch => ch === "w" || ch === "W");
 		if (wantWifi && (this.mode === "clock" || this.mode === "busy")) {
 			this.busy = false;
+			this.spinning = false;
 			this.enterPrompt(app, "ssid");
 			return;
 		}
@@ -526,6 +544,7 @@ export class AppBehavior extends Behavior {
 
 	enterCountdownEdit(app: AppHost) {
 		this.busy = false;
+		this.spinning = false;
 		this.statusUntil = 0;
 		this.mode = "cd_edit";
 		this.cdStep = 0;
@@ -538,6 +557,7 @@ export class AppBehavior extends Behavior {
 
 	enterAlarmEdit(app: AppHost) {
 		this.busy = false;
+		this.spinning = false;
 		this.statusUntil = 0;
 		this.mode = "al_edit";
 		this.alStep = 0;
@@ -689,22 +709,45 @@ export class AppBehavior extends Behavior {
 		setMarqueeText(contentByName(app, "valueLabel"), line, undefined, ON);
 	}
 
+	paintNet(app: AppHost, title: string) {
+		this.spinTitle = title;
+		this.showClock(app, true);
+		this.setLabels(app, title, this.spinDetail);
+		this.redrawClock(app);
+	}
+
+	redrawClock(app: AppHost) {
+		const port = contentByName(app, "clockPort");
+		if (!port || typeof port !== "object" || !("invalidate" in port))
+			return;
+		const invalidate = (port as { invalidate?: unknown }).invalidate;
+		if (typeof invalidate === "function")
+			(invalidate as (this: unknown) => void).call(port);
+	}
+
 	startNet(app: AppHost, creds: WifiCreds) {
 		if (this.busy)
 			return;
 		this.busy = true;
 		this.mode = "busy";
-		this.showClock(app, false);
-		this.setLabels(app, "Connecting", creds.ssid);
-		setMarqueeText(contentByName(app, "valueLabel"), "...", undefined, ON);
+		this.spinning = true;
+		this.spinDetail = creds.ssid;
+		this.paintNet(app, "正在连接");
 
 		connectAndSync(creds, (msg) => {
-			this.setLabels(app, msg, creds.ssid);
+			if (!this.spinning)
+				return;
+			const title = msg.indexOf("NTP") === 0 ? "正在对时" : "正在连接";
+			this.spinTitle = title;
+			if (this.mode === "busy")
+				this.setLabels(app, title, this.spinDetail);
 		}, (ok, detail) => {
+			this.spinning = false;
 			this.busy = false;
 			this.mode = "clock";
 			this.dateKey = "";
 			this.showClock(app, true);
+			this.redrawClock(app);
 			if (!ok)
 				this.setLabels(app, detail, "");
 			else {
@@ -848,7 +891,13 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (from === "busy") {
-			this.showClock(app, false);
+			if (this.spinning) {
+				this.showClock(app, true);
+				this.setLabels(app, this.spinTitle, this.spinDetail);
+				this.redrawClock(app);
+			}
+			else
+				this.showClock(app, false);
 			return;
 		}
 		this.resumeClock(app);
