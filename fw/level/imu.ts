@@ -8,7 +8,10 @@ import SMBus from "embedded:io/smbus";
 import Timer from "timer";
 import config from "mc/config";
 
-const ADDRS = [0x68, 0x69];
+declare function trace(message: string): void;
+
+/* SDO is tied high on Cardputer-Adv, so 0x69 answers. 0x68 is the other strap. */
+const ADDRS = [0x69, 0x68];
 const CHIP_ID = 0x24;
 const REG_CHIP = 0x00;
 const REG_STATUS = 0x03;
@@ -58,10 +61,30 @@ function configBytes(): Uint8Array {
 	return new Uint8Array(raw);
 }
 
+/*
+	A typed array created at module scope is frozen into flash.
+	writeRead then rejects it as a read-only buffer, which is the I2C error
+	on device. Allocate the destination when the sensor is actually opened.
+*/
+let oneByte: Uint8Array | null = null;
+function readBuf(): Uint8Array {
+	if (!oneByte) {
+		oneByte = new Uint8Array(1);
+		oneByte[0] = 0;
+	}
+	return oneByte;
+}
+
+function readReg(io: SMBus, reg: number): number {
+	const dst = readBuf();
+	io.readBuffer(reg, dst);
+	return dst[0];
+}
+
 function write8(io: SMBus, reg: number, value: number) {
 	io.writeUint8(reg, value);
 	for (let i = 0; i < 3; i++) {
-		if ((io.readUint8(REG_STATUS) & 0x04) === 0)
+		if ((readReg(io, REG_STATUS) & 0x04) === 0)
 			return;
 		Timer.delay(1);
 	}
@@ -78,7 +101,7 @@ function upload(io: SMBus, src: Uint8Array) {
 	}
 	write8(io, REG_INIT_CTRL, 0x01);
 	for (let i = 0; i < 40; i++) {
-		const msg = io.readUint8(REG_INTERNAL) & 0x0f;
+		const msg = readReg(io, REG_INTERNAL) & 0x0f;
 		if (msg === 1)
 			return;
 		if (msg === 2)
@@ -90,11 +113,17 @@ function upload(io: SMBus, src: Uint8Array) {
 
 function openBus(address: number, pins: BusPins): SMBus {
 	return new SMBus({
-		hz: 400_000,
+		hz: 100_000,
 		address,
 		data: pins.data,
 		clock: pins.clock,
 	});
+}
+
+function readId(io: SMBus): number {
+	acks(io);
+	Timer.delay(20);
+	return readReg(io, REG_CHIP);
 }
 
 function bringUp(io: SMBus): ImuHandle {
@@ -108,6 +137,7 @@ function bringUp(io: SMBus): ImuHandle {
 	write8(io, REG_PWR_CTRL, 0x04);
 
 	const raw = new Uint8Array(6);
+	raw[0] = 0;
 	const view = new DataView(raw.buffer);
 	let last: AccelSample | null = null;
 	return {
@@ -131,16 +161,51 @@ function bringUp(io: SMBus): ImuHandle {
 	};
 }
 
+function acks(io: SMBus): boolean {
+	try {
+		const result = io.write(new ArrayBuffer(0)) as unknown as number;
+		return result !== 1;
+	}
+	catch {
+		return false;
+	}
+}
+
+function scan(pins: BusPins): string {
+	let text = "";
+	for (let addr = 0x08; addr < 0x78; addr++) {
+		let io: SMBus | null = null;
+		try {
+			io = openBus(addr, pins);
+			if (acks(io))
+				text += (text ? " " : "") + addr.toString(16);
+		}
+		catch { /* */ }
+		try { io?.close(); } catch { /* */ }
+	}
+	return text || "空";
+}
+
+function errorText(e: unknown): string {
+	if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string")
+		return (e as { message: string }).message;
+	return "读取失败";
+}
+
 export function openImu(): ImuHandle | null {
 	const pins = busPins();
 	lastError = "无芯片";
 	for (let i = 0; i < ADDRS.length; i++) {
+		const addr = ADDRS[i];
 		let io: SMBus | null = null;
 		try {
-			io = openBus(ADDRS[i], pins);
-			if (io.readUint8(REG_CHIP) !== CHIP_ID) {
+			io = openBus(addr, pins);
+			const id = readId(io);
+			trace("imu " + addr.toString(16) + " id " + id.toString(16) + "\n");
+			if (id !== CHIP_ID) {
 				io.close();
 				io = null;
+				lastError = addr.toString(16) + " id" + id.toString(16);
 				continue;
 			}
 			const handle = bringUp(io);
@@ -150,11 +215,12 @@ export function openImu(): ImuHandle | null {
 		}
 		catch (e) {
 			try { io?.close(); } catch { /* */ }
-			if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string")
-				lastError = (e as { message: string }).message;
-			else
-				lastError = "读取失败";
+			lastError = addr.toString(16) + " " + errorText(e);
+			trace("imu " + lastError + "\n");
 		}
 	}
+	const found = scan(pins);
+	lastError = "总线 " + found;
+	trace("imu scan " + found + "\n");
 	return null;
 }

@@ -56,15 +56,16 @@ export class AppBehavior extends Behavior {
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
-		this.kb = new CardputerKeyboard();
-		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		this.note = "读取";
 		this.paint(app);
+		/* Open the IMU before the keyboard so the BMI270 is the first device on the shared bus. */
 		Timer.set(() => this.openSensor(app), 1);
 	}
 
 	openSensor(app: AppHost) {
 		this.imu = openImu();
+		this.kb = new CardputerKeyboard();
+		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		if (!this.imu)
 			this.note = imuError() || "无芯片";
 		else
