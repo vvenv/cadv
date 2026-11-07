@@ -13,27 +13,32 @@ function volume(): Directory {
 	return Modules.importNow<Directory>("embedded:storage/files");
 }
 
+/* Missing names do not throw from status(); mode is 0. Create them. */
+function ensureDir(parent: Directory, name: string): Directory | null {
+	let isDir = false;
+	let isFile = false;
+	try {
+		const st = parent.status(name);
+		isDir = st.isDirectory();
+		isFile = st.isFile();
+	}
+	catch {
+		isDir = false;
+	}
+	if (isFile)
+		return null;
+	if (!isDir)
+		parent.createDirectory(name);
+	return parent.openDirectory({ path: name });
+}
+
 export function openClips(): Directory | null {
 	try {
 		const root = volume();
-		let home: Directory;
-		try {
-			const st = root.status("cadv");
-			if (!st.isDirectory())
-				return null;
-			home = root.openDirectory({ path: "cadv" });
-		}
-		catch {
-			root.createDirectory("cadv");
-			home = root.openDirectory({ path: "cadv" });
-		}
-		try {
-			home.status(DIR);
-		}
-		catch {
-			home.createDirectory(DIR);
-		}
-		return home.openDirectory({ path: DIR });
+		const home = ensureDir(root, "cadv");
+		if (!home)
+			return null;
+		return ensureDir(home, DIR);
 	}
 	catch {
 		return null;
