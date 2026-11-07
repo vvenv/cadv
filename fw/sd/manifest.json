@@ -12,11 +12,13 @@
 			"./main",
 			"./behavior",
 			"./catalog",
-			"./help"
+			"./help",
+			"../../shared/slot"
 		]
 	},
 	"preload": [
 		"link",
+		"slot",
 		"behavior",
 		"catalog",
 		"help"

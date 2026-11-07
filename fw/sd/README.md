@@ -23,6 +23,6 @@
 ./do.sh sd file ./a.txt # 其它文件也放进 cadv/
 ```
 
-没插卡时走板子上的 USB 串口，文件由启动器写进卡。这要求芯片里是 `./do.sh flash` 烧进去的这一版启动器。`CADV_SD=/Volumes/名字` 指定插在电脑上的卡。`CADV_PORT=` 指定串口。`CADV_LINK=device` 强制走板子，`CADV_LINK=0` 只认电脑上的卡。`CADV_SD_BUILD=1` 先重编再拷。
+没插卡时走板子上的 USB 串口，文件由启动器写进卡。这要求芯片里是 `./do.sh flash` 烧进去的这一版启动器。`CADV_SD=/Volumes/名字` 指定插在电脑上的卡。`CADV_PORT=` 指定串口。`CADV_LINK=device` 强制走板子，`CADV_LINK=0` 只认电脑上的卡。`CADV_SD_BUILD=1` 每个都先重编再拷。上传全部时，过时的镜像会直接重编。
 
 桌面模拟用 `fw/sd/sample` 当卡，里面已经有一个 `cadv/`。`./do.sh sim sd`。模拟器不能真的载入。

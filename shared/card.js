@@ -1,11 +1,19 @@
 /*
-	SD free space. Importing the files volume mounts the card first.
-	Do not call native at import time: the image build runs this on the host.
+	SD free space. Touching the files volume mounts the card.
+	Do not import that module here: its body calls device natives, and the
+	image build runs this module on the host.
 */
 
-import root from "embedded:storage/files";
+import Modules from "modules";
 
 function mount() {
+	var root;
+	try {
+		root = Modules.importNow("embedded:storage/files");
+	}
+	catch (e) {
+		return;
+	}
 	try {
 		root.status("cadv");
 	}

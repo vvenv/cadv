@@ -1,13 +1,21 @@
 /*
 	cadv/rec/*.wav on the card. The launcher ignores this subdirectory.
+	Import the volume inside the call. Its body uses device natives, and the
+	image link runs this module on the host.
 */
 
-import root, { type Directory, type File } from "embedded:storage/files";
+import Modules from "modules";
+import type { Directory, File } from "embedded:storage/files";
 
 const DIR = "rec";
 
+function volume(): Directory {
+	return Modules.importNow<Directory>("embedded:storage/files");
+}
+
 export function openClips(): Directory | null {
 	try {
+		const root = volume();
 		let home: Directory;
 		try {
 			const st = root.status("cadv");

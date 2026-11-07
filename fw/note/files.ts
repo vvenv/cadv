@@ -1,9 +1,20 @@
-import root, { type Directory, type File } from "embedded:storage/files";
+/*
+	Import the volume inside the call. Its body uses device natives, and the
+	image link runs this module on the host.
+*/
+
+import Modules from "modules";
+import type { Directory, File } from "embedded:storage/files";
+
+function volume(): Directory {
+	return Modules.importNow<Directory>("embedded:storage/files");
+}
 
 export type NoteFile = { name: string; size: number; text: boolean };
 
 export function openHome(): Directory | null {
 	try {
+		const root = volume();
 		try {
 			const st = root.status("cadv");
 			if (!st.isDirectory())

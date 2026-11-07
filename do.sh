@@ -26,7 +26,9 @@
 #   卡插在电脑上时直接写卡。没插卡、板子用 USB 连着并且跑着启动器时，经串口写入板子上的卡。
 #   CADV_SD=/Volumes/名字 指定卡。CADV_PORT=/dev/cu.usbmodemXXX 指定串口。
 #   CADV_LINK=device 强制走板子；CADV_LINK=0 只认插在电脑上的卡。
-#   镜像比 fw/<id> 或 shared 旧时会先问要不要重编。CADV_SD_BUILD=1 直接重编；=0 仍用旧镜像。
+#   上传一个固件：镜像比 fw/<id> 或 shared 旧时先问要不要重编。
+#   上传全部，或一次传多个：过时的直接重编，不再逐个询问。
+#   CADV_SD_BUILD=1 每个都重编；=0 仍用旧镜像；=ask 改回逐个询问。
 #   启动器要先 ./do.sh flash，这一版才从 USB 收文件。
 #   ./do.sh help                    # 本说明
 set -euo pipefail
@@ -77,6 +79,32 @@ detect_port() {
   fi
   log_warn "多个串口：${ports[*]} — 使用第一个"
   printf '%s\n' "${ports[0]}"
+}
+
+# idf.py monitor keeps the USB port exclusively. mcconfig only kills serial2xsbug,
+# so a previous flash still running (or orphaned) makes esptool fail with
+# "Resource temporarily unavailable".
+release_upload_port() {
+  local p pid pgid self cmd
+  self="$(ps -o pgid= -p $$ | tr -d '[:space:]')"
+  for p in /dev/cu.usbmodem* /dev/cu.wchusbserial* /dev/cu.usbserial*; do
+    [ -e "$p" ] || continue
+    while IFS= read -r pid; do
+      [ -n "$pid" ] || continue
+      cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+      case "$cmd" in
+        *esp_idf_monitor*|*idf.py*)
+          pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d '[:space:]')"
+          [ -n "$pgid" ] || continue
+          [ "$pgid" = "$self" ] && continue
+          [ "$pgid" -gt 1 ] 2>/dev/null || continue
+          log_warn "串口 $p 被上次烧录占用，结束进程组 $pgid"
+          kill -TERM "-$pgid" 2>/dev/null || true
+          ;;
+      esac
+    done < <(lsof -t "$p" 2>/dev/null | sort -u)
+  done
+  sleep 0.4
 }
 
 # fw/<id>/manifest.json is one firmware. label is the one-line menu name.
@@ -679,21 +707,28 @@ cmd_sd_file() {
   sync || true
 }
 
+# $2：ask 先问；auto 过时就编。CADV_SD_BUILD 优先：1 一律重编，0 用旧镜像，ask 逐个问。
 ensure_fw_image() {
-  local id="$1" src newer ans
+  local id="$1" policy="${2:-ask}" src newer ans
+  if [ -n "${CADV_SD_BUILD:-}" ]; then
+    policy="$CADV_SD_BUILD"
+  fi
   src="$(fw_image "$id")"
   if [ ! -f "$src" ]; then
     log_info "还没有 $(fw_label "$id") 的镜像，先编译（不烧进芯片）"
     build_fw_image "$id"
-  elif [ "${CADV_SD_BUILD:-ask}" = 1 ]; then
+  elif [ "$policy" = 1 ]; then
     log_info "重编 $(fw_label "$id")（不烧进芯片）"
     build_fw_image "$id"
   else
     newer="$(fw_image_newer_source "$id")"
     if [ -z "$newer" ]; then
       log_info "用已有镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')"
-    elif [ "${CADV_SD_BUILD:-ask}" = 0 ]; then
+    elif [ "$policy" = 0 ]; then
       log_warn "$(fw_label "$id") 的源文件比镜像新（${newer}，镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')）。已跳过重编（CADV_SD_BUILD=0）"
+    elif [ "$policy" = auto ]; then
+      log_info "$(fw_label "$id") 比镜像新（${newer}）。重编（不烧进芯片）"
+      build_fw_image "$id"
     elif [ -t 0 ] || [ -t 1 ]; then
       read -r -p "$(fw_label "$id") 比镜像新（${newer}）。现在重编？ [Y/n] " ans </dev/tty || ans=n
       case "${ans:-Y}" in
@@ -706,7 +741,7 @@ ensure_fw_image() {
           ;;
       esac
     else
-      log_warn "$(fw_label "$id") 的源文件比镜像新（${newer}）。非交互已跳过；CADV_SD_BUILD=1 可自动重编"
+      log_warn "$(fw_label "$id") 的源文件比镜像新（${newer}）。非交互已跳过；上传全部会自动重编，或设 CADV_SD_BUILD=1"
     fi
   fi
   src="$(fw_image "$id")"
@@ -750,8 +785,10 @@ cmd_sd_fw_device() {
 }
 
 cmd_sd_fw() {
-  local route kind root id src dest home ids=() packs=()
+  local route kind root id src dest home ids=() packs=() policy=ask
   if [ $# -eq 0 ] || [ "${1:-}" = "all" ]; then
+    # A batch would otherwise stop on one prompt per stale image.
+    policy=auto
     while IFS= read -r id; do
       [ -n "$id" ] || continue
       [ "$id" = "sd" ] && continue
@@ -766,11 +803,14 @@ cmd_sd_fw() {
       fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
       ids+=("$id")
     done
+    if [ "${#ids[@]}" -gt 1 ]; then
+      policy=auto
+    fi
   fi
   [ "${#ids[@]}" -gt 0 ] || log_die "没有可上传的固件"
   # Build before touching the card/port so a dead launcher still leaves fresh bins.
   for id in "${ids[@]}"; do
-    ensure_fw_image "$id"
+    ensure_fw_image "$id" "$policy"
   done
   route="$(sd_route)" || return $?
   [ -n "$route" ] || return 0
@@ -1043,6 +1083,7 @@ cmd_ts_flash() {
     fi
   fi
 
+  release_upload_port
   log_info "烧录 $(fw_label "$id")（${id}）到 esp32/esp32s3_cdc"
   esp_mc "$id"
   # -dn builds a debug image but does not launch xsbug. serial2xsbug then

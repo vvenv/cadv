@@ -74,7 +74,7 @@ fw/新名字/
 
 构建或模拟时会自动判断：词库或字体比源文件旧就重做。只有选中的固件用到 `wordbank.bin` 时才检查词库。`CADV_REFRESH=0` 跳过，`CADV_REFRESH=ask` 改回先问。
 
-上传到 SD 卡时，镜像比 `fw/<id>` 或 `shared` 旧会先问要不要重编，回车即编。`CADV_SD_BUILD=1` 直接重编，`CADV_SD_BUILD=0` 仍用旧镜像。没有镜像时直接编译。这不烧进芯片。
+上传一个固件时，镜像比 `fw/<id>` 或 `shared` 旧会先问要不要重编，回车即编。上传全部，或一次传多个时，过时的直接重编。`CADV_SD_BUILD=1` 每个都重编，`CADV_SD_BUILD=0` 仍用旧镜像，`CADV_SD_BUILD=ask` 改回逐个询问。没有镜像时直接编译。这不烧进芯片。
 
 烧录前：电源 **OFF** → 按住 **G0** → 插 USB → 松开。烧完按 **RESET**。
 
