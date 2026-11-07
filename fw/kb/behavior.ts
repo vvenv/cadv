@@ -5,6 +5,7 @@
 */
 
 import {} from "piu/MC";
+import type { Port as PortContent } from "piu/MC";
 import Timer from "timer";
 import { bootLauncher } from "boot";
 import { CardputerKeyboard } from "keyboard";
@@ -22,22 +23,17 @@ import {
 	type Edit,
 	type HeldState,
 } from "hid";
+import { INK, ON } from "ink";
 import { MENU_VISIBLE } from "list";
+import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { asMenu } from "menu-view";
-import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
+import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { openRadio, type KeyboardRadio, type LinkState } from "radio";
 
 type Mode = "type" | "help";
 
 const FLASH_MS = 450;
 const ZERO_SLOTS = [0, 0, 0, 0, 0, 0];
-
-function tail(text: string): string {
-	const n = 18;
-	if (text.length <= n)
-		return text;
-	return text.slice(text.length - n);
-}
 
 function zeroReport(): Uint8Array {
 	return new Uint8Array(8);
@@ -48,6 +44,7 @@ export class AppBehavior extends Behavior {
 	kb: CardputerKeyboard | null = null;
 	radio: KeyboardRadio | null = null;
 	kbTimer: unknown = null;
+	marqueeTimer: unknown = null;
 	link: LinkState = "wait";
 	radioOk = false;
 	caps = false;
@@ -83,6 +80,7 @@ export class AppBehavior extends Behavior {
 			this.radioOk = false;
 		}
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 10);
+		this.marqueeTimer = Timer.repeat(() => this.tickMarquees(app), MARQUEE_MS);
 		this.paint(app);
 	}
 
@@ -220,9 +218,9 @@ export class AppBehavior extends Behavior {
 		setVisibleProp(contentByName(app, "listPort"), false);
 		this.flash = "";
 		this.echo = "";
-		setStringProp(contentByName(app, "statusLabel"), "配对已清除");
-		setStringProp(contentByName(app, "echoLabel"), "对方也要忘掉");
-		setStringProp(contentByName(app, "hintLabel"), DEVICE_NAME);
+		setMarqueeText(contentByName(app, "statusLabel"), "配对已清除", undefined, ON);
+		setMarqueeText(contentByName(app, "echoLabel"), "对方也要忘掉", undefined, ON);
+		setMarqueeText(contentByName(app, "hintLabel"), DEVICE_NAME, undefined, INK);
 		Timer.set(() => clearBonds(), 250);
 	}
 
@@ -283,12 +281,31 @@ export class AppBehavior extends Behavior {
 			view.setList(port, `${helpTitle()} ${start + 1}/${n}`, lines, "");
 	}
 
+	tickMarquees(app: AppHost) {
+		if (this.mode !== "type")
+			return;
+		for (const name of ["statusLabel", "echoLabel", "hintLabel"]) {
+			const port = contentByName(app, name);
+			const b = asMarquee(port);
+			if (b)
+				b.tick(port as PortContent);
+		}
+	}
+
 	paint(app: AppHost) {
 		if (this.mode === "help")
 			return;
-		setStringProp(contentByName(app, "statusLabel"), this.statusLine());
-		setStringProp(contentByName(app, "echoLabel"), this.echoLine());
-		setStringProp(contentByName(app, "hintLabel"), this.hintLine());
+		setMarqueeText(contentByName(app, "statusLabel"), this.statusLine(), undefined, this.statusColor());
+		setMarqueeText(contentByName(app, "echoLabel"), this.echoLine(), undefined, ON);
+		setMarqueeText(contentByName(app, "hintLabel"), this.hintLine(), undefined, INK);
+	}
+
+	statusColor(): string {
+		if (this.flash && Date.now() < this.flashUntil)
+			return ON;
+		if (this.link === "ready")
+			return ON;
+		return INK;
 	}
 
 	statusLine(): string {
@@ -309,7 +326,7 @@ export class AppBehavior extends Behavior {
 
 	echoLine(): string {
 		if (this.echo)
-			return tail(this.echo);
+			return this.echo;
 		if (this.link === "ready")
 			return "可以输入";
 		if (this.link === "sim")

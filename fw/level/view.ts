@@ -77,7 +77,7 @@ function drawString(port: PortContent, text: string, color: string, x: number, y
 
 function formatDeg(deg: number): string {
 	const sign = deg >= 0 ? "+" : "";
-	return sign + deg.toFixed(1) + "\u00B0";
+	return sign + deg.toFixed(1) + "度";
 }
 
 function drawBubble(port: PortContent, x: number, y: number, r: number, ok: boolean) {

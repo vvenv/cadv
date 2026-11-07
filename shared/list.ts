@@ -1,6 +1,22 @@
 /** Title plus this many rows fill the 135px panel. */
 export const MENU_VISIBLE = 5;
 
+/**
+	UI-Bold-20 draws CJK ink about 6px below the y passed to drawString.
+	The ink is about 21px tall. Six bands at this pitch end on the last pixel.
+*/
+export const ROW_LEAD = 6;
+export const ROW_PITCH = 22;
+export const ROW_TOP = 1;
+
+export function rowOrigin(index: number): number {
+	return ROW_TOP + index * ROW_PITCH;
+}
+
+export function rowTextY(index: number): number {
+	return rowOrigin(index) - ROW_LEAD;
+}
+
 /** -1 up, +1 down, 0 neither. Later key in the chord wins. */
 export function menuDirFromChars(chars: string[]): -1 | 0 | 1 {
 	let dir: -1 | 0 | 1 = 0;

@@ -19,22 +19,10 @@ import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_M
 import { fetchWeather, formatLunarWithWeather, weatherLabel, WEATHER_REFRESH_MS } from "weather";
 import { beijingParts, formatClockTop, formatHMS, formatLunar, formatNow, pad2, timeSynced } from "lunar";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
-import { FONT_UI, ON } from "ink";
-import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
+import { ON } from "ink";
+import { contentByName, setVisibleProp, type AppHost } from "ui";
 
 type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "menu" | "help";
-
-let valueStyleSmall: object | undefined;
-
-function valueStyle(): object {
-	if (!valueStyleSmall)
-		valueStyleSmall = new Style({ font: FONT_UI, color: ON, horizontal: "center", vertical: "middle" });
-	return valueStyleSmall;
-}
-
-function hasStyle(target: unknown): target is { style: object } {
-	return !!target && typeof target === "object" && "style" in target;
-}
 
 /** Digits-only field; empty → 0. */
 function parseFieldDigits(raw: string, max: number): number | null {
@@ -613,9 +601,8 @@ export class AppBehavior extends Behavior {
 		const title = this.mode === "ssid" ? "SSID" : "Password";
 		const shown = this.maskPass ? "*".repeat(this.prompt.length) : this.prompt;
 		const line = `${shown}_`;
-		// 14 wide letters no longer fit the 240px row at Bold 20px.
-		this.setLabels(app, title, line.length > 13 ? line : "");
-		setStringProp(contentByName(app, "valueLabel"), line);
+		this.setLabels(app, title, "");
+		setMarqueeText(contentByName(app, "valueLabel"), line, undefined, ON);
 	}
 
 	startNet(app: AppHost, creds: WifiCreds) {
@@ -625,7 +612,7 @@ export class AppBehavior extends Behavior {
 		this.mode = "busy";
 		this.showClock(app, false);
 		this.setLabels(app, "Connecting", creds.ssid);
-		setStringProp(contentByName(app, "valueLabel"), "...");
+		setMarqueeText(contentByName(app, "valueLabel"), "...", undefined, ON);
 
 		connectAndSync(creds, (msg) => {
 			this.setLabels(app, msg, creds.ssid);
@@ -664,9 +651,6 @@ export class AppBehavior extends Behavior {
 
 	showClock(app: AppHost, on: boolean) {
 		this.showList(app, false);
-		const value = contentByName(app, "valueLabel");
-		if (hasStyle(value))
-			value.style = valueStyle();
 		setVisibleProp(contentByName(app, "clockPort"), on);
 		setVisibleProp(contentByName(app, "valueLabel"), !on);
 	}
@@ -685,7 +669,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	tickMarquees(app: AppHost) {
-		for (const name of ["dateLabel", "lunarLabel"]) {
+		for (const name of ["dateLabel", "lunarLabel", "valueLabel"]) {
 			const port = contentByName(app, name);
 			const b = asMarquee(port);
 			if (b)

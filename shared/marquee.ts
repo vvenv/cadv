@@ -4,7 +4,7 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { FONT_UI, INK } from "ink";
+import { BG, FONT_UI, INK } from "ink";
 
 /** Lazily built — Moddable link rejects top-level `new Style` outside main. */
 let marqueeStyle: /* Style */ object | undefined;
@@ -25,10 +25,10 @@ export function asMarquee(target: unknown): MarqueeBehavior | null {
 	return b && typeof b.setText === "function" && typeof b.tick === "function" ? b : null;
 }
 
-export function setMarqueeText(target: unknown, value: string, face?: object) {
+export function setMarqueeText(target: unknown, value: string, face?: object, color?: string) {
 	const b = asMarquee(target);
 	if (b)
-		b.setText(target as PortContent, value, face);
+		b.setText(target as PortContent, value, face, color);
 }
 
 /** Bounce-scroll a single line when it is wider than the port. Ticked by AppBehavior. */
@@ -38,14 +38,17 @@ export class MarqueeBehavior extends Behavior {
 	offset = 0;
 	dir = 1;
 	holdUntil = 0;
+	color = INK;
 	fontFace: object | undefined;
 
-	setText(port: PortContent, text: string, face?: object) {
+	setText(port: PortContent, text: string, face?: object, color?: string) {
 		const next = face ?? getMarqueeStyle();
-		if (text === this.string && next === this.fontFace)
+		const ink = color ? color : INK;
+		if (text === this.string && next === this.fontFace && ink === this.color)
 			return;
 		this.string = text;
 		this.fontFace = next;
+		this.color = ink;
 		this.textW = text ? port.measureString(text, next).width : 0;
 		this.offset = 0;
 		this.dir = 1;
@@ -83,14 +86,19 @@ export class MarqueeBehavior extends Behavior {
 	}
 
 	onDraw(port: PortContent) {
+		port.fillColor(BG, 0, 0, port.width, port.height);
 		const text = this.string;
 		if (!text)
 			return;
-		const maxScroll = this.textW - port.width;
+		const face = this.fontFace ?? getMarqueeStyle();
+		const measured = port.measureString(text, face);
+		const textW = measured.width;
+		const maxScroll = textW - port.width;
 		const x = maxScroll <= 0
-			? Math.floor((port.width - this.textW) / 2)
+			? Math.floor((port.width - textW) / 2)
 			: -Math.floor(this.offset);
-		const drawW = Math.max(this.textW, port.width);
-		port.drawString(text, this.fontFace ?? getMarqueeStyle(), INK, x, 0, drawW, port.height);
+		const y = Math.max(0, Math.floor((port.height - measured.height) / 2));
+		const drawW = Math.max(textW, port.width);
+		port.drawString(text, face, this.color, x, y, drawW);
 	}
 }

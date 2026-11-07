@@ -1,21 +1,22 @@
 /*
-	Full-screen list. Bold 20px UI ink sits around y+6..y+28, so rows step
-	by 21px. Title plus MENU_VISIBLE rows fill the 135px panel.
+	Full-screen list on the 135px panel.
+	UI-Bold-20 puts CJK ink about 6px below the draw y, roughly 21px tall.
+	Title plus MENU_VISIBLE rows step by ROW_PITCH so those glyphs do not stack.
+	The selected row is black on green. A thumb shows when the list is longer
+	than the window. `hint` is kept for callers; this panel has no footer band.
 */
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { BG, DIM, FONT_UI, INK, ON } from "ink";
-import { MENU_VISIBLE, windowStart } from "list";
+import { BG, FONT_UI, INK, ON } from "ink";
+import { MENU_VISIBLE, ROW_PITCH, rowOrigin, rowTextY, windowStart } from "list";
 
 /** `right` draws flush-right (help: key left, action right). */
 export type MenuLine = { text: string; selected: boolean; right?: string };
 
-const ROW = 21;
-const DRAW_H = 30;
+const BAR_H = ROW_PITCH - 1;
 const PAD_X = 6;
-const BAR_Y = 4;
-const BAR_H = 22;
+const GUTTER = 5;
 
 let menuStyle: /* Style */ object | undefined;
 function getMenuStyle(): /* Style */ any {
@@ -31,11 +32,8 @@ export function asMenu(target: unknown): MenuBehavior | null {
 	return b && typeof b.setList === "function" ? b : null;
 }
 
-function drawCentered(port: PortContent, text: string, color: string, y: number) {
-	const style = getMenuStyle();
-	const w = port.measureString(text, style).width;
-	const x = Math.max(0, Math.floor((port.width - w) / 2));
-	port.drawString(text, style, color, x, y, Math.max(1, port.width - x), DRAW_H);
+function drawText(port: PortContent, text: string, color: string, x: number, y: number, width: number) {
+	port.drawString(text, getMenuStyle(), color, x, y, Math.max(1, width));
 }
 
 export class MenuBehavior extends Behavior {
@@ -53,8 +51,8 @@ export class MenuBehavior extends Behavior {
 
 	onDraw(port: PortContent) {
 		const style = getMenuStyle();
-		port.fillColor(BG, 0, 0, port.width, port.height);
-		drawCentered(port, this.title, INK, 0);
+		const width = port.width;
+		port.fillColor(BG, 0, 0, width, port.height);
 		const visible = MENU_VISIBLE;
 		let selected = 0;
 		let marked = false;
@@ -65,28 +63,42 @@ export class MenuBehavior extends Behavior {
 				break;
 			}
 		}
-		const start = windowStart(selected, this.lines.length, visible);
+		const start = windowStart(marked ? selected : 0, this.lines.length, visible);
+		const scrolling = this.lines.length > visible;
+		const gutter = scrolling ? GUTTER : 0;
+		const innerRight = width - PAD_X - gutter;
+		const titleW = port.measureString(this.title, style).width;
+		const titleX = Math.max(0, Math.floor((width - gutter - titleW) / 2));
+		drawText(port, this.title, ON, titleX, rowTextY(0), Math.max(1, width - gutter - titleX));
 		for (let i = 0; i < visible; i++) {
 			const line = this.lines[start + i];
 			if (!line)
 				continue;
-			const y = (i + 1) * ROW;
+			const top = rowOrigin(i + 1);
+			const color = line.selected ? BG : INK;
 			if (line.selected)
-				port.fillColor(DIM, 0, y + BAR_Y, port.width, BAR_H);
-			const color = line.selected ? ON : INK;
-			const inner = port.width - PAD_X * 2;
+				port.fillColor(ON, 0, top, width - gutter, BAR_H);
+			const y = rowTextY(i + 1);
+			const inner = Math.max(1, innerRight - PAD_X);
 			if (line.right) {
 				const rightW = port.measureString(line.right, style).width;
 				const gap = 8;
 				const leftMax = Math.max(1, inner - rightW - gap);
-				port.drawString(line.text, style, color, PAD_X, y, leftMax, DRAW_H);
-				port.drawString(line.right, style, color, port.width - PAD_X - rightW, y, rightW, DRAW_H);
+				drawText(port, line.text, color, PAD_X, y, leftMax);
+				drawText(port, line.right, color, innerRight - rightW, y, rightW);
 			}
 			else {
-				port.drawString(line.text, style, color, PAD_X, y, inner, DRAW_H);
+				drawText(port, line.text, color, PAD_X, y, inner);
 			}
 		}
-		if (this.hint)
-			drawCentered(port, this.hint, INK, (1 + visible) * ROW);
+		if (!scrolling)
+			return;
+		const trackTop = rowOrigin(1);
+		const trackH = visible * ROW_PITCH;
+		const pip = 8;
+		const maxStart = this.lines.length - visible;
+		const travel = Math.max(0, trackH - pip);
+		const thumbY = trackTop + (maxStart > 0 ? Math.floor(travel * start / maxStart) : 0);
+		port.fillColor(ON, width - 3, thumbY, 2, pip);
 	}
 }

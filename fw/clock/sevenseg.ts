@@ -5,7 +5,7 @@
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { formatNow } from "lunar";
-import { DIM, ON } from "ink";
+import { BG, DIM, ON } from "ink";
 
 const SEG: number[] = [
 	0b1111110, 0b0110000, 0b1101101, 0b1111001, 0b0110011,
@@ -19,7 +19,7 @@ function vbar(port: PortContent, x: number, y: number, h: number, t: number, on:
 	port.fillColor(on ? ON : DIM, x, y + t, t, h - 2 * t);
 }
 function drawSegMask(port: PortContent, x: number, y: number, w: number, h: number, mask: number) {
-	const t = Math.max(3, Math.floor(Math.min(w, h) / 8));
+	const t = Math.max(4, Math.floor(w / 6));
 	const mid = y + Math.floor((h - t) / 2);
 	const m = mask | 0;
 	hbar(port, x, y, w, t, !!(m & 0b1000000));
@@ -34,7 +34,7 @@ function drawDigit(port: PortContent, x: number, y: number, w: number, h: number
 	drawSegMask(port, x, y, w, h, SEG[digit] | 0);
 }
 function drawColon(port: PortContent, x: number, y: number, w: number, h: number, on: boolean) {
-	const s = Math.max(3, Math.floor(Math.min(w, h) / 7));
+	const s = Math.max(4, Math.floor(h / 10));
 	const cx = x + Math.floor((w - s) / 2);
 	port.fillColor(on ? ON : DIM, cx, y + Math.floor(h * 0.28), s, s);
 	port.fillColor(on ? ON : DIM, cx, y + Math.floor(h * 0.62), s, s);
@@ -75,18 +75,19 @@ export class SevenSegBehavior extends Behavior {
 		port.invalidate();
 	}
 	onDraw(port: PortContent) {
+		port.fillColor(BG, 0, 0, port.width, port.height);
 		const text = this.string;
 		const n = text.length;
-		const gap = 4;
-		const colonW = 10;
+		const gap = 3;
+		const colonW = 12;
+		const digitW = 30;
 		let units = 0;
 		for (let i = 0; i < n; i++)
-			units += text.charAt(i) === ":" ? colonW : 28;
+			units += text.charAt(i) === ":" ? colonW : digitW;
 		units += gap * (n - 1);
 		let x = Math.floor((port.width - units) / 2);
 		const y = 4;
 		const digitH = port.height - 8;
-		const digitW = 28;
 		for (let i = 0; i < n; i++) {
 			const ch = text.charAt(i);
 			if (ch === ":") {

@@ -445,7 +445,7 @@ export class AppBehavior extends Behavior {
 		}
 		const entries = this.catalog.entries;
 		if (this.scanning) {
-			view.setList(port, "扫描", [{ text: "cadv", selected: false }], "");
+			view.setList(port, "扫描", [{ text: "读取目录", selected: false }], "");
 			return;
 		}
 		if (this.catalog.error && entries.length === 0) {
@@ -454,7 +454,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (entries.length === 0) {
-			view.setList(port, "cadv 空", [{ text: "cadv 空", selected: false }], "");
+			view.setList(port, "cadv 空", [{ text: "没有固件", selected: false }], "");
 			return;
 		}
 		if (this.index < 0 || this.index >= entries.length)
