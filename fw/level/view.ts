@@ -1,10 +1,12 @@
 /*
 	Bubble-level Port. Flat → 2D vial; standing on an edge → 1D tube.
+	Header uses the shared 22px band. The vial sits in the space below it.
 */
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { BG, DIM, FONT_UI, INK, ON } from "ink";
+import { BG, FONT_UI, INK, MID, ON } from "ink";
+import { ROW_LEAD, ROW_PITCH, rowOrigin, rowTextY } from "list";
 
 export type LevelMode = "flat" | "edgeY" | "edgeX" | "none";
 
@@ -70,7 +72,7 @@ function strokeDisk(port: PortContent, cx: number, cy: number, r: number, color:
 }
 
 function drawString(port: PortContent, text: string, color: string, x: number, y: number) {
-	port.drawString(text, style(), color, x, y, Math.max(1, port.width - x), 30);
+	port.drawString(text, style(), color, x, y, Math.max(1, port.width - x));
 }
 
 function formatDeg(deg: number): string {
@@ -114,7 +116,7 @@ export class LevelViewBehavior extends Behavior {
 		if (f.mode === "none") {
 			const text = f.note || "无芯片";
 			const w = port.measureString(text, style()).width;
-			drawString(port, text, INK, Math.max(6, Math.floor((port.width - w) / 2)), 54);
+			drawString(port, text, INK, Math.max(0, Math.floor((port.width - w) / 2)), rowTextY(3));
 			return;
 		}
 		if (f.mode === "flat")
@@ -123,59 +125,72 @@ export class LevelViewBehavior extends Behavior {
 			this.drawEdge(port, f);
 	}
 
-	drawFlat(port: PortContent, f: LevelFrame) {
-		const cx = 60;
-		const cy = 68;
-		const r = 46;
-		drawString(port, "平放", INK, 6, 2);
-		drawString(port, f.level ? "水平" : "调整", f.level ? ON : DIM, 190, 2);
+	drawHeader(port: PortContent, left: string, right: string, rightColor: string) {
+		const y = rowTextY(0);
+		drawString(port, left, INK, 2, y);
+		if (!right)
+			return;
+		const w = port.measureString(right, style()).width;
+		drawString(port, right, rightColor, Math.max(2, port.width - 2 - w), y);
+	}
 
-		strokeDisk(port, cx, cy, r, DIM);
-		strokeDisk(port, cx, cy, Math.floor(r * 2 / 3), DIM);
-		strokeDisk(port, cx, cy, Math.floor(r / 3), DIM);
-		port.fillColor(DIM, cx - r + 3, cy, (r - 3) * 2 + 1, 1);
-		port.fillColor(DIM, cx, cy - r + 3, 1, (r - 3) * 2 + 1);
+	drawFlat(port: PortContent, f: LevelFrame) {
+		const status = f.note ? f.note : (f.level ? "水平" : "调整");
+		const statusColor = f.note || f.level ? ON : AMBER;
+		this.drawHeader(port, "平放", status, statusColor);
+
+		const bodyTop = rowOrigin(1);
+		const bodyH = port.height - bodyTop;
+		const r = 44;
+		const cx = 8 + r;
+		const cy = bodyTop + Math.floor(bodyH / 2);
+		const ring = f.level ? ON : MID;
+		strokeDisk(port, cx, cy, r, MID);
+		strokeDisk(port, cx, cy, Math.floor(r * 2 / 3), MID);
+		strokeDisk(port, cx, cy, Math.floor(r / 3), ring);
+		port.fillColor(MID, cx - r + 4, cy, (r - 4) * 2 + 1, 1);
+		port.fillColor(MID, cx, cy - r + 4, 1, (r - 4) * 2 + 1);
 		port.fillColor(ON, cx, cy, 2, 2);
 
 		const fx = clamp(f.roll / MAX_DEG, -1, 1);
 		const fy = clamp(f.pitch / MAX_DEG, -1, 1);
-		const bx = cx + Math.floor(fx * (r - 9));
-		const by = cy + Math.floor(fy * (r - 9));
+		const bx = cx + Math.floor(fx * (r - 10));
+		const by = cy + Math.floor(fy * (r - 10));
 		drawBubble(port, bx, by, 9, f.level);
 
-		const tx = 128;
-		drawString(port, "俯仰", DIM, tx, 28);
-		drawString(port, formatDeg(f.pitch), f.level ? ON : INK, tx, 48);
-		drawString(port, "横滚", DIM, tx, 78);
-		drawString(port, formatDeg(f.roll), f.level ? ON : INK, tx, 98);
-
-		if (f.note)
-			drawString(port, f.note, ON, 6, 114);
+		const tx = cx + r + 14;
+		const textTop = bodyTop + Math.floor((bodyH - ROW_PITCH * 4) / 2);
+		const valueColor = f.level ? ON : AMBER;
+		drawString(port, "俯仰", INK, tx, textTop - ROW_LEAD);
+		drawString(port, formatDeg(f.pitch), valueColor, tx, textTop + ROW_PITCH - ROW_LEAD);
+		drawString(port, "横滚", INK, tx, textTop + ROW_PITCH * 2 - ROW_LEAD);
+		drawString(port, formatDeg(f.roll), valueColor, tx, textTop + ROW_PITCH * 3 - ROW_LEAD);
 	}
 
 	drawEdge(port: PortContent, f: LevelFrame) {
 		const label = f.mode === "edgeY" ? "立边 Y" : "立边 X";
-		drawString(port, label, INK, 6, 2);
-		drawString(port, f.level ? "水平" : "调整", f.level ? ON : DIM, 190, 2);
+		const status = f.note ? f.note : (f.level ? "水平" : "调整");
+		const statusColor = f.note || f.level ? ON : AMBER;
+		this.drawHeader(port, label, status, statusColor);
 
 		const cx = Math.floor(port.width / 2);
-		const cy = 62;
-		const tubeW = 200;
+		const cy = 68;
+		const tubeW = 208;
 		const tubeH = 28;
 		const x0 = cx - Math.floor(tubeW / 2);
 		const y0 = cy - Math.floor(tubeH / 2);
 		const rad = Math.floor(tubeH / 2);
 
-		port.fillColor(DIM, x0 + rad, y0, tubeW - rad * 2, tubeH);
-		fillDisk(port, x0 + rad, cy, rad, DIM);
-		fillDisk(port, x0 + tubeW - rad, cy, rad, DIM);
+		port.fillColor(MID, x0 + rad, y0, tubeW - rad * 2, tubeH);
+		fillDisk(port, x0 + rad, cy, rad, MID);
+		fillDisk(port, x0 + tubeW - rad, cy, rad, MID);
 		port.fillColor(BG, x0 + rad, y0 + 2, tubeW - rad * 2, tubeH - 4);
 		fillDisk(port, x0 + rad, cy, rad - 2, BG);
 		fillDisk(port, x0 + tubeW - rad, cy, rad - 2, BG);
 
 		port.fillColor(ON, cx, y0 - 4, 2, tubeH + 8);
-		port.fillColor(DIM, cx - 14, y0 + 5, 1, tubeH - 10);
-		port.fillColor(DIM, cx + 14, y0 + 5, 1, tubeH - 10);
+		port.fillColor(MID, cx - 14, y0 + 5, 1, tubeH - 10);
+		port.fillColor(MID, cx + 14, y0 + 5, 1, tubeH - 10);
 
 		const fx = clamp(f.edge / MAX_DEG, -1, 1);
 		const bx = cx + Math.floor(fx * (tubeW / 2 - 18));
@@ -183,10 +198,7 @@ export class LevelViewBehavior extends Behavior {
 
 		const text = formatDeg(f.edge);
 		const tw = port.measureString(text, style()).width;
-		drawString(port, text, f.level ? ON : INK, Math.floor((port.width - tw) / 2), 96);
-
-		if (f.note)
-			drawString(port, f.note, ON, 6, 114);
+		drawString(port, text, f.level ? ON : AMBER, Math.floor((port.width - tw) / 2), cy + 22);
 	}
 }
 

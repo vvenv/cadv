@@ -26,4 +26,8 @@ const LevelApplication = Application.template($ => ({
 	],
 }));
 
-export default new LevelApplication(null, { displayListLength: 4096, touchCount: 0 });
+export default new LevelApplication(null, {
+	displayListLength: 4096,
+	commandListLength: 8192,
+	touchCount: 0,
+});

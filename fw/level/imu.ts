@@ -26,7 +26,6 @@ const REG_PWR_CONF = 0x7C;
 const REG_PWR_CTRL = 0x7D;
 const REG_CMD = 0x7E;
 const SOFT_RESET = 0xB6;
-const CHUNK = 64;
 /** ±2 g, 16-bit. */
 const SCALE = 2 / 32768;
 
@@ -62,17 +61,18 @@ function configBytes(): Uint8Array {
 }
 
 /*
-	A typed array created at module scope is frozen into flash.
-	writeRead then rejects it as a read-only buffer, which is the I2C error
-	on device. Allocate the destination when the sensor is actually opened.
+	Module-scope typed arrays are frozen into flash, and writeRead rejects
+	them. A 1-byte read also takes a broken path in the I2C driver.
+	Allocate a 2-byte RAM buffer on first use and always read two bytes.
 */
-let oneByte: Uint8Array | null = null;
+let regBuf: Uint8Array | null = null;
 function readBuf(): Uint8Array {
-	if (!oneByte) {
-		oneByte = new Uint8Array(1);
-		oneByte[0] = 0;
+	if (!regBuf) {
+		regBuf = new Uint8Array(2);
+		regBuf[0] = 0;
+		regBuf[1] = 0;
 	}
-	return oneByte;
+	return regBuf;
 }
 
 function readReg(io: SMBus, reg: number): number {
@@ -81,27 +81,56 @@ function readReg(io: SMBus, reg: number): number {
 	return dst[0];
 }
 
+/* After power-on the BMI270 is asleep and NACKs reads until this write lands. */
+function wake(io: SMBus) {
+	let last: unknown = null;
+	for (let i = 0; i < 10; i++) {
+		try {
+			io.writeUint8(REG_PWR_CONF, 0x00);
+			Timer.delay(2);
+			return;
+		}
+		catch (e) {
+			last = e;
+			Timer.delay(2);
+		}
+	}
+	if (last instanceof Error)
+		throw last;
+	throw new Error("唤醒失败");
+}
+
 function write8(io: SMBus, reg: number, value: number) {
 	io.writeUint8(reg, value);
 	for (let i = 0; i < 3; i++) {
-		if ((readReg(io, REG_STATUS) & 0x04) === 0)
+		try {
+			if ((readReg(io, REG_STATUS) & 0x04) === 0)
+				return;
+		}
+		catch {
 			return;
+		}
 		Timer.delay(1);
 	}
 }
 
 function upload(io: SMBus, src: Uint8Array) {
+	trace("cfg " + src.length + "\n");
 	write8(io, REG_INIT_CTRL, 0x00);
-	let words = 0;
-	for (let off = 0; off < src.length; off += CHUNK) {
-		const n = Math.min(CHUNK, src.length - off);
-		io.writeUint16(REG_INIT_ADDR, words, false);
-		io.writeBuffer(REG_INIT_DATA, src.subarray(off, off + n));
-		words += n >> 1;
-	}
+	io.writeUint8(REG_INIT_ADDR, 0);
+	io.writeUint8(REG_INIT_ADDR + 1, 0);
+	/* One burst. Chunking the address left the ASIC uninitialized. */
+	io.writeBuffer(REG_INIT_DATA, src);
 	write8(io, REG_INIT_CTRL, 0x01);
-	for (let i = 0; i < 40; i++) {
-		const msg = readReg(io, REG_INTERNAL) & 0x0f;
+	for (let i = 0; i < 100; i++) {
+		let msg = 0;
+		try {
+			msg = readReg(io, REG_INTERNAL) & 0x0f;
+		}
+		catch {
+			Timer.delay(1);
+			continue;
+		}
 		if (msg === 1)
 			return;
 		if (msg === 2)
@@ -113,7 +142,7 @@ function upload(io: SMBus, src: Uint8Array) {
 
 function openBus(address: number, pins: BusPins): SMBus {
 	return new SMBus({
-		hz: 100_000,
+		hz: 400_000,
 		address,
 		data: pins.data,
 		clock: pins.clock,
@@ -121,16 +150,19 @@ function openBus(address: number, pins: BusPins): SMBus {
 }
 
 function readId(io: SMBus): number {
-	acks(io);
-	Timer.delay(20);
+	wake(io);
 	return readReg(io, REG_CHIP);
 }
 
 function bringUp(io: SMBus): ImuHandle {
-	write8(io, REG_CMD, SOFT_RESET);
+	try {
+		io.writeUint8(REG_CMD, SOFT_RESET);
+	}
+	catch {
+		/* a sleeping chip NACKs the reset; the wake below is the one that matters */
+	}
 	Timer.delay(10);
-	write8(io, REG_PWR_CONF, 0x00);
-	Timer.delay(1);
+	wake(io);
 	upload(io, configBytes());
 	write8(io, REG_ACC_CONF, 0xa8);
 	write8(io, REG_ACC_RANGE, 0x00);
@@ -161,31 +193,6 @@ function bringUp(io: SMBus): ImuHandle {
 	};
 }
 
-function acks(io: SMBus): boolean {
-	try {
-		const result = io.write(new ArrayBuffer(0)) as unknown as number;
-		return result !== 1;
-	}
-	catch {
-		return false;
-	}
-}
-
-function scan(pins: BusPins): string {
-	let text = "";
-	for (let addr = 0x08; addr < 0x78; addr++) {
-		let io: SMBus | null = null;
-		try {
-			io = openBus(addr, pins);
-			if (acks(io))
-				text += (text ? " " : "") + addr.toString(16);
-		}
-		catch { /* */ }
-		try { io?.close(); } catch { /* */ }
-	}
-	return text || "空";
-}
-
 function errorText(e: unknown): string {
 	if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string")
 		return (e as { message: string }).message;
@@ -208,10 +215,20 @@ export function openImu(): ImuHandle | null {
 				lastError = addr.toString(16) + " id" + id.toString(16);
 				continue;
 			}
-			const handle = bringUp(io);
-			io = null;
-			lastError = "";
-			return handle;
+			const bus = io;
+			try {
+				const handle = bringUp(bus);
+				io = null;
+				lastError = "";
+				return handle;
+			}
+			catch (e) {
+				try { bus.close(); } catch { /* */ }
+				io = null;
+				lastError = errorText(e);
+				trace("imu " + lastError + "\n");
+				return null;
+			}
 		}
 		catch (e) {
 			try { io?.close(); } catch { /* */ }
@@ -219,8 +236,5 @@ export function openImu(): ImuHandle | null {
 			trace("imu " + lastError + "\n");
 		}
 	}
-	const found = scan(pins);
-	lastError = "总线 " + found;
-	trace("imu scan " + found + "\n");
 	return null;
 }
