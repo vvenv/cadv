@@ -10,7 +10,7 @@ const CLOCK_HELP: HelpRow[] = [
 	{ key: "?", action: "打开本页" },
 	{ key: "Enter", action: "开列表" },
 	{ key: "BS", action: "关掉提示" },
-	{ key: "W", action: "重配 Wi-Fi" },
+	{ key: "W", action: "配 / 改 Wi-Fi" },
 	{ key: "配网+BS", action: "删一字" },
 	{ key: "配网+空格?/", action: "当字符" },
 	{ key: "配网+Esc", action: "取消" },

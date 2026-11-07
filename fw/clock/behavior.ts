@@ -124,7 +124,7 @@ export class AppBehavior extends Behavior {
 	hostEnterDown = false;
 
 	faceText(): string {
-		if (this.spinning)
+		if (this.spinning && this.mode === "busy")
 			return netSpinFace(Date.now());
 		if (this.mode === "cd_edit")
 			return this.cdSlotsText();
@@ -161,11 +161,14 @@ export class AppBehavior extends Behavior {
 		const creds = loadWifiCreds();
 		if (creds)
 			this.startNet(app, creds);
-		else if (this.kb.available)
-			this.enterPrompt(app, "ssid");
 		else {
-			this.setLabels(app, this.kb.status, "no WiFi cfg");
+			// No auto Wi-Fi editor on boot — clock first; W / menu still configures.
 			this.showClock(app, true);
+			this.flashStatus(
+				app,
+				this.kb.available ? "no WiFi" : this.kb.status,
+				this.kb.available ? "按 W 配网" : "no WiFi cfg",
+			);
 			this.refreshWeather(app, false);
 		}
 	}
@@ -199,9 +202,13 @@ export class AppBehavior extends Behavior {
 	/** Clear status overlay / ensure 7-seg + date/lunar are showing. */
 	resumeClock(app: AppHost) {
 		this.statusUntil = 0;
+		// Connect may still be in flight. Drop the chase, but leave busy set
+		// so startNet will not open a second association.
+		this.spinning = false;
 		this.mode = "clock";
 		this.showClock(app, true);
 		this.paintClockLabels(app);
+		this.redrawClock(app);
 	}
 
 	onKeyboardTick(app: AppHost) {
