@@ -15,6 +15,7 @@
 
 	Wi-Fi fields keep Space as a character; Enter still confirms.
 	In a field, BS deletes first. Esc and ← leave the page.
+	Calc keeps / as divide, = as equals, and - as minus. ? still opens help.
 */
 
 import type { KeyStroke } from "keyboard";
