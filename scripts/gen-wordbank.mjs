@@ -6,6 +6,10 @@
  * Pack A — 闽教版小学 (merged) → fw/words/wordbank.bin (flash Resource).
  * Pack B — 初中2182 (merged) → fw/words/junior.bin and
  *          fw/words/sample/cadv/words/junior.bin (manual SD load).
+ * Pack C — unique sorted lookup of A and B → fw/dict/lex.bin and
+ *          fw/dict/sample/cadv/dict/lex.bin. Same 8-character gloss.
+ *          32-byte records, ASCII headword inline. Prefix search matches
+ *          fw/dict/lex.ts (successor: 'az' -> 'b'; a run of z ends at count).
  *
  * Chinese gloss: a `word | pos | meaning` line in
  * ../alice/assets/data/library.json when one exists, otherwise the first
@@ -40,6 +44,8 @@ const OUT_PHONE = path.join(ROOT, "fw/words/phone-chars.txt");
 const OUT_SD_JUNIOR = path.join(ROOT, "fw/words/sample/cadv/words/junior.bin");
 /** Legacy auto-override path; removed so flash stays the default. */
 const LEGACY_SD_BIN = path.join(ROOT, "fw/words/sample/cadv/words/wordbank.bin");
+const OUT_LEX = path.join(ROOT, "fw/dict/lex.bin");
+const OUT_LEX_SAMPLE = path.join(ROOT, "fw/dict/sample/cadv/dict/lex.bin");
 const ECDICT_URL = "https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv";
 
 const GLOSS_CAP = 8;
@@ -478,6 +484,7 @@ function build() {
 
 	reportPack("flash", OUT_BIN, packA);
 	reportPack("junior", OUT_JUNIOR, packB);
+	writeDict([primary, junior], library, meta, phones);
 	console.log(`wrote ${path.relative(ROOT, OUT_SD_JUNIOR)}`);
 	console.log(`wrote ${path.relative(ROOT, OUT_CHARS)} (${han.size} chars)`);
 	console.log(`wrote ${path.relative(ROOT, OUT_PHONE)} (${[...phoneChars].length} chars)`);
@@ -583,6 +590,168 @@ function verifyBank(bin, bankName, lexWord, lexGloss, lexPhone, bankAt) {
 			throw new Error(`gloss ${id}: ${gloss}`);
 		if (phone !== lexPhone[id])
 			throw new Error(`phone ${id}: ${phone}`);
+	}
+}
+
+const DICT_MAGIC = 0x584c4457;
+const DICT_VERSION = 1;
+const DICT_STRIDE = 32;
+
+function writeDict(groups, library, meta, phones) {
+	const set = new Set();
+	for (const banks of groups) {
+		for (const bank of banks) {
+			for (const line of bank.lines) {
+				const word = headword(line);
+				if (word)
+					set.add(word);
+			}
+		}
+	}
+	const words = [...set].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+	if (words.length > 65535)
+		throw new Error(`dict lexicon ${words.length} does not fit in u16`);
+	const glosses = [];
+	const phoneList = [];
+	for (const word of words) {
+		const gloss = glossOf(library.get(word) || "", meta[word] || "");
+		const phone = phones.get(word) || "";
+		if (Buffer.byteLength(gloss, "utf8") > 255)
+			throw new Error(`gloss too long: ${word}`);
+		if (Buffer.byteLength(phone, "utf8") > 255)
+			throw new Error(`phone too long: ${word}`);
+		glosses.push(gloss);
+		phoneList.push(phone);
+	}
+	const bin = packLex(words, glosses, phoneList);
+	verifyLex(bin, words, glosses, phoneList);
+	fs.mkdirSync(path.dirname(OUT_LEX_SAMPLE), { recursive: true });
+	fs.writeFileSync(OUT_LEX, bin);
+	fs.writeFileSync(OUT_LEX_SAMPLE, bin);
+	const withGloss = glosses.filter(Boolean).length;
+	const withPhone = phoneList.filter(Boolean).length;
+	console.log(`wrote ${path.relative(ROOT, OUT_LEX)} (${bin.length} bytes)`);
+	console.log(`dict lexicon ${words.length}, gloss ${withGloss}, phones ${withPhone}`);
+	console.log(`wrote ${path.relative(ROOT, OUT_LEX_SAMPLE)}`);
+}
+
+function packLex(words, glosses, phones) {
+	const indexAt = 16;
+	const blobAt = indexAt + words.length * DICT_STRIDE;
+	let cursor = blobAt;
+	function pushStr(s) {
+		if (!s)
+			return { at: 0, len: 0 };
+		const bytes = Buffer.from(s, "utf8");
+		const at = cursor;
+		cursor += bytes.length;
+		return { at, len: bytes.length, bytes };
+	}
+	const glossRec = glosses.map(pushStr);
+	const phoneRec = phones.map(pushStr);
+	const blob = Buffer.concat([
+		...glossRec.map((r) => r.bytes || Buffer.alloc(0)),
+		...phoneRec.map((r) => r.bytes || Buffer.alloc(0)),
+	]);
+	const out = Buffer.alloc(blobAt + blob.length);
+	out.writeUInt32LE(DICT_MAGIC, 0);
+	out.writeUInt16LE(DICT_VERSION, 4);
+	out.writeUInt16LE(words.length, 6);
+	out.writeUInt32LE(indexAt, 8);
+	out.writeUInt32LE(blobAt, 12);
+	for (let i = 0; i < words.length; i++) {
+		const o = indexAt + i * DICT_STRIDE;
+		out.write(words[i], o, words[i].length, "ascii");
+		out.writeUInt8(words[i].length, o + 16);
+		out.writeUInt8(glossRec[i].len, o + 17);
+		out.writeUInt8(phoneRec[i].len, o + 18);
+		out.writeUInt32LE(glossRec[i].at, o + 20);
+		out.writeUInt32LE(phoneRec[i].at, o + 24);
+	}
+	blob.copy(out, blobAt);
+	return out;
+}
+
+function lexWordAt(bin, i) {
+	const o = 16 + i * DICT_STRIDE;
+	const len = bin.readUInt8(o + 16);
+	return bin.toString("ascii", o, o + len);
+}
+
+function lexText(bin, at, len) {
+	if (len <= 0)
+		return "";
+	return bin.toString("utf8", at, at + len);
+}
+
+function lexSuccessor(prefix) {
+	const chars = prefix.split("");
+	for (let i = chars.length - 1; i >= 0; i--) {
+		if (chars[i] < "z") {
+			chars[i] = String.fromCharCode(chars[i].charCodeAt(0) + 1);
+			return chars.slice(0, i + 1).join("");
+		}
+	}
+	return null;
+}
+
+function lexLower(bin, count, key) {
+	let lo = 0;
+	let hi = count;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if (lexWordAt(bin, mid) < key)
+			lo = mid + 1;
+		else
+			hi = mid;
+	}
+	return lo;
+}
+
+function lexPrefixEnd(bin, count, prefix) {
+	if (!prefix)
+		return count;
+	const next = lexSuccessor(prefix);
+	if (next === null)
+		return count;
+	return lexLower(bin, count, next);
+}
+
+function verifyLex(bin, words, glosses, phones) {
+	if (bin.readUInt32LE(0) !== DICT_MAGIC)
+		throw new Error("dict magic");
+	if (bin.readUInt16LE(4) !== DICT_VERSION)
+		throw new Error("dict version");
+	const count = bin.readUInt16LE(6);
+	if (count !== words.length)
+		throw new Error("dict count");
+	for (let i = 0; i < count; i++) {
+		const o = 16 + i * DICT_STRIDE;
+		if (lexWordAt(bin, i) !== words[i])
+			throw new Error(`dict word ${i}`);
+		const gloss = lexText(bin, bin.readUInt32LE(o + 20), bin.readUInt8(o + 17));
+		const phone = lexText(bin, bin.readUInt32LE(o + 24), bin.readUInt8(o + 18));
+		if (gloss !== glosses[i])
+			throw new Error(`dict gloss ${i}: ${gloss}`);
+		if (phone !== phones[i])
+			throw new Error(`dict phone ${i}: ${phone}`);
+		if (i > 0 && !(words[i - 1] < words[i]))
+			throw new Error(`dict order ${words[i - 1]} ${words[i]}`);
+	}
+	const probes = new Set(["", "a", "z", "zz", "app", "in", "the"]);
+	if (words.length > 0) {
+		probes.add(words[0]);
+		probes.add(words[words.length - 1]);
+		probes.add(words[Math.floor(words.length / 2)].slice(0, 3));
+	}
+	for (const prefix of probes) {
+		const lo = lexLower(bin, count, prefix);
+		const hi = lexPrefixEnd(bin, count, prefix);
+		for (let i = 0; i < count; i++) {
+			const hit = !prefix || words[i].startsWith(prefix);
+			if (hit !== (i >= lo && i < hi))
+				throw new Error(`dict range ${prefix || "(empty)"} at ${i} ${words[i]}`);
+		}
 	}
 }
 

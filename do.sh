@@ -9,14 +9,16 @@
 #   fw/<id>/sample 存在时，模拟把文件根指到该目录。
 #   菜单里 Esc、← 或 BS 返回上一级。主菜单再按一次即退出。
 #   模拟不写 id、或上传「一个固件」时，会列出 fw/*/label。取消则什么都不做。
-#   构建/模拟时自动判断：词库或字体比源文件旧就重做。只有选中的固件用到
-#   wordbank.bin 时才检查词库。CADV_REFRESH=0 跳过；=ask 改回先问再生成。
+#   构建/模拟时自动判断：词库或字体比源文件旧就重做。单词拼写或查词才检查词库。
+#   CADV_REFRESH=0 跳过；=ask 改回先问再生成。
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
 #   ./do.sh port                    # 列出可用串口
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
-#   ./do.sh gen-words               # 从 ../alice/data 生成 fw/words/wordbank.bin
-#                                   # 与 junior.bin；junior 同步到 sample（模拟用）
+#   ./do.sh gen-words               # 从 ../alice/data 生成词库
+#                                   # 拼写：wordbank.bin、junior.bin（junior 同步到 sample）
+#                                   # 查词：fw/dict/lex.bin，并同步到 sample
 #   ./do.sh sd fw words             # 固件镜像 + fw/words 下可选词库（*.bin，不含内置 wordbank）
+#   ./do.sh sd fw dict              # 固件镜像 + cadv/dict/lex.bin
 #   ./do.sh sd bank                 # 只传词库到 cadv/words/，不传固件（可再跟名字或 all）
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh sd                      # 列出卡上的 cadv/
@@ -163,6 +165,14 @@ fw_uses_wordbank() {
   grep -q 'wordbank\.bin' "$FW_ROOT/$1/manifest.json"
 }
 
+# 单词拼写 embeds a bank. 查词 reads cadv/dict/lex.bin, built by the same script.
+fw_needs_bank() {
+  if fw_uses_wordbank "$1"; then
+    return 0
+  fi
+  [ "$1" = "dict" ]
+}
+
 # ---------- commands ----------
 
 cmd_port() {
@@ -191,29 +201,40 @@ cmd_gen_words() {
   node "$ROOT/scripts/gen-wordbank.mjs"
 }
 
-# fw/words/wordbank.bin or junior.bin is older than the generator, lists,
+# Quiz banks or the lookup lexicon are older than the generator, lists,
 # or the gloss and phonetic sources.
 wordbank_stale() {
   local out="$FW_ROOT/words/wordbank.bin"
   local junior="$FW_ROOT/words/junior.bin"
+  local lex="$FW_ROOT/dict/lex.bin"
+  local sample="$FW_ROOT/dict/sample/cadv/dict/lex.bin"
   local alice="$ROOT/../alice"
-  local hit meta csv
+  local hit meta csv f
   [ -f "$out" ] || return 0
   [ -f "$junior" ] || return 0
-  [ "$ROOT/scripts/gen-wordbank.mjs" -nt "$out" ] && return 0
-  [ "$ROOT/scripts/gen-wordbank.mjs" -nt "$junior" ] && return 0
+  [ -f "$lex" ] || return 0
+  [ -f "$sample" ] || return 0
+  for f in "$out" "$junior" "$lex" "$sample"; do
+    [ "$ROOT/scripts/gen-wordbank.mjs" -nt "$f" ] && return 0
+  done
   for meta in "$alice/assets/data/library.json" "$alice/assets/data/ecdict-meta.json"; do
-    [ -f "$meta" ] && { [ "$meta" -nt "$out" ] || [ "$meta" -nt "$junior" ]; } && return 0
+    [ -f "$meta" ] || continue
+    for f in "$out" "$junior" "$lex" "$sample"; do
+      [ "$meta" -nt "$f" ] && return 0
+    done
   done
   for csv in "$ROOT/.cache/ecdict.csv" "$alice/.cache/ecdict.csv"; do
-    [ -f "$csv" ] && { [ "$csv" -nt "$out" ] || [ "$csv" -nt "$junior" ]; } && return 0
+    [ -f "$csv" ] || continue
+    for f in "$out" "$junior" "$lex" "$sample"; do
+      [ "$csv" -nt "$f" ] && return 0
+    done
   done
   if [ -d "$alice/data/闽教版小学" ]; then
-    hit="$(find "$alice/data/闽教版小学" -name '*.txt' \( -newer "$out" -o -newer "$junior" \) -print -quit)"
+    hit="$(find "$alice/data/闽教版小学" -name '*.txt' \( -newer "$out" -o -newer "$junior" -o -newer "$lex" -o -newer "$sample" \) -print -quit)"
     [ -n "$hit" ] && return 0
   fi
   if [ -d "$alice/data/初中2182" ]; then
-    hit="$(find "$alice/data/初中2182" -name '*.txt' \( -newer "$out" -o -newer "$junior" \) -print -quit)"
+    hit="$(find "$alice/data/初中2182" -name '*.txt' \( -newer "$out" -o -newer "$junior" -o -newer "$lex" -o -newer "$sample" \) -print -quit)"
     [ -n "$hit" ] && return 0
   fi
   return 1
@@ -451,6 +472,24 @@ words_pack_ids() {
 
 words_pack_src() {
   printf '%s\n' "$FW_ROOT/words/$1.bin"
+}
+
+dict_lex_src() {
+  printf '%s\n' "$FW_ROOT/dict/lex.bin"
+}
+
+# Host-mounted card: cadv/dict/lex.bin, not a firmware image.
+sd_put_dict_host() {
+  local home="$1" src dest
+  src="$(dict_lex_src)"
+  if [ ! -f "$src" ]; then
+    log_warn "没有查词库 $src，跳过 ${SD_DIR}/dict/lex.bin"
+    return 0
+  fi
+  mkdir -p "$home/dict"
+  dest="$home/dict/lex.bin"
+  cp -X -f "$src" "$dest"
+  log_success "查词 → ${SD_DIR}/dict/lex.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
 }
 
 words_pack_exists() {
@@ -749,7 +788,7 @@ ensure_fw_image() {
 }
 
 cmd_sd_fw_device() {
-  local port="$1" id src tmp rc=0 args=() tmps=() packs=()
+  local port="$1" id src tmp rc=0 args=() tmps=() packs=() put_dict=0 lexsrc
   shift
   # Images are already built by cmd_sd_fw. Ping only gates the USB write.
   log_info "经 USB 写入卡上的 ${SD_DIR}/（${port}）"
@@ -767,6 +806,15 @@ cmd_sd_fw_device() {
         args+=("$(words_pack_src "$src")" "words/${src}.bin")
       done < <(words_pack_ids)
     fi
+    if [ "$id" = "dict" ]; then
+      lexsrc="$(dict_lex_src)"
+      if [ -f "$lexsrc" ]; then
+        put_dict=1
+        args+=("$lexsrc" "dict/lex.bin")
+      else
+        log_warn "没有查词库 $lexsrc，跳过 ${SD_DIR}/dict/lex.bin"
+      fi
+    fi
   done
   link_put "$port" "${args[@]}" || rc=$?
   rm -f "${tmps[@]}"
@@ -781,6 +829,10 @@ cmd_sd_fw_device() {
       src="$(words_pack_src "$id")"
       log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
     done
+  fi
+  if [ "$put_dict" -eq 1 ]; then
+    lexsrc="$(dict_lex_src)"
+    log_success "查词 → ${SD_DIR}/dict/lex.bin（$(human_bytes "$(wc -c <"$lexsrc" | tr -d ' ')")）"
   fi
 }
 
@@ -837,6 +889,9 @@ cmd_sd_fw() {
       if [ "${#packs[@]}" -gt 0 ]; then
         sd_put_words_packs_host "$home" "${packs[@]}"
       fi
+    fi
+    if [ "$id" = "dict" ]; then
+      sd_put_dict_host "$home"
     fi
   done
   sync || true
@@ -993,7 +1048,7 @@ cmd_ts_sim() {
   local id want=0
   id="$(require_fw "${1:-}")"
   [ -n "$id" ] || return 0
-  if fw_uses_wordbank "$id"; then
+  if fw_needs_bank "$id"; then
     want=1
   fi
   refresh_generated "$want"
@@ -1039,7 +1094,7 @@ esp_mc() {
 # Compile the ESP32 image and stop before esptool. Same bin flash writes at 0x10000.
 build_fw_image() {
   local id="$1" want=0
-  if fw_uses_wordbank "$id"; then
+  if fw_needs_bank "$id"; then
     want=1
   fi
   refresh_generated "$want"
@@ -1064,7 +1119,7 @@ cmd_ts_flash() {
   # The chip only holds the launcher. Other firmware is chosen on the device.
   id="${1:-sd}"
   fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
-  if fw_uses_wordbank "$id"; then
+  if fw_needs_bank "$id"; then
     want=1
   fi
   refresh_generated "$want"
