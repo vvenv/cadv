@@ -23,6 +23,9 @@
 #   ./do.sh sd bank dict            # 只传 cadv/dict/lex.bin
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh sd                      # 列出卡上的 cadv/
+#   菜单「列出 cadv」可多选删除：空格勾选，a 全选，回车后再确认。Esc、← 或 BS 不删。
+#   ./do.sh sd rm clock.bin         # 删除 cadv 里的这些文件。可以写多个相对路径
+#   卡在板子上时，删除要这一版启动器。旧的会提示先 ./do.sh flash。
 #   ./do.sh sd fw                  # 把除启动器以外的全部固件拷进 cadv/（不烧进芯片）
 #   ./do.sh sd fw clock             # 只拷一个：cadv/clock.bin 和一行名字
 #   ./do.sh sd file ./a.txt         # 把文件或目录拷进 cadv/
@@ -463,6 +466,14 @@ link_put() {
   "$py" "$ROOT/scripts/sd_link.py" put "$port" "$@"
 }
 
+link_rm() {
+  local py port
+  py="$(link_python)"
+  port="$1"
+  shift
+  "$py" "$ROOT/scripts/sd_link.py" rm "$port" "$@"
+}
+
 # The device only opens this directory. The rest of a large card is ignored.
 SD_DIR=cadv
 
@@ -735,6 +746,230 @@ cmd_sd_ls() {
   [ "$found" -eq 1 ] || log_info "${SD_DIR} 是空的"
 }
 
+# Relative path inside cadv. Matches the device: no absolute path, no "..",
+# no hidden component, at most 80 bytes.
+sd_byte_len() {
+  printf '%s' "$1" | wc -c | tr -d ' '
+}
+
+sd_rel_ok() {
+  local rel="$1" rest part n i c
+  [ -n "$rel" ] || return 1
+  n="$(sd_byte_len "$rel")"
+  [ "$n" -ge 1 ] && [ "$n" -le 80 ] || return 1
+  case "$rel" in
+    /* | */ | *\\*) return 1 ;;
+  esac
+  i=0
+  while [ "$i" -lt "${#rel}" ]; do
+    c="${rel:$i:1}"
+    case "$c" in
+      [[:cntrl:]] | $'\177') return 1 ;;
+    esac
+    i=$((i + 1))
+  done
+  rest="$rel"
+  while [ -n "$rest" ]; do
+    case "$rest" in
+      /*) return 1 ;;
+    esac
+    part="${rest%%/*}"
+    [ -n "$part" ] || return 1
+    n="$(sd_byte_len "$part")"
+    [ "$n" -ge 1 ] && [ "$n" -le 64 ] || return 1
+    case "$part" in
+      . | .. | .*) return 1 ;;
+    esac
+    if [ "$rest" = "$part" ]; then
+      return 0
+    fi
+    rest="${rest#*/}"
+  done
+  return 1
+}
+
+# size<TAB>path. Skips hidden names and in-progress *.part uploads.
+sd_collect_files() {
+  local kind="$1" root="$2" dir out size name f rel bytes
+  if [ "$kind" = "device" ]; then
+    out="$(link_ls "$root")" || return $?
+    while IFS=$'\t' read -r size name; do
+      [ -n "${name:-}" ] || continue
+      sd_rel_ok "$name" || continue
+      case "$name" in
+        *.part) continue ;;
+      esac
+      case "$size" in
+        ''|*[!0-9]*) continue ;;
+      esac
+      printf '%s\t%s\n' "$size" "$name"
+    done <<< "$out"
+    return 0
+  fi
+  dir="$root/$SD_DIR"
+  [ -d "$dir" ] || return 0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ -L "$f" ] && continue
+    [ -f "$f" ] || continue
+    rel="${f#"$dir"/}"
+    sd_rel_ok "$rel" || continue
+    case "$rel" in
+      *.part) continue ;;
+    esac
+    bytes="$(wc -c <"$f" | tr -d ' ')"
+    printf '%s\t%s\n' "$bytes" "$rel"
+  done < <(find "$dir" -type f ! -name '.*' ! -name '.DS_Store' ! -name '*.part' ! -path '*/.*' | sort)
+}
+
+# 0 = yes, 2 = cancelled. No prompt when stdin is not a terminal.
+sd_confirm_rm() {
+  local ans rel
+  [ $# -gt 0 ] || return 2
+  if [ ! -t 0 ]; then
+    return 0
+  fi
+  printf '将删除：\n' >&2
+  for rel in "$@"; do
+    printf '  %s/%s\n' "$SD_DIR" "$rel" >&2
+  done
+  read -r -p "删除这 $# 个文件？[y/N] " ans </dev/tty || ans=n
+  case "$ans" in
+    y|Y|yes|YES|是) return 0 ;;
+  esac
+  log_info "已取消"
+  return 2
+}
+
+sd_rm_host_one() {
+  local home="$1" rel="$2" dir base canon home_canon parent
+  sd_rel_ok "$rel" || log_die "文件名不能用：$rel"
+  if [ ! -d "$home" ]; then
+    log_warn "没有这个文件：${SD_DIR}/$rel"
+    return 0
+  fi
+  dir="$home/$(dirname "$rel")"
+  base="$(basename "$rel")"
+  if [ -L "$dir/$base" ]; then
+    log_die "不删除链接：${SD_DIR}/$rel"
+  fi
+  if [ ! -f "$dir/$base" ]; then
+    log_warn "没有这个文件：${SD_DIR}/$rel"
+    return 0
+  fi
+  home_canon="$(cd "$home" && pwd -P)" || log_die "打不开 ${SD_DIR}"
+  canon="$(cd "$dir" && pwd -P)/$base" || log_die "打不开 ${SD_DIR}/$rel"
+  case "$canon" in
+    "$home_canon"/*) ;;
+    *) log_die "路径跑出 ${SD_DIR}：$rel" ;;
+  esac
+  rm -f -- "$canon"
+  log_success "已删除 ${SD_DIR}/$rel"
+  parent="$(dirname "$canon")"
+  while [ "$parent" != "$home_canon" ] && [ "$parent" != "/" ]; do
+    rmdir "$parent" 2>/dev/null || break
+    parent="$(dirname "$parent")"
+  done
+}
+
+sd_rm_files() {
+  local kind="$1" root="$2" rel home
+  shift 2
+  [ $# -gt 0 ] || return 0
+  if [ "$kind" = "device" ]; then
+    log_info "经 USB 删除 ${SD_DIR}/ 里的文件（${root}）"
+    link_rm "$root" "$@"
+    for rel in "$@"; do
+      log_success "已删除 ${SD_DIR}/$rel"
+    done
+    return 0
+  fi
+  home="$root/$SD_DIR"
+  for rel in "$@"; do
+    sd_rm_host_one "$home" "$rel"
+  done
+  sync || true
+}
+
+# 0 = listed or deleted, 2 = cancelled. Interactive: multi-select, then confirm.
+cmd_sd_pick_rm() {
+  local route kind root size name csv i
+  local -a sizes=() names=() opts=() picks=() chosen=()
+  route="$(sd_route)" || return $?
+  [ -n "$route" ] || return 2
+  kind="${route%%$'\t'*}"
+  root="${route#*$'\t'}"
+  while IFS=$'\t' read -r size name; do
+    [ -n "${name:-}" ] || continue
+    sizes+=("$size")
+    names+=("$name")
+  done < <(sd_collect_files "$kind" "$root")
+  if [ "${#names[@]}" -eq 0 ]; then
+    if [ "$kind" = "device" ]; then
+      log_info "设备上的 ${SD_DIR}/ 是空的（${root}）"
+    elif [ ! -d "$root/$SD_DIR" ]; then
+      log_info "还没有 ${SD_DIR}。上传固件或文件时会创建。"
+    else
+      log_info "${SD_DIR} 是空的"
+    fi
+    return 0
+  fi
+  if [ ! -t 0 ]; then
+    i=0
+    while [ "$i" -lt "${#names[@]}" ]; do
+      printf '%s\t%s\n' "${names[$i]}" "$(human_bytes "${sizes[$i]}")"
+      i=$((i + 1))
+    done
+    return 0
+  fi
+  i=0
+  while [ "$i" -lt "${#names[@]}" ]; do
+    opts+=("$i:${names[$i]}  $(human_bytes "${sizes[$i]}")")
+    i=$((i + 1))
+  done
+  csv="$(prompt_multi_menu "删除哪些文件" --back --default=0 "${opts[@]}")"
+  [ -n "$csv" ] || return 2
+  IFS=',' read -ra picks <<<"$csv"
+  for i in "${picks[@]}"; do
+    case "$i" in
+      ''|*[!0-9]*) continue ;;
+    esac
+    [ "$i" -lt "${#names[@]}" ] || continue
+    chosen+=("${names[$i]}")
+  done
+  [ "${#chosen[@]}" -gt 0 ] || return 2
+  sd_confirm_rm "${chosen[@]}" || return $?
+  sd_rm_files "$kind" "$root" "${chosen[@]}"
+}
+
+cmd_sd_rm() {
+  local rc rel route kind root
+  local -a rels=()
+  if [ $# -eq 0 ]; then
+    if [ ! -t 0 ]; then
+      log_die "用法：./do.sh sd rm <cadv 里的相对路径>…"
+    fi
+    cmd_sd_pick_rm && return 0
+    rc=$?
+    [ "$rc" -eq 2 ] && return 0
+    return "$rc"
+  fi
+  for rel in "$@"; do
+    sd_rel_ok "$rel" || log_die "文件名不能用：$rel"
+    rels+=("$rel")
+  done
+  sd_confirm_rm "${rels[@]}" || {
+    rc=$?
+    [ "$rc" -eq 2 ] && return 0
+    return "$rc"
+  }
+  route="$(sd_route)" || return $?
+  [ -n "$route" ] || return 0
+  kind="${route%%$'\t'*}"
+  root="${route#*$'\t'}"
+  sd_rm_files "$kind" "$root" "${rels[@]}"
+}
+
 cmd_sd_file_device() {
   local port="$1" src name f rel srcs=() dsts=() args=() i
   shift
@@ -992,14 +1227,18 @@ cmd_sd() {
       shift
       cmd_sd_file "$@"
       ;;
+    rm | del | delete)
+      shift
+      cmd_sd_rm "$@"
+      ;;
     *)
-      log_die "用法：./do.sh sd [ls|fw|bank|file] …"
+      log_die "用法：./do.sh sd [ls|fw|bank|file|rm] …"
       ;;
   esac
 }
 
 sd_menu() {
-  local choice csv
+  local choice csv rc
   local -a ids
   while true; do
     choice="$(prompt_menu "SD 卡" --back --default=1 \
@@ -1018,7 +1257,12 @@ sd_menu() {
         pause_menu
         ;;
       ls)
-        (cmd_sd_ls) || log_error "执行失败（sd）"
+        rc=0
+        (cmd_sd_pick_rm) || rc=$?
+        if [ "$rc" -eq 2 ]; then
+          continue
+        fi
+        [ "$rc" -eq 0 ] || log_error "执行失败（sd）"
         pause_menu
         ;;
       bank)
@@ -1275,7 +1519,7 @@ main_menu() {
     choice="$(prompt_menu "cadv" --back --default=1 \
       "flash:烧录启动器" \
       "sim:桌面模拟" \
-      "sd:SD 卡（列出 / 上传）" \
+      "sd:SD 卡（列出 / 上传 / 删除）" \
       "ts-check:检查 Moddable / TS 环境" \
       "gen-font:生成 UI BMFont" \
       "gen-words:从 alice/data 生成词库" \

@@ -84,6 +84,7 @@ export class AppBehavior extends Behavior {
 	helpIndex = 0;
 	note = "";
 	scanning = false;
+	rescan = false;
 	hostEnterDown = false;
 	file: File | null = null;
 	installer: Installer | null = null;
@@ -193,9 +194,14 @@ export class AppBehavior extends Behavior {
 	}
 
 	startScan(app: AppHost) {
-		if (this.scanning || this.mode === "load")
+		if (this.mode === "load")
 			return;
+		if (this.scanning) {
+			this.rescan = true;
+			return;
+		}
 		this.scanning = true;
+		this.rescan = false;
 		this.note = "";
 		this.mode = "list";
 		this.paint(app);
@@ -209,6 +215,10 @@ export class AppBehavior extends Behavior {
 		this.index = 0;
 		this.scanning = false;
 		this.paint(app);
+		if (!this.rescan || this.mode === "load")
+			return;
+		this.rescan = false;
+		this.startScan(app);
 	}
 
 	handleStroke(app: AppHost, stroke: KeyStroke) {

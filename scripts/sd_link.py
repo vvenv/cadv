@@ -24,6 +24,7 @@ OP_PUT = 3
 OP_DATA = 4
 OP_END = 5
 OP_ABORT = 6
+OP_RM = 7
 
 ST_OK = 0
 ST_BUSY = 1
@@ -86,7 +87,7 @@ def try_parse(buf: bytearray):
     return None
 
 
-def status_error(status: int, name: str) -> LinkError:
+def status_error(status: int, name: str, rm: bool = False) -> LinkError:
     if status == ST_BUSY:
         return LinkError("设备正在把固件载入芯片，等它重启后再传。")
     if status == ST_NOCARD:
@@ -94,10 +95,14 @@ def status_error(status: int, name: str) -> LinkError:
     if status == ST_BADNAME:
         return LinkError(f"文件名不能用：{name}")
     if status == ST_IO:
+        if rm:
+            return LinkError(f"删除失败：{name or 'cadv'}")
         return LinkError(f"写入失败：{name or 'cadv'}")
     if status == ST_CRC:
         return LinkError(f"校验失败：{name}")
     if status == ST_NOFILE:
+        if rm:
+            return LinkError(f"没有这个文件：{name}")
         return LinkError("传输中断了。再传一次。")
     if status == ST_BAD:
         return LinkError("启动器不认识这个命令。先 ./do.sh flash 再上传。")
@@ -163,15 +168,15 @@ def read_reply(ser, expect_op: int, timeout: float):
     raise LinkError("启动器没有应答。卡留在板子上，先 ./do.sh flash，按 RESET，等菜单出来再上传。")
 
 
-def transact(ser, op: int, payload: bytes, timeout: float, name: str = ""):
+def transact(ser, op: int, payload: bytes, timeout: float, name: str = "", rm: bool = False):
     write_all(ser, pack_frame(op, 0, payload))
     status, body = read_reply(ser, op, timeout)
     if status != ST_OK:
-        raise status_error(status, name)
+        raise status_error(status, name, rm)
     return body
 
 
-def ping(ser) -> None:
+def ping(ser) -> int:
     deadline = time.monotonic() + 8
     last = LinkError("启动器没有应答。卡留在板子上，先 ./do.sh flash，按 RESET，等菜单出来再上传。")
     while time.monotonic() < deadline:
@@ -182,9 +187,9 @@ def ping(ser) -> None:
             if "没有应答" not in str(exc):
                 raise
             continue
-        if body != b"\x01":
+        if len(body) != 1 or body[0] < 1:
             raise LinkError("启动器协议版本不对。先 ./do.sh flash 再上传。")
-        return
+        return body[0]
     raise last
 
 
@@ -288,6 +293,28 @@ def cmd_ls(port: str) -> None:
         ser.close()
 
 
+def rm_one(ser, dest: str) -> None:
+    raw = dest.encode("utf-8")
+    if not name_ok(raw):
+        raise LinkError(f"文件名不能用：{dest}")
+    payload = bytes([len(raw)]) + raw
+    transact(ser, OP_RM, payload, 15, dest, True)
+
+
+def cmd_rm(port: str, names: list[str]) -> None:
+    if not names:
+        raise LinkError("没有要删除的文件")
+    ser = open_port(port)
+    try:
+        ver = ping(ser)
+        if ver < 2:
+            raise LinkError("启动器还不支持删除。先 ./do.sh flash，再删。")
+        for name in names:
+            rm_one(ser, name)
+    finally:
+        ser.close()
+
+
 def cmd_put(port: str, pairs: list[tuple[str, str]]) -> None:
     if not pairs:
         raise LinkError("没有要上传的文件")
@@ -330,6 +357,13 @@ def selftest() -> None:
     if try_parse(bad) is not None:
         raise SystemExit("坏校验应该被丢掉")
 
+    rm_payload = bytes([8]) + b"clock.bin"
+    rm_frame = pack_frame(OP_RM, 0, rm_payload)
+    rm_buf = bytearray(rm_frame)
+    rm_got = try_parse(rm_buf)
+    if rm_got != (OP_RM, 0, rm_payload) or rm_buf:
+        raise SystemExit(f"删除帧失败：{rm_got!r} {rm_buf!r}")
+
     listed = parse_list(bytes([5]) + b"a.bin" + struct.pack("<I", 12) + bytes([1]) + b"b" + struct.pack("<I", 0))
     if listed != [(12, "a.bin"), (0, "b")]:
         raise SystemExit(f"列表解析失败：{listed!r}")
@@ -343,7 +377,7 @@ def selftest() -> None:
 
 def usage() -> None:
     print(
-        "用法：sd_link.py selftest | ping PORT | ls PORT | put PORT SRC DEST [SRC DEST...]",
+        "用法：sd_link.py selftest | ping PORT | ls PORT | rm PORT NAME... | put PORT SRC DEST [SRC DEST...]",
         file=sys.stderr,
     )
 
@@ -360,6 +394,8 @@ def main(argv: list[str]) -> int:
             cmd_ping(argv[2])
         elif cmd == "ls" and len(argv) == 3:
             cmd_ls(argv[2])
+        elif cmd == "rm" and len(argv) >= 4:
+            cmd_rm(argv[2], argv[3:])
         elif cmd == "put" and len(argv) >= 5 and (len(argv) - 3) % 2 == 0:
             pairs = []
             args = argv[3:]

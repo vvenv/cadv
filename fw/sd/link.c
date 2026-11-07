@@ -1,5 +1,5 @@
 /*
-	USB serial link. The host sends files; this writes them under /sdcard/cadv.
+	USB serial link. The host lists, writes, and deletes files under /sdcard/cadv.
 	The launcher is built without the xsbug reader. That reader owns this port
 	and would swallow the stream. Frame layout matches scripts/sd_link.py.
 
@@ -40,6 +40,7 @@
 #define OP_DATA 4
 #define OP_END 5
 #define OP_ABORT 6
+#define OP_RM 7
 
 #define ST_OK 0
 #define ST_BUSY 1
@@ -331,8 +332,76 @@ static int walk(const char *dir, const char *rel, uint32_t *used, int depth, int
 
 static void on_ping(void)
 {
-	uint8_t ver = 1;
+	/* 2: OP_RM. Hosts still accept 1 and skip delete. */
+	uint8_t ver = 2;
 	reply(OP_PING, ST_OK, &ver, 1);
+}
+
+/* path is the full file path. Remove empty parents, but not cadv itself. */
+static void prune_empty_dirs(char *path)
+{
+	char root[80];
+	char *slash;
+	int n;
+
+	n = snprintf(root, sizeof(root), "%s/cadv", MODDEF_FILE_ROOT);
+	if (n <= 0 || n >= (int)sizeof(root))
+		return;
+	for (;;) {
+		slash = strrchr(path, '/');
+		if (!slash || slash == path)
+			return;
+		*slash = 0;
+		if ((int)strlen(path) <= n)
+			return;
+		if (rmdir(path) != 0)
+			return;
+	}
+}
+
+static void on_rm(const uint8_t *payload, uint32_t len)
+{
+	uint8_t name_len;
+	char path[192];
+	struct stat st;
+	int n;
+
+	if (gBusy || gFd >= 0) {
+		reply(OP_RM, ST_BUSY, NULL, 0);
+		return;
+	}
+	if (!card_ok()) {
+		reply(OP_RM, ST_NOCARD, NULL, 0);
+		return;
+	}
+	if (len < 1) {
+		reply(OP_RM, ST_BADNAME, NULL, 0);
+		return;
+	}
+	name_len = payload[0];
+	if ((uint32_t)name_len + 1 != len || !name_ok(payload + 1, name_len)) {
+		reply(OP_RM, ST_BADNAME, NULL, 0);
+		return;
+	}
+	memcpy(gName, payload + 1, name_len);
+	gName[name_len] = 0;
+	n = snprintf(path, sizeof(path), "%s/cadv/%s", MODDEF_FILE_ROOT, gName);
+	if (n <= 0 || n >= (int)sizeof(path)) {
+		reply(OP_RM, ST_BADNAME, NULL, 0);
+		return;
+	}
+	if (stat(path, &st) != 0) {
+		reply(OP_RM, ST_NOFILE, NULL, 0);
+		return;
+	}
+	if (!S_ISREG(st.st_mode) || unlink(path) != 0) {
+		reply(OP_RM, ST_IO, NULL, 0);
+		return;
+	}
+	prune_empty_dirs(path);
+	reply(OP_RM, ST_OK, NULL, 0);
+	snprintf(gUi, sizeof(gUi), "done\t%s", gName);
+	gUiOut = gUi;
 }
 
 static void on_list(void)
@@ -508,6 +577,7 @@ static void handle(uint8_t op, uint8_t status, const uint8_t *payload, uint32_t 
 		case OP_DATA: on_data(payload, len); break;
 		case OP_END: on_end(payload, len); break;
 		case OP_ABORT: on_abort(); break;
+		case OP_RM: on_rm(payload, len); break;
 		default:
 			reply(op, ST_BAD, NULL, 0);
 			break;

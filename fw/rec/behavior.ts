@@ -14,7 +14,7 @@ import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { asMenu } from "menu-view";
-import { openMic, type MicFeed } from "mic";
+import { micFault, openMic, type MicFeed } from "mic";
 import { Power } from "power";
 import { acceptStroke, titleWithPower } from "session";
 import { writeCodec } from "sound";
@@ -51,11 +51,10 @@ export class AppBehavior extends Behavior {
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
 		this.power = new Power("blank");
+		this.attachMic();
 		this.dir = openClips();
-		this.mic = openMic(pcm => {
-			if (this.file)
-				this.pending.push(pcm.slice());
-		});
+		if (!this.mic)
+			this.note = micFault() || "无麦克风";
 		this.kb = new CardputerKeyboard();
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 40);
 		this.paint(app);
@@ -158,9 +157,20 @@ export class AppBehavior extends Behavior {
 		}
 	}
 
+	attachMic() {
+		if (this.mic)
+			return;
+		this.mic = openMic(pcm => {
+			if (this.file)
+				this.pending.push(pcm.slice());
+		});
+	}
+
 	startRec() {
+		if (!this.mic)
+			this.attachMic();
 		if (!this.dir || !this.mic) {
-			this.note = this.dir ? "无麦克风" : "无卡";
+			this.note = this.dir ? (micFault() || "无麦克风") : "无卡";
 			return;
 		}
 		this.refreshNames();
@@ -252,10 +262,7 @@ export class AppBehavior extends Behavior {
 		}
 		catch {
 			this.note = "读失败";
-			this.mic = openMic(pcm => {
-				if (this.file)
-					this.pending.push(pcm.slice());
-			});
+			this.attachMic();
 			return;
 		}
 		this.file = file;
@@ -321,12 +328,8 @@ export class AppBehavior extends Behavior {
 		this.audio = null;
 		try { this.file?.close(); } catch { /* */ }
 		this.file = null;
-		if (!this.mic) {
-			this.mic = openMic(pcm => {
-				if (this.file)
-					this.pending.push(pcm.slice());
-			});
-		}
+		if (!this.mic)
+			this.attachMic();
 	}
 
 	showList(app: AppHost, on: boolean) {

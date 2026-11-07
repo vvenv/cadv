@@ -24,8 +24,12 @@ const ES8311_ON: number[][] = [
 	[0x37, 0x08],
 ];
 
-/* ADC path. DAC registers above stay. Mic data is I2S ASDOUT on GPIO46. */
+/*
+	ADC path. 0x01 = 0xBA selects MCLK from BCLK; the speaker block above
+	leaves 0xB5, and the ADC stays silent with that clock. ASDOUT is GPIO46.
+*/
 const ES8311_MIC: number[][] = [
+	[0x01, 0xba],
 	[0x09, 0x0c],
 	[0x0e, 0x02],
 	[0x14, 0x1a],

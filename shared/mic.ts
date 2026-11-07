@@ -11,6 +11,21 @@ export type MicFeed = {
 	close(): void;
 };
 
+let fault = "";
+
+export function micFault(): string {
+	return fault;
+}
+
+function faultText(e: unknown): string {
+	if (e && typeof e === "object" && "message" in e) {
+		const message = (e as { message?: unknown }).message;
+		if (typeof message === "string" && message)
+			return message;
+	}
+	return "无麦克风";
+}
+
 export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
 	try {
 		writeCodec(true);
@@ -20,30 +35,36 @@ export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
 			bitsPerSample: 16,
 			channels: 1,
 			onReadable(byteLength: number) {
-				let buf: ArrayBuffer;
 				try {
-					buf = this.read(byteLength);
+					let n = byteLength;
+					if (n > 1024)
+						n = 1024;
+					n -= n & 1;
+					if (n < 2)
+						return;
+					const buf = this.read(n);
+					if (!buf || buf.byteLength < 2)
+						return;
+					const pcm = new Int16Array(buf, 0, buf.byteLength >> 1);
+					let peak = 0;
+					for (let i = 0; i < pcm.length; i++) {
+						const a = pcm[i] < 0 ? -pcm[i] : pcm[i];
+						if (a > peak)
+							peak = a;
+					}
+					lastPeak = Math.round(peak * 100 / 32767);
+					if (lastPeak > 100)
+						lastPeak = 100;
+					if (onPcm)
+						onPcm(pcm);
 				}
 				catch {
-					return;
+					/* a short read must not tear down the input */
 				}
-				if (!buf || buf.byteLength < 2)
-					return;
-				const pcm = new Int16Array(buf);
-				let peak = 0;
-				for (let i = 0; i < pcm.length; i++) {
-					const a = pcm[i] < 0 ? -pcm[i] : pcm[i];
-					if (a > peak)
-						peak = a;
-				}
-				lastPeak = Math.round(peak * 100 / 32767);
-				if (lastPeak > 100)
-					lastPeak = 100;
-				if (onPcm)
-					onPcm(pcm);
 			},
 		});
 		input.start();
+		fault = "";
 		return {
 			peak() {
 				return lastPeak;
@@ -54,7 +75,9 @@ export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
 			},
 		};
 	}
-	catch {
+	catch (e) {
+		fault = faultText(e);
+		trace("mic: " + fault + "\n");
 		return null;
 	}
 }
