@@ -76,7 +76,7 @@ function puzzleStyle(letters: number): object {
 
 let phoneFaceStyle: object | undefined;
 
-/** Bottom bar. Arial Bold; Source Han has no IPA. */
+/** Phonetic only. Arial Bold; Source Han has no IPA. Counts use the UI face. */
 function phoneFace(): object {
 	if (!phoneFaceStyle)
 		phoneFaceStyle = new Style({ font: "bold 20px Ipa", color: INK, horizontal: "left", vertical: "middle" });
@@ -317,10 +317,10 @@ export class AppBehavior extends Behavior {
 		setVisibleProp(contentByName(app, "puzzleLabel"), false);
 	}
 
-	setLabels(app: AppHost, top: string, bottom: string) {
+	setLabels(app: AppHost, top: string, phone: string, stats = "") {
 		const titled = this.power ? titleWithPower(this.power, top) : top;
 		setMarqueeText(contentByName(app, "glossLabel"), titled);
-		setMarqueeText(contentByName(app, "phoneLabel"), bottom, bottom ? phoneFace() : undefined);
+		setMarqueeText(contentByName(app, "phoneLabel"), phone, phone ? phoneFace() : undefined, undefined, stats);
 	}
 
 	tickMarquees(app: AppHost) {
@@ -551,8 +551,7 @@ export class AppBehavior extends Behavior {
 		const top = !entry.word ? "无词库" : (note || entry.gloss);
 		const stats = `今${this.todayCount()} 连${this.settings.streak} 对${this.sessionOk} 错${this.sessionBad}`;
 		const phone = entry.word && this.settings.phone ? entry.phone : "";
-		const bottom = phone ? `${phone} ${stats}` : stats;
-		this.setLabels(app, top, bottom);
+		this.setLabels(app, top, phone, stats);
 		const value = contentByName(app, "puzzleLabel");
 		if (hasStyle(value))
 			value.style = puzzleStyle(entry.word ? entry.word.length : 0);
