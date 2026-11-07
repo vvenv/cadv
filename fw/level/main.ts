@@ -27,7 +27,7 @@ const LevelApplication = Application.template($ => ({
 }));
 
 export default new LevelApplication(null, {
-	displayListLength: 4096,
+	displayListLength: 16384,
 	commandListLength: 8192,
 	touchCount: 0,
 });

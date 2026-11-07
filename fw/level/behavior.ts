@@ -14,6 +14,7 @@ import { MENU_VISIBLE } from "list";
 import { asMenu } from "menu-view";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { imuError, openImu, type ImuHandle } from "imu";
+import { ClockSound } from "sound";
 import { asLevel, TOLERANCE, type LevelMode } from "view";
 
 type Mode = "level" | "help";
@@ -23,6 +24,10 @@ const MODE_G = 0.65;
 const MODE_HOLD_MS = 250;
 const TICK_MS = 50;
 const RAD2DEG = 180 / Math.PI;
+/** Beep spacing from just off level to a hard tilt. */
+const WARN_SLOW_MS = 720;
+const WARN_FAST_MS = 140;
+const WARN_FULL_DEG = 12;
 
 type Calib = {
 	pitch: number;
@@ -38,7 +43,11 @@ function abs(n: number): number {
 export class AppBehavior extends Behavior {
 	mode: Mode = "level";
 	kb: CardputerKeyboard | null = null;
+	sound: ClockSound | null = null;
 	imu: ImuHandle | null = null;
+	warnOn = true;
+	wasLevel = true;
+	warnAt = 0;
 	kbTimer: ReturnType<typeof Timer.repeat> | null = null;
 	tickTimer: ReturnType<typeof Timer.repeat> | null = null;
 	helpIndex = 0;
@@ -65,6 +74,7 @@ export class AppBehavior extends Behavior {
 	openSensor(app: AppHost) {
 		this.imu = openImu();
 		this.kb = new CardputerKeyboard();
+		this.sound = new ClockSound();
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		if (!this.imu)
 			this.note = imuError() || "无芯片";
@@ -104,6 +114,7 @@ export class AppBehavior extends Behavior {
 		this.readImu();
 		this.updateMode();
 		this.paint(app);
+		this.warn();
 	}
 
 	readImu() {
@@ -198,7 +209,54 @@ export class AppBehavior extends Behavior {
 				this.resetCalib(app);
 				return;
 			}
+			if (ch === "m" || ch === "M") {
+				this.warnOn = !this.warnOn;
+				this.flash(app, this.warnOn ? "告警开" : "告警关");
+				return;
+			}
 		}
+	}
+
+	tiltDeg(): number {
+		if (this.levelMode === "flat")
+			return Math.max(abs(this.pitchDeg()), abs(this.rollDeg()));
+		if (this.levelMode === "edgeY")
+			return abs(this.edgeYDeg());
+		return abs(this.edgeXDeg());
+	}
+
+	isLevel(): boolean {
+		if (this.levelMode === "flat")
+			return abs(this.pitchDeg()) < TOLERANCE && abs(this.rollDeg()) < TOLERANCE;
+		if (this.levelMode === "edgeY")
+			return abs(this.edgeYDeg()) < TOLERANCE;
+		return abs(this.edgeXDeg()) < TOLERANCE;
+	}
+
+	warn() {
+		const sound = this.sound;
+		if (!sound?.available || !this.imu || !this.primed || !this.warnOn)
+			return;
+		const level = this.isLevel();
+		if (level) {
+			if (!this.wasLevel)
+				sound.play([{ hz: 1480, ms: 90 }]);
+			this.wasLevel = true;
+			return;
+		}
+		this.wasLevel = false;
+		const now = Date.now();
+		if (now < this.warnAt)
+			return;
+		const span = WARN_FULL_DEG - TOLERANCE;
+		let t = (this.tiltDeg() - TOLERANCE) / span;
+		if (t < 0)
+			t = 0;
+		if (t > 1)
+			t = 1;
+		const gap = WARN_SLOW_MS - t * (WARN_SLOW_MS - WARN_FAST_MS);
+		sound.play([{ hz: 740, ms: 36 }]);
+		this.warnAt = now + gap;
 	}
 
 	calibrate(app: AppHost) {
