@@ -1,6 +1,6 @@
 # Cardputer ADV（TypeScript）
 
-在 M5Stack Cardputer-Adv 上用 **Moddable + TypeScript** 跑固件。一次只烧一个固件：时间天气、单词拼写、蓝牙键盘、水平仪、SD 卡各是一个。板子上的程序互相独立，设置也分开存。
+在 M5Stack Cardputer-Adv 上用 **Moddable + TypeScript** 跑固件。一次只烧一个固件：时间天气、单词拼写、蓝牙键盘、水平仪、设备信息、SD 卡各是一个。板子上的程序互相独立，设置也分开存。
 
 时间天气：Wi-Fi NTP 校时（默认中国时区 `CST-8`）、键盘配网、天气、闹钟、倒计时、整点报时。时钟界面 **Enter / 空格** 打开功能列表。Cardputer-Adv **没有独立 RTC**，断电后要重新对时。
 
@@ -24,7 +24,9 @@ SD 卡：设备只看卡上的 `cadv/`。里面放各固件的镜像，开机选
 
 水平仪：读板上 BMI270，平放显示二维气泡，立边切成一维管。**G** 置零，**R** 清除。说明在 `fw/level/README.md`。
 
-现在有 `fw/clock`（时间天气）、`fw/words`（单词拼写）、`fw/kb`（蓝牙键盘）、`fw/level`（水平仪）和 `fw/sd`（SD 卡）。
+设备信息：芯片、主频、闪存、内存、Wi-Fi / 蓝牙地址、分区、启动原因、运行时间、片内温度、电池电压。键盘、BMI270、ES8311 各探一次。**K/J** 翻页，每秒刷新。说明在 `fw/info/README.md`。
+
+现在有 `fw/clock`（时间天气）、`fw/words`（单词拼写）、`fw/kb`（蓝牙键盘）、`fw/level`（水平仪）、`fw/info`（设备信息）和 `fw/sd`（SD 卡）。
 
 ## 再加一个固件
 

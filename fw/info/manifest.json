@@ -1,0 +1,52 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json"
+	],
+	"modules": {
+		"*": [
+			"./main",
+			"./behavior",
+			"./view",
+			"./format",
+			"./help"
+		]
+	},
+	"preload": [
+		"format",
+		"board",
+		"behavior",
+		"view",
+		"help"
+	],
+	"platforms": {
+		"esp32": {
+			"include": [
+				"$(MODDABLE)/modules/io/analog/manifest.json"
+			],
+			"modules": {
+				"board": "./board"
+			},
+			"dependency": [
+				{ "idf": "esp_driver_tsens" }
+			]
+		},
+		"mac": {
+			"modules": {
+				"board": "./board_stub"
+			}
+		},
+		"lin": {
+			"modules": {
+				"board": "./board_stub"
+			}
+		},
+		"...": {
+			"modules": {
+				"board": "./board_stub"
+			}
+		}
+	}
+}
