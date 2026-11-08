@@ -1,6 +1,7 @@
 /*
 	Word-quiz behavior. Boots into the puzzle.
-	Empty Enter/Space opens the function list. A partial answer confirms with Enter/Space.
+	Empty Enter opens the function list. A partial answer confirms with Enter.
+	Space toggles the top line between gloss and phonetic.
 	BS, Esc, and ← delete one letter.
 */
 
@@ -20,12 +21,25 @@ import { acceptStroke, titleWithPower } from "session";
 import { ClockSound } from "sound";
 import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from "settings";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
-import { FONT_UI, FONT_WORD, INK, ON } from "ink";
+import { FONT_UI, FONT_WORD, ON } from "ink";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
 import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, listWordSources, puzzleCorrect, quizOrder, renderPuzzle, selectWordSource, wordAt, wordCount, wordSourceId } from "words";
 import { SOURCE_FLASH } from "wordbank";
 
 type Mode = "play" | "menu" | "help";
+
+function isSpace(stroke: KeyStroke): boolean {
+	for (let i = 0; i < stroke.chars.length; i++) {
+		if (stroke.chars[i] === " ")
+			return true;
+	}
+	return false;
+}
+
+/** Enter only. Space toggles gloss/phone on the play screen. */
+function isEnter(stroke: KeyStroke): boolean {
+	return stroke.enter;
+}
 
 function dayKey(): string {
 	const t = new Date();
@@ -75,12 +89,20 @@ function puzzleStyle(letters: number): object {
 }
 
 let phoneFaceStyle: object | undefined;
+let glossFaceStyle: object | undefined;
 
-/** Phonetic only. Arial Bold; Source Han has no IPA. Counts use the UI face. */
+/** Phonetic only. Arial Bold; Source Han has no IPA. */
 function phoneFace(): object {
 	if (!phoneFaceStyle)
-		phoneFaceStyle = new Style({ font: "bold 20px Ipa", color: INK, horizontal: "left", vertical: "middle" });
+		phoneFaceStyle = new Style({ font: "bold 20px Ipa", color: ON, horizontal: "left", vertical: "middle" });
 	return phoneFaceStyle;
+}
+
+/** Top-line gloss. Same UI face, bright ink for the taller band. */
+function glossFace(): object {
+	if (!glossFaceStyle)
+		glossFaceStyle = new Style({ font: FONT_UI, color: ON, horizontal: "left", vertical: "middle" });
+	return glossFaceStyle;
 }
 
 function hasStyle(target: unknown): target is { style: object } {
@@ -125,6 +147,8 @@ export class AppBehavior extends Behavior {
 	wordNote = "";
 	wordNoteUntil = 0;
 	wordAdvance = false;
+	/** Play screen: false = gloss, true = phonetic. */
+	showPhone = false;
 	hostEnterDown = false;
 
 	onDisplaying(content: unknown) {
@@ -317,19 +341,16 @@ export class AppBehavior extends Behavior {
 		setVisibleProp(contentByName(app, "puzzleLabel"), false);
 	}
 
-	setLabels(app: AppHost, top: string, phone: string, stats = "") {
-		const titled = this.power ? titleWithPower(this.power, top) : top;
-		setMarqueeText(contentByName(app, "glossLabel"), titled);
-		setMarqueeText(contentByName(app, "phoneLabel"), phone, phone ? phoneFace() : undefined, undefined, stats);
+	setTopLine(app: AppHost, text: string, face?: object) {
+		const titled = this.power ? titleWithPower(this.power, text) : text;
+		setMarqueeText(contentByName(app, "glossLabel"), titled, face);
 	}
 
 	tickMarquees(app: AppHost) {
-		for (const name of ["glossLabel", "phoneLabel"]) {
-			const port = contentByName(app, name);
-			const b = asMarquee(port);
-			if (b)
-				b.tick(port as PortContent);
-		}
+		const port = contentByName(app, "glossLabel");
+		const b = asMarquee(port);
+		if (b)
+			b.tick(port as PortContent);
 	}
 
 	enterMenu(app: AppHost) {
@@ -477,6 +498,7 @@ export class AppBehavior extends Behavior {
 		if (n <= 0) {
 			this.wordHidden = [];
 			this.wordTyped = "";
+			this.showPhone = false;
 			return;
 		}
 		if (this.wordIndex < 0 || this.wordIndex >= n)
@@ -486,6 +508,7 @@ export class AppBehavior extends Behavior {
 		this.wordMaskLevel = clampWordLevel(this.settings.wordLevel);
 		this.wordHidden = hiddenIndices(entry.word, lex, this.wordMaskLevel);
 		this.wordTyped = "";
+		this.showPhone = false;
 	}
 
 	setWordBank(app: AppHost, bank: number) {
@@ -542,16 +565,19 @@ export class AppBehavior extends Behavior {
 	paintWord(app: AppHost) {
 		if (!this.wordOrder.length) {
 			const top = wordCount(this.settings.wordBank) <= 0 ? "无词库" : "无错题";
-			this.setLabels(app, top, "");
+			this.setTopLine(app, top, glossFace());
 			setStringProp(contentByName(app, "puzzleLabel"), "");
 			return;
 		}
 		const entry = wordAt(this.settings.wordBank, this.lexIndex());
 		const note = this.wordNote && Date.now() < this.wordNoteUntil ? this.wordNote : "";
-		const top = !entry.word ? "无词库" : (note || entry.gloss);
-		const stats = `今${this.todayCount()} 连${this.settings.streak} 对${this.sessionOk} 错${this.sessionBad}`;
-		const phone = entry.word && this.settings.phone ? entry.phone : "";
-		this.setLabels(app, top, phone, stats);
+		let top = !entry.word ? "无词库" : (note || entry.gloss);
+		let face = glossFace();
+		if (!note && entry.word && this.showPhone && this.settings.phone) {
+			top = entry.phone || entry.gloss;
+			face = entry.phone ? phoneFace() : glossFace();
+		}
+		this.setTopLine(app, top, face);
 		const value = contentByName(app, "puzzleLabel");
 		if (hasStyle(value))
 			value.style = puzzleStyle(entry.word ? entry.word.length : 0);
@@ -571,8 +597,16 @@ export class AppBehavior extends Behavior {
 	onWordStroke(app: AppHost, stroke: KeyStroke) {
 		const chars = stroke.chars;
 		if (this.wordAdvance) {
-			if (isBack(stroke) || isConfirm(stroke))
+			if (isBack(stroke) || isEnter(stroke) || isConfirm(stroke))
 				this.advanceSolved(app);
+			return;
+		}
+		if (isSpace(stroke) && !stroke.enter) {
+			if (this.settings.phone) {
+				this.showPhone = !this.showPhone;
+				this.paintWord(app);
+				this.maybeBeep();
+			}
 			return;
 		}
 		if (chars.some(ch => ch === "[" || ch === "{")) {
@@ -600,7 +634,7 @@ export class AppBehavior extends Behavior {
 		}
 		const entry = wordAt(this.settings.wordBank, this.lexIndex());
 		if (!entry.word) {
-			if (isConfirm(stroke))
+			if (isEnter(stroke))
 				this.enterMenu(app);
 			return;
 		}
@@ -619,7 +653,7 @@ export class AppBehavior extends Behavior {
 			typed = true;
 		}
 		const filled = typed && this.wordTyped.length === this.wordHidden.length && this.wordHidden.length > 0;
-		if (isConfirm(stroke) || filled) {
+		if (isEnter(stroke) || filled) {
 			if (this.wordTyped.length === 0) {
 				this.enterMenu(app);
 				return;
@@ -665,10 +699,6 @@ export class AppBehavior extends Behavior {
 			this.settings.misses = addMiss(this.settings.misses, key);
 		}
 		saveSettings(this.settings);
-	}
-
-	todayCount(): number {
-		return this.settings.todayKey === dayKey() ? this.settings.today : 0;
 	}
 
 	onTick(app: AppHost) {

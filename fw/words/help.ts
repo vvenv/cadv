@@ -7,6 +7,7 @@ export type HelpRow = { key: string; action: string };
 
 const PLAY_HELP: HelpRow[] = [
 	{ key: "?", action: "打开本页" },
+	{ key: "空格", action: "释义/音标" },
 	{ key: "Enter(空)", action: "开列表" },
 	{ key: "Enter(有字)", action: "检查" },
 	{ key: "BS", action: "删一字母" },
