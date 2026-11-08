@@ -6,7 +6,7 @@
 
 export type HelpRow = { key: string; action: string };
 
-const CLOCK_HELP: HelpRow[] = [
+const CLOCK_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "Enter", action: "开列表" },
 	{ key: "BS", action: "关掉提示" },
@@ -22,25 +22,25 @@ const CLOCK_HELP: HelpRow[] = [
 	{ key: "T", action: "拉天气" },
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "Fn+BS", action: "回选应用" },
-];
+], true);
 
-const MENU_HELP: HelpRow[] = [
+const MENU_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "K/J", action: "上下移动" },
 	{ key: "Enter", action: "确认选中" },
 	{ key: "BS", action: "回时钟" },
-];
+], true);
 
-const CD_HELP: HelpRow[] = [
+const CD_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "Esc", action: "退出" },
 	{ key: "BS", action: "删数字/回上格" },
 	{ key: "时位空+BS", action: "回时钟" },
 	{ key: "秒位+Enter", action: "开始" },
 	{ key: "进行中+BS", action: "停止" },
-];
+], true);
 
-const AL_HELP: HelpRow[] = [
+const AL_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "Esc", action: "退出" },
 	{ key: "时满两位", action: "跳到分" },
@@ -49,10 +49,10 @@ const AL_HELP: HelpRow[] = [
 	{ key: "响铃+BS", action: "停止" },
 	{ key: "响铃+Enter", action: "贪睡五分" },
 	{ key: "列表+D", action: "每天/工作日/周末/关" },
-];
+], true);
 
 /** Which page `?` opens for the screen you are on. */
-const DESK_HELP: HelpRow[] = [
+const DESK_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "秒表+Enter", action: "开始/停" },
 	{ key: "秒表+.", action: "计次" },
@@ -62,7 +62,7 @@ const DESK_HELP: HelpRow[] = [
 	{ key: "月历+K/J", action: "上一月/下一月" },
 	{ key: "城市+Enter", action: "搜索" },
 	{ key: "BS", action: "回时钟" },
-];
+], true);
 
 export function helpTopic(mode: string): string {
 	if (mode === "menu" || mode === "hits")
@@ -88,7 +88,7 @@ export function helpTitle(topic: string): string {
 	return "时钟帮助";
 }
 
-export function helpFor(topic: string): HelpRow[] {
+export function helpFor(topic: string): readonly HelpRow[] {
 	if (topic === "menu")
 		return MENU_HELP;
 	if (topic === "cd")

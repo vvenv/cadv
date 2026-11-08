@@ -32,7 +32,7 @@ import { contentByName, setVisibleProp, type AppHost } from "ui";
 type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "alarms" | "hits" | "desk" | "menu" | "help";
 
 /** One bright digit walking across four ghosts, then back. */
-const NET_SPIN = ["8   ", " 8  ", "  8 ", "   8"];
+const NET_SPIN = Object.freeze(["8   ", " 8  ", "  8 ", "   8"]);
 
 function netSpinFace(now: number): string {
 	const step = Math.floor(now / 250);

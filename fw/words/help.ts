@@ -5,7 +5,7 @@
 
 export type HelpRow = { key: string; action: string };
 
-const PLAY_HELP: HelpRow[] = [
+const PLAY_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "空格", action: "释义/音标" },
 	{ key: "Enter(空)", action: "开列表" },
@@ -19,15 +19,15 @@ const PLAY_HELP: HelpRow[] = [
 	{ key: "-/=", action: "小声/大声" },
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "Fn+BS", action: "回选应用" },
-];
+], true);
 
-const MENU_HELP: HelpRow[] = [
+const MENU_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "来源", action: "内置/卡上词包" },
 	{ key: "K/J", action: "上下移动" },
 	{ key: "Enter", action: "确认选中" },
 	{ key: "BS", action: "回拼写" },
-];
+], true);
 
 export function helpTopic(mode: string): string {
 	if (mode === "menu")
@@ -41,7 +41,7 @@ export function helpTitle(topic: string): string {
 	return "拼写帮助";
 }
 
-export function helpFor(topic: string): HelpRow[] {
+export function helpFor(topic: string): readonly HelpRow[] {
 	if (topic === "menu")
 		return MENU_HELP;
 	return PLAY_HELP;

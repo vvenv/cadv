@@ -9,14 +9,14 @@ import { drawGlyph } from "draw";
 import { BG, FONT_UI, INK, MID, ON, WELL } from "ink";
 import { rowOrigin, rowTextY, ROW_PITCH } from "list";
 
-const WHITES = [0, 2, 4, 5, 7, 9, 11];
-const BLACKS = [
+const WHITES = Object.freeze([0, 2, 4, 5, 7, 9, 11]);
+const BLACKS = Object.freeze([
 	{ semi: 1, after: 0 },
 	{ semi: 3, after: 1 },
 	{ semi: 6, after: 3 },
 	{ semi: 8, after: 4 },
 	{ semi: 10, after: 5 },
-];
+], true);
 
 let face: /* Style */ object | undefined;
 function style(): /* Style */ any {

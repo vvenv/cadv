@@ -1,4 +1,4 @@
-const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const NAMES = Object.freeze(["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]);
 
 /** Fundamental in Hz, or 0 when the buffer is quiet or unpitched. */
 export function fundamental(pcm: Int16Array, rate: number): number {

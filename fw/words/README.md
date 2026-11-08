@@ -15,7 +15,6 @@
 | **`?`** | 当前界面的帮助 |
 
 ```bash
-./do.sh flash words
 ./do.sh sim words
 ./do.sh sd fw words          # 镜像 + fw/words 下可选词库 → cadv/words/
 ./do.sh sd bank              # 只传词库（菜单选；或 sd bank junior / all）

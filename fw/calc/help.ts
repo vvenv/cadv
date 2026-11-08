@@ -1,6 +1,6 @@
 export type HelpRow = { key: string; action: string };
 
-const ROWS: HelpRow[] = [
+const ROWS: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "0-9 .", action: "输入" },
 	{ key: "+-*/", action: "四则" },
@@ -19,12 +19,12 @@ const ROWS: HelpRow[] = [
 	{ key: "K/J", action: "帮助里上下" },
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "Fn+BS", action: "回选应用" },
-];
+], true);
 
 export function helpTitle(): string {
 	return "计算帮助";
 }
 
-export function helpFor(): HelpRow[] {
+export function helpFor(): readonly HelpRow[] {
 	return ROWS;
 }

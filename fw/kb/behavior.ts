@@ -34,7 +34,7 @@ import { openRadio, type KeyboardRadio, type LinkState } from "radio";
 type Mode = "type" | "help";
 
 const FLASH_MS = 450;
-const ZERO_SLOTS = [0, 0, 0, 0, 0, 0];
+const ZERO_SLOTS = Object.freeze([0, 0, 0, 0, 0, 0]);
 
 function brightDir(held: HeldState): -1 | 0 | 1 {
 	if (!held.fn)

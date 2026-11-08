@@ -13,7 +13,7 @@ const ES8311_ADDR = 0x18;
 const REG_DAC_VOL = 0x32;
 
 // M5Unified _speaker_enabled_cb_cardputer_adv bulk init
-const ES8311_ON: number[][] = [
+const ES8311_ON: number[][] = Object.freeze([
 	[0x00, 0x80],
 	[0x01, 0xb5],
 	[0x02, 0x18],
@@ -22,13 +22,13 @@ const ES8311_ON: number[][] = [
 	[0x13, 0x10],
 	[REG_DAC_VOL, 0xbf],
 	[0x37, 0x08],
-];
+], true) as number[][];
 
 /*
 	ADC path. 0x01 = 0xBA selects MCLK from BCLK; the speaker block above
 	leaves 0xB5, and the ADC stays silent with that clock. ASDOUT is GPIO46.
 */
-const ES8311_MIC: number[][] = [
+const ES8311_MIC: number[][] = Object.freeze([
 	[0x01, 0xba],
 	[0x09, 0x0c],
 	[0x0e, 0x02],
@@ -36,7 +36,7 @@ const ES8311_MIC: number[][] = [
 	[0x15, 0x00],
 	[0x17, 0xbf],
 	[0x1c, 0x6a],
-];
+], true) as number[][];
 
 /** Program the codec and release the bus. The chip keeps the setup. */
 export function writeCodec(mic: boolean) {

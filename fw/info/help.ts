@@ -11,7 +11,7 @@ const INFO_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "BS", action: "关掉本页" },
 	{ key: "Fn+BS", action: "回选应用" },
-]);
+], true);
 
 export function helpTitle(): string {
 	return "信息帮助";

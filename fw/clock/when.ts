@@ -15,13 +15,13 @@ export const DAY_ALL = 0x7f;
 export const DAY_WEEK = 0x3e;
 export const DAY_END = 0x41;
 
-export const ZONES: { name: string; offsetMin: number }[] = [
+export const ZONES: { name: string; offsetMin: number }[] = Object.freeze([
 	{ name: "北京", offsetMin: 8 * 60 },
 	{ name: "东京", offsetMin: 9 * 60 },
 	{ name: "伦敦", offsetMin: 0 },
 	{ name: "纽约", offsetMin: -5 * 60 },
 	{ name: "洛杉矶", offsetMin: -8 * 60 },
-];
+], true) as { name: string; offsetMin: number }[];
 
 export function dayLabel(days: number): string {
 	if (!days)
@@ -78,32 +78,38 @@ export function alarmLine(index: number, alarm: Alarm): string {
 	return (index + 1) + " " + state + " " + hh + ":" + mm + " " + dayLabel(alarm.days);
 }
 
-export function zoneLine(name: string, offsetMin: number, utcMs: number): string {
+/** HH:MM in a fixed-offset zone from a UTC epoch ms. */
+export function zoneTime(offsetMin: number, utcMs: number): string {
 	const shifted = utcMs + offsetMin * 60_000;
 	const t = new Date(shifted);
 	const hh = t.getUTCHours();
 	const mm = t.getUTCMinutes();
 	const hs = hh < 10 ? "0" + hh : String(hh);
 	const ms = mm < 10 ? "0" + mm : String(mm);
-	const sign = offsetMin >= 0 ? "+" : "";
-	const hours = offsetMin / 60;
-	return name + " " + hs + ":" + ms + " UTC" + sign + hours;
+	return hs + ":" + ms;
 }
 
-/** Week rows of two-digit days. Leading blanks are spaces. */
-export function monthRows(year: number, month: number): string[] {
+export function zoneLine(name: string, offsetMin: number, utcMs: number): string {
+	return name + " " + zoneTime(offsetMin, utcMs);
+}
+
+/**
+	Week rows as seven cells each. The menu paints equal-width columns so CJK
+	weekdays (20px) and day digits (12px each) share one grid on UI-Bold-20.
+*/
+export function monthRows(year: number, month: number): string[][] {
 	const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
 	const dim = new Date(Date.UTC(year, month, 0)).getUTCDate();
 	const cells: string[] = [];
 	for (let i = 0; i < first; i++)
-		cells.push("  ");
+		cells.push("");
 	for (let d = 1; d <= dim; d++)
-		cells.push(d < 10 ? " " + d : String(d));
+		cells.push(String(d));
 	while (cells.length % 7 !== 0)
-		cells.push("  ");
-	const rows: string[] = ["日一二三四五六"];
+		cells.push("");
+	const rows: string[][] = [["日", "一", "二", "三", "四", "五", "六"]];
 	for (let i = 0; i < cells.length; i += 7)
-		rows.push(cells.slice(i, i + 7).join(""));
+		rows.push(cells.slice(i, i + 7));
 	return rows;
 }
 

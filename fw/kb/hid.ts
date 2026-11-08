@@ -13,14 +13,14 @@ export type HeldState = {
 	opt: boolean;
 };
 
-export const EMPTY: HeldState = {
-	keys: [],
+export const EMPTY: HeldState = Object.freeze({
+	keys: Object.freeze([] as { code: string | number }[]),
 	fn: false,
 	shift: false,
 	ctrl: false,
 	alt: false,
 	opt: false,
-};
+}, true) as HeldState;
 
 export const DEVICE_NAME = "CADV KB";
 
@@ -41,7 +41,7 @@ const HID_DOWN = 0x51;
 const HID_UP = 0x52;
 
 /** Fn layer. Unlisted keys are swallowed while Fn is held. */
-const FN: Record<string, number | "help"> = {
+const FN: Record<string, number | "help"> = Object.freeze({
 	"`": HID_ESC,
 	"1": HID_F1,
 	"2": HID_F1 + 1,
@@ -65,9 +65,9 @@ const FN: Record<string, number | "help"> = {
 	p: HID_DELETE,
 	n: HID_PAGE_DOWN,
 	"/": "help",
-};
+}) as Record<string, number | "help">;
 
-const SYMBOL: Record<string, number> = {
+const SYMBOL: Record<string, number> = Object.freeze({
 	"`": 0x35,
 	"-": 0x2d,
 	"=": 0x2e,
@@ -80,9 +80,9 @@ const SYMBOL: Record<string, number> = {
 	".": 0x37,
 	"/": 0x38,
 	" ": 0x2c,
-};
+}) as Record<string, number>;
 
-const SHIFTED_SYMBOL: Record<string, string> = {
+const SHIFTED_SYMBOL: Record<string, string> = Object.freeze({
 	"!": "1",
 	"@": "2",
 	"#": "3",
@@ -104,7 +104,7 @@ const SHIFTED_SYMBOL: Record<string, string> = {
 	"<": ",",
 	">": ".",
 	"?": "/",
-};
+}) as Record<string, string>;
 
 export type LocalAction = "launcher" | "forget" | "help";
 

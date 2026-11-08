@@ -30,12 +30,12 @@ function wallUtcMs(): number {
 }
 
 /** Top-line weekday codes (Sun→Sat), matching `YYYY-MM-DD MO …`. */
-const WEEKDAYS_EN = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-const LM = ["正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"];
-const LD1 = ["日", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
-const LD2 = ["初", "十", "廿", "卅"];
+const WEEKDAYS_EN = Object.freeze(["SU", "MO", "TU", "WE", "TH", "FR", "SA"]);
+const LM = Object.freeze(["正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"]);
+const LD1 = Object.freeze(["日", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]);
+const LD2 = Object.freeze(["初", "十", "廿", "卅"]);
 
-const LUNAR_INFO: number[] = [
+const LUNAR_INFO: number[] = Object.freeze([
 	0x04bd8, 0x04ae0, 0x0a570, 0x054d5, 0x0d260, 0x0d950, 0x16554, 0x056a0, 0x09ad0, 0x055d2,
 	0x04ae0, 0x0a5b6, 0x0a4d0, 0x0d250, 0x1d255, 0x0b540, 0x0d6a0, 0x0ada2, 0x095b0, 0x14977,
 	0x04970, 0x0a4b0, 0x0b4b5, 0x06a50, 0x06d40, 0x1ab54, 0x02b60, 0x09570, 0x052f2, 0x04970,
@@ -57,7 +57,7 @@ const LUNAR_INFO: number[] = [
 	0x0b273, 0x06930, 0x07240, 0x0f504, 0x0ab50, 0x05575, 0x06ad0, 0x095d0, 0x04ae3, 0x0a4d0,
 	0x0d0b3, 0x0d250, 0x1d556, 0x0b540, 0x0b5a0, 0x195a6, 0x095b0, 0x049b0, 0x0a974, 0x0a4b0,
 	0x0b27a, 0x06a50, 0x06d40, 0x0af46, 0x0ab60, 0x09570, 0x04af5, 0x04970, 0x064b0, 0x074a3,
-];
+], true) as number[];
 
 export function pad2(n: number): string {
 	return n < 10 ? `0${n}` : `${n}`;

@@ -28,7 +28,9 @@
 		"battery",
 		"keyboard",
 		"sound",
-		"boot"
+		"boot",
+		"power",
+		"lamp"
 	],
 	"creation": {
 		"chunk": {

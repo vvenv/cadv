@@ -18,14 +18,14 @@ import { contentByName, type AppHost } from "ui";
 
 type Mode = "calc" | "help";
 
-const UNITS: { name: string; run: (n: number) => number }[] = [
+const UNITS: { name: string; run: (n: number) => number }[] = Object.freeze([
 	{ name: "℃→℉", run: n => n * 9 / 5 + 32 },
 	{ name: "℉→℃", run: n => (n - 32) * 5 / 9 },
 	{ name: "km→mi", run: n => n * 0.621371 },
 	{ name: "mi→km", run: n => n / 0.621371 },
 	{ name: "kg→lb", run: n => n * 2.20462 },
 	{ name: "lb→kg", run: n => n / 2.20462 },
-];
+], true) as { name: string; run: (n: number) => number }[];
 
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 

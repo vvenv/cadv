@@ -14,7 +14,7 @@ const LIST_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "BS", action: "重扫" },
 	{ key: "USB", action: "挂到 cadv" },
 	{ key: "Fn+BS", action: "载入后回来" },
-]);
+], true);
 
 export function helpTitle(): string {
 	return "SD 帮助";

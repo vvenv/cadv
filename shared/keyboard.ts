@@ -35,7 +35,7 @@ const KEY_LEFT_ALT = 0x82;
 
 type KeyCell = { a: string | number; b: string | number };
 
-const KEY_MAP: KeyCell[][] = [
+const KEY_MAP: KeyCell[][] = Object.freeze([
 	[
 		{ a: "`", b: "~" }, { a: "1", b: "!" }, { a: "2", b: "@" }, { a: "3", b: "#" },
 		{ a: "4", b: "$" }, { a: "5", b: "%" }, { a: "6", b: "^" }, { a: "7", b: "&" },
@@ -61,7 +61,7 @@ const KEY_MAP: KeyCell[][] = [
 		{ a: "m", b: "M" }, { a: ",", b: "<" }, { a: ".", b: ">" }, { a: "/", b: "?" },
 		{ a: " ", b: " " },
 	],
-];
+], true) as KeyCell[][];
 
 export type KeyStroke = {
 	chars: string[];
@@ -94,14 +94,14 @@ export type HeldState = {
 	opt: boolean;
 };
 
-const HELD_EMPTY: HeldState = {
-	keys: [],
+const HELD_EMPTY: HeldState = Object.freeze({
+	keys: Object.freeze([] as { code: string | number }[]),
 	fn: false,
 	shift: false,
 	ctrl: false,
 	alt: false,
 	opt: false,
-};
+}, true) as HeldState;
 
 type KbConfig = { sda: number; scl: number; address: number };
 

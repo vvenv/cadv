@@ -15,8 +15,8 @@ import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asPiano } from "view";
 
 const KEYS = "awsedftgyhuj";
-const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const FREQ = [262, 277, 294, 311, 330, 349, 370, 392, 415, 440, 466, 494];
+const NAMES = Object.freeze(["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]);
+const FREQ = Object.freeze([262, 277, 294, 311, 330, 349, 370, 392, 415, 440, 466, 494]);
 
 type Mode = "play" | "help";
 

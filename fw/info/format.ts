@@ -36,7 +36,7 @@ export type BoardSnap = BoardExtra & {
 
 export type InfoRow = { label: string; value: string };
 
-const RESET = [
+const RESET = Object.freeze([
 	"未知",
 	"上电",
 	"外部",
@@ -53,7 +53,7 @@ const RESET = [
 	"熔丝",
 	"毛刺",
 	"锁死",
-];
+]);
 
 /** Below this, GPIO10 is the divider sitting on ground: no cell. */
 const BATTERY_ABSENT_MV = 2800;

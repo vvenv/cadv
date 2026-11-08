@@ -15,6 +15,9 @@
 		]
 	},
 	"preload": [
+		"card",
+		"imu",
+		"mic",
 		"format",
 		"board",
 		"behavior",

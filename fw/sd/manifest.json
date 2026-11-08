@@ -17,6 +17,7 @@
 		]
 	},
 	"preload": [
+		"card",
 		"link",
 		"slot",
 		"behavior",

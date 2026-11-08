@@ -62,7 +62,7 @@ export function wordAt(bank: number, index: number): WordEntry {
 }
 
 /** 易 / 中 / 难. Share of letters the player must type. */
-export const WORD_LEVEL_NAME = ["易", "中", "难"];
+export const WORD_LEVEL_NAME = Object.freeze(["易", "中", "难"]);
 
 export function clampWordLevel(level: number): number {
 	let lv = level | 0;

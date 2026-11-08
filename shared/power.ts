@@ -21,7 +21,7 @@ import { Lamp } from "lamp";
 export type LampMark = "off" | "rec" | "scan";
 
 const PREF = "power";
-const LEVELS = [180, 420, 720, 1023];
+const LEVELS = Object.freeze([180, 420, 720, 1023]);
 const IDLE_MS = 30_000;
 const DIM_DUTY = 70;
 const PIN_ADC = 10;

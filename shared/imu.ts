@@ -11,7 +11,7 @@ import config from "mc/config";
 declare function trace(message: string): void;
 
 /* SDO is tied high on Cardputer-Adv, so 0x69 answers. 0x68 is the other strap. */
-const ADDRS = [0x69, 0x68];
+const ADDRS = Object.freeze([0x69, 0x68]);
 const CHIP_ID = 0x24;
 const REG_CHIP = 0x00;
 const REG_STATUS = 0x03;

@@ -14,11 +14,16 @@ import { drawGlyph, drawProgress } from "draw";
 import { BG, DIM, FONT_UI, INK, ON, type Glyph } from "ink";
 import { MENU_VISIBLE, ROW_PITCH, rowOrigin, rowTextY, windowStart } from "list";
 
-/** `right` draws flush-right (help: key left, action right). `glyph` is a leading icon. */
+/**
+	`right` draws flush-right (help: key left, action right).
+	`cells` draws equal-width columns (month grid); `text` is unused then.
+	`glyph` is a leading icon.
+*/
 export type MenuLine = {
 	text: string;
 	selected: boolean;
 	right?: string;
+	cells?: string[];
 	glyph?: Glyph;
 	level?: number;
 };
@@ -50,6 +55,18 @@ function drawText(port: PortContent, text: string, color: string, x: number, y: 
 	port.drawString(text, getMenuStyle(), color, x, y, Math.max(1, width));
 }
 
+function sameCells(a: string[] | undefined, b: string[] | undefined): boolean {
+	if (a === b)
+		return true;
+	if (!a || !b || a.length !== b.length)
+		return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i])
+			return false;
+	}
+	return true;
+}
+
 function sameLines(a: MenuLine[], b: MenuLine[]): boolean {
 	if (a.length !== b.length)
 		return false;
@@ -60,6 +77,7 @@ function sameLines(a: MenuLine[], b: MenuLine[]): boolean {
 			|| a[i].right !== b[i].right
 			|| a[i].glyph !== b[i].glyph
 			|| a[i].level !== b[i].level
+			|| !sameCells(a[i].cells, b[i].cells)
 		)
 			return false;
 	}
@@ -167,7 +185,19 @@ export class MenuBehavior extends Behavior {
 			}
 			const textX = PAD_X + glyphW;
 			const inner = Math.max(1, innerRight - textX);
-			if (line.right) {
+			const cells = line.cells;
+			if (cells && cells.length) {
+				const pitch = Math.max(1, Math.floor(inner / cells.length));
+				for (let c = 0; c < cells.length; c++) {
+					const cell = cells[c];
+					if (!cell)
+						continue;
+					const cellW = port.measureString(cell, style).width;
+					const cx = textX + c * pitch + Math.max(0, Math.floor((pitch - cellW) / 2));
+					drawText(port, cell, color, cx, y, Math.max(1, pitch));
+				}
+			}
+			else if (line.right) {
 				const rightW = port.measureString(line.right, style).width;
 				const gap = 8;
 				const leftMax = Math.max(1, inner - rightW - gap);

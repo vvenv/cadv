@@ -17,7 +17,7 @@ const LEVEL_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "立边", action: "一维管" },
 	{ key: "BS", action: "关掉本页" },
 	{ key: "Fn+BS", action: "回选应用" },
-]);
+], true);
 
 export function helpTitle(): string {
 	return "水平仪帮助";

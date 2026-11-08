@@ -18,10 +18,10 @@ import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { AMBER, BG, DIM, INK, MID, ON, RED, type Glyph } from "ink";
 
-const SEG = [
+const SEG = Object.freeze([
 	0b1111110, 0b0110000, 0b1101101, 0b1111001, 0b0110011,
 	0b1011011, 0b1011111, 0b1110000, 0b1111111, 0b1111011,
-];
+]);
 
 /*
 	One fillColor per segment. The old chamfer loops burned dozens of

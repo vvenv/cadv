@@ -6,13 +6,13 @@
 import type { KeyStroke } from "keyboard";
 import { isBack, isConfirm, isPageBack, navDir } from "keys";
 import { beijingNowUtc, beijingParts, pad2, timeSynced } from "lunar";
-import { monthRows, quietLabel, zoneLine, ZONES } from "when";
+import { monthRows, quietLabel, zoneTime, ZONES } from "when";
 
 export type DeskName = "sw" | "pomo" | "cal" | "zone" | "city" | "manual" | "quiet";
 
 export type DeskPaint =
 	| { kind: "face"; title: string; bottom: string }
-	| { kind: "list"; title: string; lines: { text: string; selected: boolean }[] }
+	| { kind: "list"; title: string; lines: { text: string; right?: string; cells?: string[]; selected: boolean }[] }
 	| { kind: "text"; title: string; line: string };
 
 const POMO_WORK = 25 * 60;
@@ -128,13 +128,13 @@ export class Desk {
 			const utc = beijingNowUtc();
 			const lines = [];
 			for (let i = 0; i < ZONES.length; i++)
-				lines.push({ text: zoneLine(ZONES[i].name, ZONES[i].offsetMin, utc), selected: false });
+				lines.push({ text: ZONES[i].name, right: zoneTime(ZONES[i].offsetMin, utc), selected: false });
 			return { kind: "list", title: "世界时间", lines };
 		}
 		const rows = monthRows(this.calYear, this.calMonth);
 		const lines = [];
 		for (let i = 0; i < rows.length; i++)
-			lines.push({ text: rows[i], selected: i === this.calRow });
+			lines.push({ text: "", cells: rows[i], selected: i === this.calRow });
 		return { kind: "list", title: this.calYear + "-" + pad2(this.calMonth), lines };
 	}
 

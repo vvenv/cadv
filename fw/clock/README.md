@@ -3,8 +3,6 @@
 这是 `fw/clock`。板端用 **TypeScript**（经 Moddable XS）跑在 ESP32-S3 上。  
 桌面模拟器用 **PIU** 画时钟；真机同样走 PIU + Cardputer-Adv ST7789 / TCA8418 键盘 / ES8311 扬声器。
 
-拼写是另一个固件 `fw/words`，用 `./do.sh flash words` 烧。两个固件不会打进同一个包。
-
 ## 一次安装（本机尚未装过时）
 
 按官方文档安装 Moddable SDK + ESP32 工具链：
@@ -46,8 +44,7 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 
 ```bash
 ./do.sh sim clock      # 桌面模拟时间天气
-./do.sh flash clock    # 烧到 ESP32-S3（下载模式同 Cardputer）
-./do.sh flash words    # 换成拼写固件
+./do.sh sd fw clock    # 镜像进卡上的 cadv/（芯片里先 ./do.sh flash 启动器）
 ```
 
 ### Wi-Fi / NTP（真机对时）
@@ -85,14 +82,12 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 
 顶栏有电池百分比和 Wi-Fi 信号。电池不高于 3.40V 时前面加「低电」。键盘那条边朝下时，表盘转 180°。`C` / `A` / `T` / `W` / `S` / `H` 仍可在时钟界面直接用。
 
-单词补充完整在 `fw/words`，`./do.sh flash words` 单独烧。词库只取 `../alice/data` 里的小学词表，不带中文释义。
-
-也可预置 Wi-Fi（可选，烧录时写入 config；设备上仍可改）：
+也可预置 Wi-Fi（可选，构建时写入 config；设备上仍可改）：
 
 ```bash
 cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
-./do.sh flash clock
-# 或 WIFI_SSID=… WIFI_PASSWORD=… ./do.sh flash clock
+./do.sh sd fw clock
+# 或 WIFI_SSID=… WIFI_PASSWORD=… ./do.sh sd fw clock
 ```
 
 ```bash
@@ -112,5 +107,5 @@ mcconfig -d -m -dn -p esp32/esp32s3_cdc     # Cardputer Adv
 | ES8311 扬声器：`S` 声音 / `H` 整点报时 |
 | 倒计时：`C` → 时分秒 |
 | 四个闹钟、勿扰、秒表、番茄钟、月历、五个世界时间、城市搜索、未对时时手动校时、姿态翻转、电池和信号 |
-| 功能列表：时钟界面 **Enter / 空格**；`?` 或 `/` 只打开当前功能的帮助。拼写是另一个固件 |
+| 功能列表：时钟界面 **Enter / 空格**；`?` 或 `/` 只打开当前功能的帮助 |
 | ESP32-S3 USB 下载 + ST7789 |

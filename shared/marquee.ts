@@ -7,7 +7,7 @@
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { drawGlyph, drawProgress } from "draw";
-import { BG, FONT_UI, INK, MID, type Glyph, type GlyphSpec } from "ink";
+import { BG, FONT_UI, INK, type Glyph, type GlyphSpec } from "ink";
 
 /** Lazily built — Moddable link rejects top-level `new Style` outside main. */
 let marqueeStyle: /* Style */ object | undefined;
@@ -226,10 +226,5 @@ export class MarqueeBehavior extends Behavior {
 			const y = Math.max(0, Math.floor((height - tailH) / 2));
 			port.drawString(tail, tailFace, this.color, x, y, Math.max(tailW, width));
 		}
-		if (height > 36 || width <= 24)
-			return;
-		const rule = width - 20;
-		port.fillColor(MID, 10, 1, rule, 1);
-		port.fillColor(MID, 10, height - 2, rule, 1);
 	}
 }
