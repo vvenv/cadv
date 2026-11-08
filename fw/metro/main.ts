@@ -13,4 +13,8 @@ const MetroApplication = Application.template($ => ({
 	],
 }));
 
-export default new MetroApplication(null, { displayListLength: 4096, touchCount: 0 });
+export default new MetroApplication(null, {
+	displayListLength: 8192,
+	commandListLength: 8192,
+	touchCount: 0,
+});

@@ -12,7 +12,7 @@ import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { asMenu } from "menu-view";
-import { openImu, type ImuHandle } from "imu";
+import { imuError, openImu, type ImuHandle } from "imu";
 import { Power } from "power";
 import { acceptStroke, titleWithPower } from "session";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
@@ -74,13 +74,26 @@ export class AppBehavior extends Behavior {
 			}
 		})();
 		this.saved = storedDay === this.day ? readNum("count", 0) : 0;
+		this.steps = this.saved;
 		this.stride = readNum("stride", 70);
 		if (this.stride < 30)
 			this.stride = 30;
 		if (this.stride > 120)
 			this.stride = 120;
+		this.note = "读取";
+		this.paint(app);
+		/* Open the IMU before the keyboard so the BMI270 is the first device on the shared bus. */
+		Timer.set(() => this.openSensor(app), 1);
+	}
+
+	openSensor(app: AppHost) {
 		this.imu = openImu();
-		this.note = this.imu?.pedometer ? "" : "计步器没开";
+		if (!this.imu)
+			this.note = imuError() || "无芯片";
+		else if (!this.imu.pedometer)
+			this.note = "计步器没开";
+		else
+			this.note = "";
 		this.kb = new CardputerKeyboard();
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 200);
 		this.paint(app);
