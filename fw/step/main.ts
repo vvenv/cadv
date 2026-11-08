@@ -35,7 +35,7 @@ const StepApplication = Application.template($ => ({
 
 // Port fills void the Piu command list (default 1024 bytes). The 7-segment readout overflows it.
 export default new StepApplication(null, {
-	displayListLength: 8192,
-	commandListLength: 8192,
+	displayListLength: 16384,
+	commandListLength: 16384,
 	touchCount: 0,
 });

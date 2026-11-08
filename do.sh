@@ -106,20 +106,28 @@ release_upload_port() {
     [ -e "$p" ] || continue
     while IFS= read -r pid; do
       [ -n "$pid" ] || continue
+      [ "$pid" -eq $$ ] 2>/dev/null && continue
       cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
       case "$cmd" in
-        *esp_idf_monitor*|*idf.py*)
+        *esp_idf_monitor*|*idf.py*|*idf_monitor*|*esptool*|*serial2xsbug*|*sd_link.py*)
           pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d '[:space:]')"
-          [ -n "$pgid" ] || continue
-          [ "$pgid" = "$self" ] && continue
-          [ "$pgid" -gt 1 ] 2>/dev/null || continue
-          log_warn "串口 $p 被上次烧录占用，结束进程组 $pgid"
-          kill -TERM "-$pgid" 2>/dev/null || true
+          if [ -n "$pgid" ] && [ "$pgid" != "$self" ] && [ "$pgid" -gt 1 ] 2>/dev/null; then
+            log_warn "串口 $p 被占用，结束进程组 $pgid"
+            kill -TERM "-$pgid" 2>/dev/null || true
+          else
+            log_warn "串口 $p 被占用，结束 pid $pid"
+            kill -TERM "$pid" 2>/dev/null || true
+          fi
+          ;;
+        *)
+          # Exclusive open leftovers (python -c serial, screen, …).
+          log_warn "串口 $p 被 pid $pid 占用，结束它"
+          kill -TERM "$pid" 2>/dev/null || true
           ;;
       esac
     done < <(lsof -t "$p" 2>/dev/null | sort -u)
   done
-  sleep 0.4
+  sleep 0.5
 }
 
 # fw/<id>/manifest.json is one firmware. label is the one-line menu name.
@@ -472,6 +480,10 @@ sd_collect_vols() {
       [ -n "$v" ] || continue
       vols+=("$v")
     done < <(sd_candidates)
+  fi
+  # bash 3.2 + set -u: empty "${vols[@]}" is unbound.
+  if [ "${#vols[@]}" -eq 0 ]; then
+    return 0
   fi
   for v in "${vols[@]}"; do
     printf '%s\n' "$v"

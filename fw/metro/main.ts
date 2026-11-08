@@ -34,7 +34,7 @@ const MetroApplication = Application.template($ => ({
 }));
 
 export default new MetroApplication(null, {
-	displayListLength: 8192,
-	commandListLength: 8192,
+	displayListLength: 16384,
+	commandListLength: 16384,
 	touchCount: 0,
 });

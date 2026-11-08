@@ -21,7 +21,9 @@ const FW = path.join(ROOT, "fw");
 
 /** Apps that call these must raise commandListLength well above the default. */
 const HEAVY = [
-	{ re: /\bdrawReadout\b|\bSevenSegBehavior\b|\basSevenSeg\b/, why: "drawReadout", min: 8192 },
+	// Tall Casio middle band (count/step/metro/clock) needs clock-sized lists.
+	{ re: /\bSevenSegBehavior\b|\basSevenSeg\b/, why: "sevenseg", min: 16384 },
+	{ re: /\bdrawReadout\b/, why: "drawReadout", min: 8192 },
 	{ re: /\bfillDisk\b/, why: "fillDisk", min: 8192 },
 	{ re: /\bstrokeDisk\b/, why: "strokeDisk", min: 8192 },
 	{ re: /\bdrawCheck\b|\bdrawCross\b|\bdrawGlyph\b|\bsetMarqueeMark\b/, why: "glyph", min: 4096 },

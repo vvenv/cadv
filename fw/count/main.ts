@@ -33,8 +33,10 @@ const CountApplication = Application.template($ => ({
 	],
 }));
 
+// Tall Casio middle band + up to 6 digits: same budget as clock HH:MM:SS.
+// 8192 overflows → XS abort on paint → reboot loop leaves launcher "校验…".
 export default new CountApplication(null, {
-	displayListLength: 8192,
-	commandListLength: 8192,
+	displayListLength: 16384,
+	commandListLength: 16384,
 	touchCount: 0,
 });

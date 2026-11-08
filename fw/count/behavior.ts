@@ -162,6 +162,12 @@ export class AppBehavior extends Behavior {
 		this.sense = readSense();
 		this.gain = readGain();
 		this.power = new Power("blank");
+		// Wipe launcher "校验…" before mic/speaker I2C / I2S work.
+		this.paint(app);
+		Timer.set(() => this.boot(app), 1);
+	}
+
+	boot(app: AppHost) {
 		this.applySense(app, false);
 		this.kb = new CardputerKeyboard();
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
@@ -213,7 +219,7 @@ export class AppBehavior extends Behavior {
 		const stroke = this.power ? acceptStroke(this.power, raw, true) : raw;
 		if (stroke)
 			this.handleStroke(app, stroke);
-		else if (this.mode === "run" && this.sense === "ear")
+		else if (this.mode === "run" && this.sense === "ear" && this.armed)
 			this.paint(app);
 	}
 
@@ -489,8 +495,6 @@ export class AppBehavior extends Behavior {
 								: "";
 		const g = titleGlyph(this.power, status);
 		const stepIndex = STEPS.indexOf(this.step);
-		if (this.sense === "ear" && this.mic && !this.armed)
-			this.peak = this.mic.peak();
 		const top = asCountTop(titlePort);
 		if (top) {
 			top.setTop(
