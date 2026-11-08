@@ -105,7 +105,7 @@ def status_error(status: int, name: str, rm: bool = False) -> LinkError:
             return LinkError(f"没有这个文件：{name}")
         return LinkError("传输中断了。再传一次。")
     if status == ST_BAD:
-        return LinkError("启动器不认识这个命令。先 ./do.sh flash 再上传。")
+        return LinkError("基座不认识这个命令。先 ./do.sh flash 再上传。")
     return LinkError(f"设备拒绝了这次传输（{status}）")
 
 
@@ -165,7 +165,7 @@ def read_reply(ser, expect_op: int, timeout: float):
                     return status, payload
         else:
             time.sleep(0.005)
-    raise LinkError("启动器没有应答。卡留在板子上，先 ./do.sh flash，按 RESET，等菜单出来再上传。")
+    raise LinkError("基座没有应答。卡留在板子上，先 ./do.sh flash，按 RESET，等菜单出来再上传。")
 
 
 def transact(ser, op: int, payload: bytes, timeout: float, name: str = "", rm: bool = False):
@@ -178,7 +178,7 @@ def transact(ser, op: int, payload: bytes, timeout: float, name: str = "", rm: b
 
 def ping(ser) -> int:
     deadline = time.monotonic() + 8
-    last = LinkError("启动器没有应答。卡留在板子上，先 ./do.sh flash，按 RESET，等菜单出来再上传。")
+    last = LinkError("基座没有应答。卡留在板子上，先 ./do.sh flash，按 RESET，等菜单出来再上传。")
     while time.monotonic() < deadline:
         try:
             body = transact(ser, OP_PING, b"", 0.5)
@@ -188,7 +188,7 @@ def ping(ser) -> int:
                 raise
             continue
         if len(body) != 1 or body[0] < 1:
-            raise LinkError("启动器协议版本不对。先 ./do.sh flash 再上传。")
+            raise LinkError("基座协议版本不对。先 ./do.sh flash 再上传。")
         return body[0]
     raise last
 
@@ -308,7 +308,7 @@ def cmd_rm(port: str, names: list[str]) -> None:
     try:
         ver = ping(ser)
         if ver < 2:
-            raise LinkError("启动器还不支持删除。先 ./do.sh flash，再删。")
+            raise LinkError("基座还不支持删除。先 ./do.sh flash，再删。")
         for name in names:
             rm_one(ser, name)
     finally:

@@ -44,7 +44,7 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 
 ```bash
 ./do.sh sim clock      # 桌面模拟时钟
-./do.sh sd fw clock    # 镜像进卡上的 cadv/（芯片里先 ./do.sh flash 启动器）
+./do.sh sd fw clock    # 镜像进卡上的 cadv/（芯片里先 ./do.sh flash 基座）
 ```
 
 ### Wi-Fi / NTP（真机对时）

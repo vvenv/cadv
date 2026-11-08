@@ -193,6 +193,6 @@ export class AppBehavior extends Behavior {
 		const banner = this.power?.banner() ?? "";
 		const note = banner ? (this.note ? banner + " " + this.note : banner) : this.note;
 		const marks = this.statusMarks();
-		view.setFrame(face, "U 盘", this.line, note, marks.mark, marks.lineMark, marks.noteMark, marks.level);
+		view.setFrame(face, "优盘", this.line, note, marks.mark, marks.lineMark, marks.noteMark, marks.level);
 	}
 }

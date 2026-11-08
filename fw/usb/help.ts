@@ -11,11 +11,11 @@ const USB_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "占卡", action: "勿同时开录音" },
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "BS", action: "关掉本页" },
-	{ key: "Fn+BS", action: "停盘回启动器" },
+	{ key: "Fn+BS", action: "停盘回基座" },
 ], true);
 
 export function helpTitle(): string {
-	return "U 盘帮助";
+	return "优盘帮助";
 }
 
 export function helpFor(): readonly HelpRow[] {

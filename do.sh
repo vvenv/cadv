@@ -2,13 +2,13 @@
 # cadv 常用命令入口。无参数进入交互菜单；具体做法仍在本脚本命令函数里，这里做转发。
 #
 # 固件在 fw/<id>/（manifest.json + 一行 label）。do.sh 按目录发现，不写死名单。
-#   ./do.sh                         # 交互菜单。烧录直接烧启动器；模拟会再选固件
-#   ./do.sh flash                   # 把启动器烧进芯片，然后回到菜单。其它固件放 SD 卡，在设备上选
-#   ./do.sh flash <id>              # 仍可把某一个直接烧进芯片，会盖掉启动器
+#   ./do.sh                         # 交互菜单。烧录直接烧基座；模拟会再选固件
+#   ./do.sh flash                   # 把基座烧进芯片，然后回到菜单。其它固件放 SD 卡，在设备上选
+#   ./do.sh flash <id>              # 仍可把某一个直接烧进芯片，会盖掉基座
 #   ./do.sh sim clock               # 桌面模拟某一个固件
 #   fw/<id>/sample 存在时，模拟把文件根指到该目录。
 #   菜单里 Esc、← 或 BS 返回上一级。主菜单再按一次即退出。
-#   模拟不写 id 时列出 fw/*/label。菜单「上传固件」可多选：空格勾选，a 全选，不含启动器。取消则什么都不做。
+#   模拟不写 id 时列出 fw/*/label。菜单「上传固件」可多选：空格勾选，a 全选，不含基座。取消则什么都不做。
 #   构建/模拟时自动判断：词库或字体比源文件旧就重做。拼写或查词才检查词库。
 #   CADV_REFRESH=0 跳过；=ask 改回先问再生成。
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig，并扫 Piu commandList 风险
@@ -25,19 +25,19 @@
 #   ./do.sh sd                      # 列出卡上的 cadv/
 #   菜单「列出 cadv」可多选删除：空格勾选，a 全选，回车后再确认。Esc、← 或 BS 不删。
 #   ./do.sh sd rm clock.bin         # 删除 cadv 里的这些文件。可以写多个相对路径
-#   卡在板子上时，删除要这一版启动器。旧的会提示先 ./do.sh flash。
-#   ./do.sh sd fw                  # 把除启动器以外的全部固件拷进 cadv/（不烧进芯片）
+#   卡在板子上时，删除要这一版基座。旧的会提示先 ./do.sh flash。
+#   ./do.sh sd fw                  # 把除基座以外的全部固件拷进 cadv/（不烧进芯片）
 #   ./do.sh sd fw clock             # 只拷一个：cadv/clock.bin 和一行名字
 #   ./do.sh sd file ./a.txt         # 把文件或目录拷进 cadv/
-#   ./do.sh sd mount                # 把已弹出但仍插着的 U 盘（fw/usb）重新挂上
-#   卡插在电脑上时直接写卡。没插卡、板子用 USB 连着并且跑着启动器时，经串口写入板子上的卡。
-#   板子跑「U 盘」固件时，卡以 U 盘出现；若在 Finder 里弹出过，sd 命令会尝试自动再挂。
+#   ./do.sh sd mount                # 把已弹出但仍插着的 优盘（fw/usb）重新挂上
+#   卡插在电脑上时直接写卡。没插卡、板子用 USB 连着并且跑着基座时，经串口写入板子上的卡。
+#   板子跑「优盘」固件时，卡以 优盘出现；若在 Finder 里弹出过，sd 命令会尝试自动再挂。
 #   CADV_SD=/Volumes/名字 指定卡。CADV_PORT=/dev/cu.usbmodemXXX 指定串口。
 #   CADV_LINK=device 强制走板子；CADV_LINK=0 只认插在电脑上的卡。
 #   只上传一个：镜像比 fw/<id> 或 shared 旧时先问要不要重编。
 #   上传全部，或一次传多个（菜单里勾选多项也一样）：过时的直接重编，不再逐个询问。
 #   CADV_SD_BUILD=1 每个都重编；=0 仍用旧镜像；=ask 改回逐个询问。
-#   启动器要先 ./do.sh flash，这一版才从 USB 收文件。
+#   基座要先 ./do.sh flash，这一版才从 USB 收文件。
 #   ./do.sh help                    # 本说明
 set -euo pipefail
 
@@ -562,7 +562,7 @@ link_port() {
     printf '%s\n' "$CADV_PORT"
     return 0
   fi
-  port="$(detect_port)" || log_die "没有 FAT/exFAT 的卡，也没找到板子的串口。把卡插到电脑，或用 USB 连上板子（先 ./do.sh flash 启动器）。"
+  port="$(detect_port)" || log_die "没有 FAT/exFAT 的卡，也没找到板子的串口。把卡插到电脑，或用 USB 连上板子（先 ./do.sh flash 基座）。"
   printf '%s\n' "$port"
 }
 
@@ -1286,7 +1286,7 @@ cmd_sd_fw() {
   else
     for id in "$@"; do
       if [ "$id" = "sd" ]; then
-        log_warn "跳过启动器 sd，它留在芯片里"
+        log_warn "跳过基座 sd，它留在芯片里"
         continue
       fi
       fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
@@ -1778,7 +1778,7 @@ cmd_ts_flash() {
   fi
   log_success "已烧录 $(fw_label "$id")。板子按 RESET。"
   if [ "$id" = "sd" ]; then
-    log_info "上传固件可以不拔卡：USB 接着，等启动器菜单出来，再选上传。"
+    log_info "上传固件可以不拔卡：USB 接着，等基座菜单出来，再选上传。"
   fi
 }
 
@@ -1808,7 +1808,7 @@ main_menu() {
   local choice id
   while true; do
     choice="$(prompt_menu "cadv" --back --default=1 \
-      "flash:烧录启动器" \
+      "flash:烧录基座" \
       "sim:桌面模拟" \
       "sd:SD 卡（列出 / 上传 / 删除）" \
       "ts-check:检查 Moddable / TS / Piu lists" \
