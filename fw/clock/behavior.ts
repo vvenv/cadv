@@ -15,7 +15,7 @@ import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
 import { connectAndSync, loadWifiCreds, saveWifiCreds, wifiRssi, type WifiCreds } from "netboot";
 import { Power } from "power";
-import { acceptStroke, titleGlyph, titleWithPower } from "session";
+import { acceptStroke, titleGlyph } from "session";
 import { openImu, type ImuHandle } from "imu";
 import { searchCity, type CityHit } from "city";
 import { Desk } from "desk";
@@ -807,9 +807,8 @@ export class AppBehavior extends Behavior {
 	}
 
 	setLabels(app: AppHost, top: string, bottom: string, mark: Glyph = "", level?: number) {
-		const titled = this.power ? titleWithPower(this.power, top) : top;
 		const g = mark ? { kind: mark, level } : titleGlyph(this.power);
-		setMarqueeText(contentByName(app, "dateLabel"), titled, undefined, undefined, undefined, undefined, g.kind, g.level);
+		setMarqueeText(contentByName(app, "dateLabel"), top, undefined, undefined, undefined, undefined, g.kind, g.level);
 		setMarqueeText(contentByName(app, "lunarLabel"), bottom);
 	}
 

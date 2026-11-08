@@ -29,7 +29,9 @@
 #   ./do.sh sd fw                  # 把除启动器以外的全部固件拷进 cadv/（不烧进芯片）
 #   ./do.sh sd fw clock             # 只拷一个：cadv/clock.bin 和一行名字
 #   ./do.sh sd file ./a.txt         # 把文件或目录拷进 cadv/
+#   ./do.sh sd mount                # 把已弹出但仍插着的 U 盘（fw/usb）重新挂上
 #   卡插在电脑上时直接写卡。没插卡、板子用 USB 连着并且跑着启动器时，经串口写入板子上的卡。
+#   板子跑「U 盘」固件时，卡以 U 盘出现；若在 Finder 里弹出过，sd 命令会尝试自动再挂。
 #   CADV_SD=/Volumes/名字 指定卡。CADV_PORT=/dev/cu.usbmodemXXX 指定串口。
 #   CADV_LINK=device 强制走板子；CADV_LINK=0 只认插在电脑上的卡。
 #   只上传一个：镜像比 fw/<id> 或 shared 旧时先问要不要重编。
@@ -343,6 +345,97 @@ diskutil_field() {
   printf '%s\n' "$info" | sed -n "s/^.*${label}:[[:space:]]*//p" | head -1
 }
 
+# Parent whole-disk node for a slice: disk6s1 → disk6.
+sd_parent_disk() {
+  local node="${1#/dev/}"
+  case "$node" in
+    disk*s*) printf '%s\n' "${node%%s*}" ;;
+    disk*) printf '%s\n' "$node" ;;
+    *) return 1 ;;
+  esac
+}
+
+# 1 if this USB volume looks like the Cardputer 「USB 盘」firmware (TinyUSB MSC).
+sd_is_usb_disk_fw() {
+  local node="$1" parent info media
+  parent="$(sd_parent_disk "$node")" || return 1
+  info="$(diskutil info "$parent" 2>/dev/null)" || return 1
+  media="$(diskutil_field "$info" "Device / Media Name")"
+  case "$(printf '%s' "$media" | tr '[:upper:]' '[:lower:]')" in
+    *msc* | *tinyusb* | *cadv*) return 0 ;;
+  esac
+  return 1
+}
+
+# Unmounted external USB FAT partitions as device nodes (diskNsM), one per line.
+# With arg "msc": only TinyUSB/CADV MSC. With "all": any external USB FAT.
+sd_unmounted_usb_fat() {
+  local mode="${1:-msc}" line id info fs mount where proto
+  while IFS= read -r line; do
+    id="$(printf '%s\n' "$line" | awk '{print $NF}')"
+    case "$id" in
+      disk*s*) ;;
+      *) continue ;;
+    esac
+    info="$(diskutil info "$id" 2>/dev/null)" || continue
+    fs="$(diskutil_field "$info" "File System Personality" | tr '[:upper:]' '[:lower:]')"
+    case "$fs" in
+      *fat* | *dos*) ;;
+      *) continue ;;
+    esac
+    where="$(diskutil_field "$info" "Device Location")"
+    case "$where" in
+      Internal) continue ;;
+    esac
+    proto="$(diskutil_field "$info" "Protocol")"
+    case "$proto" in
+      USB) ;;
+      *) continue ;;
+    esac
+    mount="$(diskutil_field "$info" "Mount Point")"
+    case "$mount" in
+      /Volumes/*) continue ;;
+    esac
+    if [ "$mode" = "msc" ] && ! sd_is_usb_disk_fw "$id"; then
+      continue
+    fi
+    printf '%s\n' "$id"
+  done < <(diskutil list external physical 2>/dev/null)
+}
+
+# Mount one partition; print mount point on success.
+sd_mount_node() {
+  local id="$1" info mount
+  if ! diskutil mount "$id" >/dev/null 2>&1; then
+    log_warn "挂载失败：$id"
+    return 1
+  fi
+  info="$(diskutil info "$id" 2>/dev/null)" || return 1
+  mount="$(diskutil_field "$info" "Mount Point")"
+  case "$mount" in
+    /Volumes/*)
+      [ -d "$mount" ] || return 1
+      printf '%s\n' "$mount"
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+# Remount ejected Cardputer USB-disk volumes. Prints each new mount point.
+# Returns 0 if at least one mounted, 1 if nothing to do / all failed.
+sd_mount_ejected_usb() {
+  local id mount n=0
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    mount="$(sd_mount_node "$id")" || continue
+    log_success "已挂上 $mount（$id）"
+    printf '%s\n' "$mount"
+    n=$((n + 1))
+  done < <(sd_unmounted_usb_fat msc)
+  [ "$n" -gt 0 ]
+}
+
 # External FAT/exFAT volumes. One path per line. Skips the system disk.
 sd_candidates() {
   local v info fs where mount
@@ -366,6 +459,25 @@ sd_candidates() {
   done
 }
 
+# Collect mounted candidates; if none, remount ejected TinyUSB MSC then retry.
+sd_collect_vols() {
+  local v vols=()
+  while IFS= read -r v; do
+    [ -n "$v" ] || continue
+    vols+=("$v")
+  done < <(sd_candidates)
+  if [ "${#vols[@]}" -eq 0 ]; then
+    sd_mount_ejected_usb >/dev/null || true
+    while IFS= read -r v; do
+      [ -n "$v" ] || continue
+      vols+=("$v")
+    done < <(sd_candidates)
+  fi
+  for v in "${vols[@]}"; do
+    printf '%s\n' "$v"
+  done
+}
+
 # Prints the card root. Empty stdout and 0 means the user cancelled.
 # CADV_SD overrides detection (also used to point at a directory in tests).
 sd_root() {
@@ -381,7 +493,7 @@ sd_root() {
   while IFS= read -r v; do
     [ -n "$v" ] || continue
     vols+=("$v")
-  done < <(sd_candidates)
+  done < <(sd_collect_vols)
   case "${#vols[@]}" in
     0)
       return 2
@@ -1222,6 +1334,55 @@ cmd_sd_fw() {
   sync || true
 }
 
+# 1 if the Cardputer USB-disk composite (TinyUSB CDC serial 123456) is still plugged in.
+sd_usb_disk_plugged() {
+  [ -e /dev/cu.usbmodem1234561 ] && return 0
+  ioreg -c IOUSBHostDevice -l -w0 2>/dev/null | grep -q 'TEST MSC Storage' && return 0
+  return 1
+}
+
+cmd_sd_mount() {
+  local id mount n=0 any=0
+  # Prefer Cardputer USB-disk firmware volumes; if none, offer any ejected USB FAT.
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    any=1
+    mount="$(sd_mount_node "$id")" || continue
+    log_success "已挂上 $mount（$id）"
+    n=$((n + 1))
+  done < <(sd_unmounted_usb_fat msc)
+  if [ "$n" -gt 0 ]; then
+    return 0
+  fi
+  if [ "$any" -eq 0 ]; then
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      any=1
+      mount="$(sd_mount_node "$id")" || continue
+      log_success "已挂上 $mount（$id）"
+      n=$((n + 1))
+    done < <(sd_unmounted_usb_fat all)
+  fi
+  if [ "$n" -gt 0 ]; then
+    return 0
+  fi
+  if [ "$any" -eq 0 ]; then
+    # Already mounted?
+    if [ -n "$(sd_candidates | head -1)" ]; then
+      while IFS= read -r mount; do
+        [ -n "$mount" ] || continue
+        log_info "已在：$mount"
+      done < <(sd_candidates)
+      return 0
+    fi
+    if sd_usb_disk_plugged; then
+      log_die "USB 盘已弹出，分区不在了。拔插一次线，或设备上再进一次「USB 盘」"
+    fi
+    log_die "没有可挂的 USB FAT 盘。先在设备上打开「USB 盘」，或把卡插到电脑"
+  fi
+  log_die "挂载失败"
+}
+
 cmd_sd() {
   local sub="${1:-}"
   case "$sub" in
@@ -1245,8 +1406,12 @@ cmd_sd() {
       shift
       cmd_sd_rm "$@"
       ;;
+    mount | remount)
+      shift
+      cmd_sd_mount "$@"
+      ;;
     *)
-      log_die "用法：./do.sh sd [ls|fw|bank|file|rm] …"
+      log_die "用法：./do.sh sd [ls|fw|bank|file|rm|mount] …"
       ;;
   esac
 }
@@ -1259,7 +1424,8 @@ sd_menu() {
       "fw:上传固件" \
       "ls:列出 cadv" \
       "bank:上传词库" \
-      "file:上传文件到 cadv")"
+      "file:上传文件到 cadv" \
+      "mount:挂上 USB 盘")"
     case "$choice" in
       "") return 0 ;;
       fw)
@@ -1285,6 +1451,10 @@ sd_menu() {
         ;;
       file)
         (cmd_sd_file) || log_error "执行失败（sd file）"
+        pause_menu
+        ;;
+      mount)
+        (cmd_sd_mount) || log_error "执行失败（sd mount）"
         pause_menu
         ;;
     esac

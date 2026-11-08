@@ -375,11 +375,6 @@ export function drawGlyph(
 		drawProgress(port, cx - Math.floor(size * 0.7), cy - 3, Math.floor(size * 1.4), 6, level ?? 0, color ?? ON);
 }
 
-/** @deprecated Use drawGlyph. */
-export function drawFlashMark(port: PortContent, cx: number, cy: number, size: number, mark: Glyph) {
-	drawGlyph(port, cx, cy, size, mark);
-}
-
 export function fillDisk(port: PortContent, cx: number, cy: number, r: number, color: string) {
 	if (r <= 0)
 		return;

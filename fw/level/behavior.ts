@@ -15,7 +15,7 @@ import { asMenu } from "menu-view";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { imuError, openImu, type ImuHandle } from "imu";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke } from "session";
 import { ClockSound } from "sound";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
 import { asLevel, TOLERANCE, type LevelMode } from "view";
@@ -395,8 +395,7 @@ export class AppBehavior extends Behavior {
 				if (row)
 					lines.push({ text: row.key, right: row.action, selected: false });
 			}
-			const title = this.power ? titleWithPower(this.power, `${helpTitle()} ${start + 1}/${n}`) : `${helpTitle()} ${start + 1}/${n}`;
-			view.setList(port, title, lines, "");
+			view.setList(port, `${helpTitle()} ${start + 1}/${n}`, lines, "");
 			return;
 		}
 		const port = contentByName(app, "levelPort");

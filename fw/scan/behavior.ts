@@ -10,7 +10,7 @@ import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { asMenu } from "menu-view";
 import { Power } from "power";
-import { acceptStroke, titleGlyph, titleWithPower } from "session";
+import { acceptStroke, titleGlyph } from "session";
 import { noteGlyph } from "ink";
 import { contentByName, type AppHost } from "ui";
 
@@ -206,7 +206,7 @@ export class AppBehavior extends Behavior {
 			view.setList(port, helpTitle() + " " + (start + 1) + "/" + n, lines, "");
 			return;
 		}
-		const title = this.power ? titleWithPower(this.power, this.note) : this.note;
+		const title = this.note;
 		const g = noteGlyph(this.note).kind ? noteGlyph(this.note) : titleGlyph(this.power);
 		const bandGlyph = g.kind || (this.band === "wifi" ? "wifi" : "bt");
 		if (!this.rows.length) {

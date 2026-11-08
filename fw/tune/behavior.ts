@@ -9,7 +9,7 @@ import { asMenu } from "menu-view";
 import { openMic, type MicFeed } from "mic";
 import { fundamental, noteName } from "pitch";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke } from "session";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asTune } from "view";
 
@@ -123,7 +123,6 @@ export class AppBehavior extends Behavior {
 		const view = asTune(face);
 		if (!view)
 			return;
-		const title = this.power ? titleWithPower(this.power, "调音") : "调音";
-		view.setTune(face, title, this.name, this.cents, this.hz);
+		view.setTune(face, "调音", this.name, this.cents, this.hz);
 	}
 }

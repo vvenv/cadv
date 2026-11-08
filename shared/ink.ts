@@ -51,24 +51,7 @@ export type Glyph =
 	| "caps"
 	| "progress";
 
-/** @deprecated Prefer Glyph. Kept as an alias for ok/bad call sites. */
-export type FlashMark = Glyph;
-
 export type GlyphSpec = { kind: Glyph; level?: number };
-
-export function markInk(mark: Glyph): string {
-	if (mark === "ok" || mark === "on" || mark === "play" || mark === "rec")
-		return ON;
-	if (mark === "bad" || mark === "mute" || mark === "off")
-		return RED;
-	if (mark === "batt")
-		return AMBER;
-	return INK;
-}
-
-export function glyphSpec(kind: Glyph = "", level?: number): GlyphSpec {
-	return level === undefined ? { kind } : { kind, level };
-}
 
 /**
 	Map a short status note to a glyph. Progress / neutral notes may still
@@ -115,6 +98,12 @@ export function noteGlyph(note: string): GlyphSpec {
 		return { kind: "retry" };
 	if (note === "无卡")
 		return { kind: "sd" };
+	if (note === "已挂载")
+		return { kind: "ok" };
+	if (note === "挂载中")
+		return { kind: "usb" };
+	if (note === "先弹出" || note.indexOf("先弹出") >= 0)
+		return { kind: "sd" };
 	if (note === "配对已清除" || note === "已连接" || note.indexOf("已连接") === 0)
 		return { kind: "bt" };
 	if (note === "正在配对" || note === "连接中")
@@ -148,9 +137,4 @@ export function noteGlyph(note: string): GlyphSpec {
 	if (note === "蓝牙" || note === "无蓝牙" || note === "无无线")
 		return { kind: note.indexOf("无") === 0 ? "bad" : "bt" };
 	return { kind: "" };
-}
-
-/** @deprecated Use noteGlyph(...).kind for ok/bad-only call sites. */
-export function statusMark(note: string): Glyph {
-	return noteGlyph(note).kind;
 }

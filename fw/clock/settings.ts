@@ -13,7 +13,7 @@ export type ClockSettings = {
 	sound: boolean;
 	hourly: boolean;
 	volume: number; // 0..10
-	/** Four alarms. Slot 0 is the one the old single-alarm keys migrate into. */
+	/** Four alarms. */
 	alarms: Alarm[];
 	/** Minutes from midnight. Equal or negative means off. */
 	quietStart: number;
@@ -76,7 +76,7 @@ function readString(name: string, fallback: string): string {
 	return fallback;
 }
 
-function parseAlarms(raw: string, legacyOn: boolean, legacyHH: number, legacyMM: number): Alarm[] {
+function parseAlarms(raw: string): Alarm[] {
 	const alarms: Alarm[] = [];
 	if (raw) {
 		const parts = raw.split(";");
@@ -91,9 +91,6 @@ function parseAlarms(raw: string, legacyOn: boolean, legacyHH: number, legacyMM:
 				days: clamp(parseInt(f[3], 10), 0, 127, DAY_ALL),
 			});
 		}
-	}
-	if (!alarms.length) {
-		alarms.push({ on: legacyOn, hh: legacyHH, mm: legacyMM, days: DAY_ALL });
 	}
 	while (alarms.length < 4)
 		alarms.push(blankAlarm());
@@ -111,14 +108,11 @@ function clamp(n: number, min: number, max: number, fallback: number): number {
 }
 
 export function loadSettings(): ClockSettings {
-	const legacyOn = readBool("alarmOn", false);
-	const legacyHH = readInt("alarmHH", 7, 0, 23);
-	const legacyMM = readInt("alarmMM", 0, 0, 59);
 	return {
 		sound: readBool("sound", true),
 		hourly: readBool("hourly", true),
 		volume: readInt("volume", VOL_DEFAULT, VOL_MIN, VOL_MAX),
-		alarms: parseAlarms(readString("alarms", ""), legacyOn, legacyHH, legacyMM),
+		alarms: parseAlarms(readString("alarms", "")),
 		quietStart: readInt("quietStart", -1, -1, 1439),
 		quietEnd: readInt("quietEnd", -1, -1, 1439),
 		cityName: readString("cityName", ""),
@@ -154,13 +148,9 @@ function packAlarms(alarms: Alarm[]): string {
 }
 
 export function saveSettings(s: ClockSettings) {
-	const first = s.alarms[0] ?? blankAlarm();
 	Preference.set(PREF, "sound", s.sound ? 1 : 0);
 	Preference.set(PREF, "hourly", s.hourly ? 1 : 0);
 	Preference.set(PREF, "volume", s.volume);
-	Preference.set(PREF, "alarmOn", first.on ? 1 : 0);
-	Preference.set(PREF, "alarmHH", first.hh);
-	Preference.set(PREF, "alarmMM", first.mm);
 	Preference.set(PREF, "alarms", packAlarms(s.alarms));
 	Preference.set(PREF, "quietStart", s.quietStart);
 	Preference.set(PREF, "quietEnd", s.quietEnd);

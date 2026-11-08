@@ -10,7 +10,7 @@ import { cardSpace } from "card";
 import { openImu, type ImuHandle } from "imu";
 import { openMic, type MicFeed } from "mic";
 import { Power } from "power";
-import { acceptStroke, titleGlyph, titleWithPower } from "session";
+import { acceptStroke, titleGlyph } from "session";
 import { bootLauncher } from "boot";
 import { infoRows, type BoardSnap } from "format";
 import { helpFor, helpTitle } from "help";
@@ -289,7 +289,7 @@ export class AppBehavior extends Behavior {
 		const lines = [];
 		for (let i = 0; i < vis && start + i < n; i++)
 			lines.push(page[start + i]);
-		const title = this.power ? titleWithPower(this.power, this.note || `设备信息 ${start + 1}/${n}`) : (this.note || `设备信息 ${start + 1}/${n}`);
+		const title = this.note || `设备信息 ${start + 1}/${n}`;
 		const g = noteGlyph(this.note).kind ? noteGlyph(this.note) : titleGlyph(this.power);
 		view.setRows(port, title, lines, g.kind, g.level);
 	}

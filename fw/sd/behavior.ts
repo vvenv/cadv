@@ -9,7 +9,7 @@ import { openInstaller, type Installer } from "boot";
 import { loadCatalog, openRead, type SdCatalog, type SdEntry } from "catalog";
 import { cardSpace } from "card";
 import { Power } from "power";
-import { acceptStroke, titleGlyph, titleWithPower } from "session";
+import { acceptStroke, titleGlyph } from "session";
 import { fitsSlot } from "slot";
 import { pollLink, setLinkBusy, type LinkEvent } from "link";
 import { helpFor, helpTitle } from "help";
@@ -479,8 +479,7 @@ export class AppBehavior extends Behavior {
 				if (row)
 					lines.push({ text: row.key, right: row.action, selected: false });
 			}
-			const title = this.power ? titleWithPower(this.power, `${helpTitle()} ${start + 1}/${n}`) : `${helpTitle()} ${start + 1}/${n}`;
-			view.setList(port, title, lines, "");
+			view.setList(port, `${helpTitle()} ${start + 1}/${n}`, lines, "");
 			return;
 		}
 		const entries = this.catalog.entries;

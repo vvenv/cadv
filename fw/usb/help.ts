@@ -15,7 +15,7 @@ const USB_HELP: readonly HelpRow[] = Object.freeze([
 ], true);
 
 export function helpTitle(): string {
-	return "USB 盘帮助";
+	return "U 盘帮助";
 }
 
 export function helpFor(): readonly HelpRow[] {

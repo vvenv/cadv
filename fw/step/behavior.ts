@@ -14,7 +14,7 @@ import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { asMenu } from "menu-view";
 import { imuError, openImu, type ImuHandle } from "imu";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke } from "session";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asStep } from "view";
 
@@ -205,7 +205,7 @@ export class AppBehavior extends Behavior {
 		if (!view)
 			return;
 		const meters = Math.round(this.steps * this.stride / 100);
-		const title = this.power ? titleWithPower(this.power, this.note || this.day) : (this.note || this.day);
+		const title = this.note || this.day;
 		view.setStep(face, title, this.steps, meters, this.stride);
 	}
 }

@@ -27,14 +27,6 @@ export function acceptStroke(power: Power, stroke: KeyStroke | null, swallowWake
 	return stroke;
 }
 
-/**
-	Title text without the old "低电" prefix — pair with powerGlyph() so the
-	battery icon carries the warning.
-*/
-export function titleWithPower(_power: Power, title: string): string {
-	return title;
-}
-
 /** Low-battery glyph for title bars. Empty when the cell is fine / absent. */
 export function powerGlyph(power: Power): GlyphSpec {
 	const mv = power.millivolts();

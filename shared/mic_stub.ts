@@ -12,6 +12,10 @@ export type MicFeed = {
 const RATE = 16000;
 const CHUNK = 512;
 
+export function micFault(): string {
+	return "";
+}
+
 export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
 	let phase = 0;
 	let timer: Timer | undefined;

@@ -8,16 +8,34 @@ import { bootLauncher } from "boot";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
+import { noteGlyph, type Glyph } from "ink";
 import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { MENU_VISIBLE } from "list";
 import { asMenu } from "menu-view";
 import { start as mscStart, stop as mscStop, status as mscStatus } from "msc";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke, titleGlyph } from "session";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asUsb } from "view";
 
 type Mode = "usb" | "help";
+
+const GB = 1024 * 1024 * 1024;
+const MB = 1024 * 1024;
+
+/** Capacity for the note row. Prefer GB once the card is at least 1GB. */
+function diskSize(sectors: number, sectorSize: number): string {
+	const bytes = sectors * sectorSize;
+	if (!(bytes > 0))
+		return "";
+	if (bytes >= GB) {
+		const tenths = Math.round(bytes / GB * 10);
+		const whole = Math.floor(tenths / 10);
+		const frac = tenths % 10;
+		return frac ? whole + "." + frac + "GB" : whole + "GB";
+	}
+	return Math.round(bytes / MB) + "MB";
+}
 
 export class AppBehavior extends Behavior {
 	mode: Mode = "usb";
@@ -26,7 +44,7 @@ export class AppBehavior extends Behavior {
 	kbTimer: ReturnType<typeof Timer.repeat> | null = null;
 	helpIndex = 0;
 	hostEnterDown = false;
-	line = "正在挂载…";
+	line = "挂载中";
 	note = "";
 	ready = false;
 	leaving = false;
@@ -43,16 +61,16 @@ export class AppBehavior extends Behavior {
 		if (err) {
 			this.ready = false;
 			this.line = err;
-			this.note = "检查卡后重开本应用";
+			this.note = "查卡重开";
 		}
 		else {
 			this.ready = true;
 			const st = mscStatus();
-			const mb = st.sectors && st.sectorSize
-				? Math.round((st.sectors * st.sectorSize) / (1024 * 1024))
-				: 0;
-			this.line = "电脑可打开此卡 · 用完先弹出";
-			this.note = mb > 0 ? mb + "MB · Fn+BS 退出" : "Fn+BS 退出";
+			const size = st.sectors && st.sectorSize
+				? diskSize(st.sectors, st.sectorSize)
+				: "";
+			this.line = "已挂载";
+			this.note = size ? size + " · 先弹出" : "先弹出";
 		}
 		this.kb = new CardputerKeyboard();
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
@@ -120,6 +138,25 @@ export class AppBehavior extends Behavior {
 		bootLauncher();
 	}
 
+	statusMarks(): { mark: Glyph; lineMark: Glyph; noteMark: Glyph; level?: number } {
+		const titleKind: Glyph = this.ready || this.line === "挂载中" ? "usb" : "bad";
+		const mark = titleGlyph(this.power, { kind: titleKind });
+		const lineG = noteGlyph(this.line);
+		const noteG = noteGlyph(this.note);
+		let lineMark: Glyph = lineG.kind;
+		if (!lineMark)
+			lineMark = this.ready ? "ok" : this.line === "挂载中" ? "usb" : "bad";
+		let noteMark: Glyph = noteG.kind;
+		if (!noteMark && this.note)
+			noteMark = this.ready ? "sd" : "retry";
+		return {
+			mark: mark.kind || titleKind,
+			lineMark,
+			noteMark,
+			level: mark.level,
+		};
+	}
+
 	paint(app: AppHost) {
 		const face = contentByName(app, "usbPort");
 		const list = contentByName(app, "listPort");
@@ -145,10 +182,7 @@ export class AppBehavior extends Behavior {
 				if (row)
 					lines.push({ text: row.key, right: row.action, selected: false });
 			}
-			const title = this.power
-				? titleWithPower(this.power, `${helpTitle()} ${start + 1}/${n}`)
-				: `${helpTitle()} ${start + 1}/${n}`;
-			view.setList(list, title, lines, "");
+			view.setList(list, `${helpTitle()} ${start + 1}/${n}`, lines, "");
 			return;
 		}
 		setVisibleProp(list, false);
@@ -156,9 +190,9 @@ export class AppBehavior extends Behavior {
 		const view = asUsb(face);
 		if (!view)
 			return;
-		const title = this.power ? titleWithPower(this.power, "USB 盘") : "USB 盘";
 		const banner = this.power?.banner() ?? "";
 		const note = banner ? (this.note ? banner + " " + this.note : banner) : this.note;
-		view.setFrame(face, title, this.line, note);
+		const marks = this.statusMarks();
+		view.setFrame(face, "U 盘", this.line, note, marks.mark, marks.lineMark, marks.noteMark, marks.level);
 	}
 }

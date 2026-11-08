@@ -15,7 +15,7 @@ import { asMenu } from "menu-view";
 import { noteGlyph } from "ink";
 import { Power } from "power";
 import { qrBits } from "qr";
-import { acceptStroke, titleGlyph, titleWithPower } from "session";
+import { acceptStroke, titleGlyph } from "session";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asQr } from "view";
 import type { Directory } from "embedded:storage/files";
@@ -231,7 +231,6 @@ export class AppBehavior extends Behavior {
 		const view = asMenu(port);
 		if (!view)
 			return;
-		const banner = this.power ? titleWithPower(this.power, "") : "";
 		if (this.mode === "help") {
 			const page = helpFor();
 			const n = page.length;
@@ -249,21 +248,21 @@ export class AppBehavior extends Behavior {
 				if (row)
 					lines.push({ text: row.key, right: row.action, selected: false });
 			}
-			view.setList(port, banner + helpTitle() + " " + (start + 1) + "/" + n, lines, "");
+			view.setList(port, helpTitle() + " " + (start + 1) + "/" + n, lines, "");
 			return;
 		}
 		if (this.mode === "edit") {
 			const lines = wrap(this.text.length ? this.text : "空").map(row => ({ text: row.text, selected: false }));
 			const editNote = this.note;
 			const g = noteGlyph(editNote).kind ? noteGlyph(editNote) : titleGlyph(this.power);
-			view.setList(port, banner + this.name + (editNote ? " " + editNote : ""), lines, "", g.kind, g.level);
+			view.setList(port, this.name + (editNote ? " " + editNote : ""), lines, "", g.kind, g.level);
 			this.note = "";
 			return;
 		}
 		if (!this.files.length) {
 			const empty = this.dir ? (this.note || "N 新建") : "无卡";
 			const g = noteGlyph(empty).kind ? noteGlyph(empty) : titleGlyph(this.power);
-			view.setList(port, banner + "记事", [{ text: empty, selected: false }], "", g.kind, g.level);
+			view.setList(port, "记事", [{ text: empty, selected: false }], "", g.kind, g.level);
 			this.note = "";
 			return;
 		}
@@ -273,7 +272,7 @@ export class AppBehavior extends Behavior {
 		}));
 		const listNote = this.note;
 		const g = noteGlyph(listNote).kind ? noteGlyph(listNote) : titleGlyph(this.power);
-		view.setList(port, banner + (listNote || "记事"), lines, "", g.kind, g.level);
+		view.setList(port, listNote || "记事", lines, "", g.kind, g.level);
 		this.note = "";
 	}
 }

@@ -17,7 +17,7 @@ import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir, volumeDelta 
 import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
 import { Power } from "power";
-import { acceptStroke, titleGlyph, titleWithPower } from "session";
+import { acceptStroke, titleGlyph } from "session";
 import { ClockSound } from "sound";
 import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from "settings";
 import { asMarquee, MARQUEE_MS, setMarqueeMark, setMarqueeText } from "marquee";
@@ -350,8 +350,7 @@ export class AppBehavior extends Behavior {
 			setMarqueeMark(contentByName(app, "glossLabel"), g.kind, g.level);
 			return;
 		}
-		const titled = this.power ? titleWithPower(this.power, text) : text;
-		setMarqueeText(contentByName(app, "glossLabel"), titled, face, undefined, undefined, undefined, g.kind, g.level);
+		setMarqueeText(contentByName(app, "glossLabel"), text, face, undefined, undefined, undefined, g.kind, g.level);
 	}
 
 	tickMarquees(app: AppHost) {

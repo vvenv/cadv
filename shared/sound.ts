@@ -40,27 +40,53 @@ const ES8311_MIC: number[][] = Object.freeze([
 	[0x1c, 0x6a],
 ], true) as number[][];
 
-/** Program the codec and release the bus. The chip keeps the setup. */
-export function writeCodec(mic: boolean) {
+/* M5Unified mic disable: power down analog before flipping to speaker. */
+const ES8311_MIC_OFF: number[][] = Object.freeze([
+	[0x0d, 0xfc],
+	[0x0e, 0x6a],
+	[0x00, 0x00],
+], true) as number[][];
+
+function writeTable(bus: SMBus, table: number[][]) {
+	for (const [reg, val] of table)
+		bus.writeUint8(reg, val);
+}
+
+function withCodec(write: (bus: SMBus) => void): boolean {
 	const pins = readI2cPins();
 	if (!pins)
-		return;
-	let bus: SMBus | undefined;
-	try {
-		bus = new SMBus({
-			hz: 400_000,
-			address: ES8311_ADDR,
-			data: pins.sda,
-			clock: pins.scl,
-		});
-		const table = mic ? ES8311_MIC : ES8311_ON;
-		for (const [reg, val] of table)
-			bus.writeUint8(reg, val);
+		return false;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		let bus: SMBus | undefined;
+		try {
+			bus = new SMBus({
+				hz: 400_000,
+				address: ES8311_ADDR,
+				data: pins.sda,
+				clock: pins.scl,
+			});
+			write(bus);
+			try { bus.close(); } catch { /* */ }
+			return true;
+		}
+		catch {
+			try { bus?.close(); } catch { /* */ }
+		}
 	}
-	catch {
-		/* no codec on the desktop, or the bus is busy */
-	}
-	try { bus?.close(); } catch { /* */ }
+	return false;
+}
+
+/** M5 mic-off before opening the speaker on the shared I2S. */
+export function releaseMic(): boolean {
+	return withCodec(bus => writeTable(bus, ES8311_MIC_OFF));
+}
+
+/**
+	Program the codec and release the bus. Returns false if the bus/chip
+	could not be written (desktop stub, or I2C busy).
+*/
+export function writeCodec(mic: boolean): boolean {
+	return withCodec(bus => writeTable(bus, mic ? ES8311_MIC : ES8311_ON));
 }
 
 type Tone = { hz: number; ms: number };

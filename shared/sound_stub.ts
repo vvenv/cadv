@@ -4,6 +4,10 @@
 
 export function writeCodec(_mic: boolean) {}
 
+export function releaseMic(): boolean {
+	return false;
+}
+
 export class ClockSound {
 	status = "AU n/a";
 	get available(): boolean {

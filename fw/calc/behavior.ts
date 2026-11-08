@@ -13,7 +13,7 @@ import { isBack, isConfirm, isLauncher, navDir } from "keys";
 import { MENU_VISIBLE } from "list";
 import { asMenu } from "menu-view";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke } from "session";
 import { contentByName, type AppHost } from "ui";
 
 type Mode = "calc" | "help";
@@ -466,18 +466,15 @@ export class AppBehavior extends Behavior {
 				if (row)
 					lines.push({ text: row.key, right: row.action, selected: false });
 			}
-			const title = this.power ? titleWithPower(this.power, helpTitle()) : helpTitle();
-			view.setList(port, title + " " + (start + 1) + "/" + n, lines, "");
+			view.setList(port, helpTitle() + " " + (start + 1) + "/" + n, lines, "");
 			return;
 		}
-		const name = this.hex ? "十六进制" : "计算";
-		const title = this.power ? titleWithPower(this.power, name) : name;
 		const context = this.contextText();
 		const lines = [];
 		if (context)
 			lines.push({ text: context, selected: false });
 		lines.push({ text: this.valueText(), selected: true });
-		view.setList(port, title, lines, "");
+		view.setList(port, this.hex ? "十六进制" : "计算", lines, "");
 	}
 }
 

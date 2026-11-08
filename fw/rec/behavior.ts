@@ -17,8 +17,8 @@ import { asMenu } from "menu-view";
 import { noteGlyph } from "ink";
 import { micFault, openMic, type MicFeed } from "mic";
 import { Power } from "power";
-import { acceptStroke, titleGlyph, titleWithPower } from "session";
-import { writeCodec } from "sound";
+import { acceptStroke, titleGlyph } from "session";
+import { releaseMic, writeCodec } from "sound";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asMeter } from "view";
 import { wavHeader } from "wav";
@@ -277,10 +277,10 @@ export class AppBehavior extends Behavior {
 		this.paint(app);
 		/*
 			Mic and speaker share I2S1. Closing AudioIn posts a final machine
-			message before the channel is fully gone; open AudioOut on the next
-			turn so that message runs first and i2s_new_channel does not stall.
+			message; wait a beat so the channel is gone, power the codec down,
+			then open AudioOut (same order as M5: clocks, then speaker enable).
 		*/
-		Timer.set(() => this.beginPlay(app, name), 1);
+		Timer.set(() => this.beginPlay(app, name), 40);
 	}
 
 	beginPlay(app: AppHost, name: string) {
@@ -309,6 +309,13 @@ export class AppBehavior extends Behavior {
 		for (let i = 0; i < PLAY_BUFFERS; i++)
 			this.playFree.push(new Uint8Array(new SharedArrayBuffer(CHUNK)));
 		try {
+			/* Drop ADC before I2S TX; keyboard shares this bus so retry. */
+			releaseMic();
+			if (!writeCodec(false)) {
+				this.note = "无喇叭";
+				this.finishPlay(app);
+				return;
+			}
 			this.audio = new AudioOut({ sampleRate: 16000, bitsPerSample: 16, numChannels: 1, streams: 1 });
 			this.audio.callback = () => this.onPlayCallback(app);
 			this.audio.enqueue(0, AudioOut.Volume, 256);
@@ -321,8 +328,8 @@ export class AppBehavior extends Behavior {
 				this.finishPlay(app);
 				return;
 			}
-			/* I2S clocks first, then ES8311 speaker path (M5 order). */
 			this.audio.start();
+			/* M5 enables the DAC after the I2S clocks are running. */
 			writeCodec(false);
 		}
 		catch {
@@ -440,8 +447,7 @@ export class AppBehavior extends Behavior {
 					if (row)
 						lines.push({ text: row.key, right: row.action, selected: false });
 				}
-				const title = this.power ? titleWithPower(this.power, helpTitle()) : helpTitle();
-				view.setList(port, `${title} ${start + 1}/${n}`, lines, "");
+				view.setList(port, `${helpTitle()} ${start + 1}/${n}`, lines, "");
 				return;
 			}
 			this.refreshNames();
@@ -457,7 +463,7 @@ export class AppBehavior extends Behavior {
 			});
 			const title = (this.index + 1) + "/" + this.names.length;
 			const g = titleGlyph(this.power);
-			view.setList(port, this.power ? titleWithPower(this.power, title) : title, lines, "", g.kind, g.level);
+			view.setList(port, title, lines, "", g.kind, g.level);
 			return;
 		}
 		const port = contentByName(app, "meterPort");

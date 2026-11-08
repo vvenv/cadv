@@ -7,7 +7,7 @@
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { drawGlyph, drawProgress } from "draw";
-import { BG, FONT_UI, INK, type Glyph, type GlyphSpec } from "ink";
+import { BG, FONT_UI, INK, type Glyph } from "ink";
 
 /** Lazily built — Moddable link rejects top-level `new Style` outside main. */
 let marqueeStyle: /* Style */ object | undefined;
@@ -52,10 +52,6 @@ export function setMarqueeMark(target: unknown, mark: Glyph, level?: number) {
 	const b = asMarquee(target);
 	if (b)
 		b.setText(target as PortContent, "", undefined, undefined, "", undefined, mark, level);
-}
-
-export function setMarqueeGlyph(target: unknown, spec: GlyphSpec) {
-	setMarqueeMark(target, spec.kind, spec.level);
 }
 
 export class MarqueeBehavior extends Behavior {

@@ -9,7 +9,7 @@ export type MscStatus = {
 };
 
 export function start(): string {
-	return "模拟无 USB 盘";
+	return "模拟无 U 盘";
 }
 
 export function stop(): void {

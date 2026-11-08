@@ -8,7 +8,7 @@ import { isBack, isConfirm, isHelp, isLauncher, navDir, volumeDelta } from "keys
 import { MENU_VISIBLE } from "list";
 import { asMenu } from "menu-view";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke } from "session";
 import { ClockSound } from "sound";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
@@ -147,8 +147,7 @@ export class AppBehavior extends Behavior {
 		const view = asMetro(face);
 		if (!view)
 			return;
-		const title = this.power ? titleWithPower(this.power, this.on ? "进行" : "节拍") : (this.on ? "进行" : "节拍");
-		view.setRun(face, title, this.bpm, this.beats, this.beat, this.on, this.volume);
+		view.setRun(face, this.on ? "进行" : "节拍", this.bpm, this.beats, this.beat, this.on, this.volume);
 	}
 }
 

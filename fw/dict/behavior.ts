@@ -18,7 +18,7 @@ import { MENU_VISIBLE, menuStep } from "list";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { asMenu } from "menu-view";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke } from "session";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
 
 type Mode = "look" | "help";
@@ -226,8 +226,7 @@ export class AppBehavior extends Behavior {
 			base = this.note;
 		else if (n > 0)
 			base = (this.query || "查词") + " " + (this.cursor - this.lo + 1) + "/" + n;
-		const titled = this.power ? titleWithPower(this.power, base) : base;
-		setMarqueeText(contentByName(app, "queryLabel"), titled);
+		setMarqueeText(contentByName(app, "queryLabel"), base);
 		setStringProp(contentByName(app, "wordLabel"), word);
 		setMarqueeText(contentByName(app, "glossLabel"), gloss);
 		setMarqueeText(contentByName(app, "phoneLabel"), phone, phone ? phoneFace() : undefined);
@@ -252,8 +251,7 @@ export class AppBehavior extends Behavior {
 		}
 		const port = contentByName(app, "listPort");
 		const view = asMenu(port);
-		const title = this.power ? titleWithPower(this.power, helpTitle()) : helpTitle();
 		if (view)
-			view.setList(port, title + " " + (start + 1) + "/" + n, lines, "");
+			view.setList(port, helpTitle() + " " + (start + 1) + "/" + n, lines, "");
 	}
 }
