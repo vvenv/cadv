@@ -62,8 +62,8 @@ export class MetroBehavior extends Behavior {
 			this.volume,
 		);
 
-		const digitW = 36;
-		const digitH = 52;
+		const digitW = 32;
+		const digitH = 58;
 		const gap = 4;
 		const span = readoutSpan(this.bpmText, digitW, 12, gap);
 		const x = Math.floor((width - span) / 2);

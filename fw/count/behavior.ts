@@ -19,21 +19,49 @@ import { acceptStroke, titleGlyph } from "session";
 import { ClockSound, releaseMic } from "sound";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
-import { asCount, type Sense } from "view";
+import { asCount, type Gain, type Sense } from "view";
 
 const PREF = "count";
 const STEPS = Object.freeze([1, 2, 5, 10, 20, 50, 100]);
 const COUNT_MAX = 999999;
-const LOUD_ON = 42;
-const LOUD_OFF = 28;
+/** Hit when peak clearly rises above a slow ambient floor. */
+const FLOOR_ALPHA = 0.06;
 const HIT_GAP_MS = 280;
 
 type Mode = "run" | "pick" | "help";
 
-const SENSE_ROWS = Object.freeze([
-	{ id: "hand" as Sense, text: "手动", right: "按键", glyph: "caps" as const },
-	{ id: "ear" as Sense, text: "听响声", right: "麦克", glyph: "rec" as const },
+type GainTune = { id: Gain; rise: number; mult: number; minOn: number };
+
+const GAINS = Object.freeze([
+	{ id: "high" as Gain, rise: 5, mult: 1.5, minOn: 3 },
+	{ id: "mid" as Gain, rise: 8, mult: 1.8, minOn: 5 },
+	{ id: "low" as Gain, rise: 14, mult: 2.5, minOn: 12 },
 ], true);
+
+const PICK_ROWS = Object.freeze([
+	{ sense: "hand" as Sense, gain: "mid" as Gain, text: "手动", right: "按键", glyph: "caps" as const },
+	{ sense: "ear" as Sense, gain: "high" as Gain, text: "听响 · 高", right: "灵敏", glyph: "rec" as const },
+	{ sense: "ear" as Sense, gain: "mid" as Gain, text: "听响 · 中", right: "灵敏", glyph: "rec" as const },
+	{ sense: "ear" as Sense, gain: "low" as Gain, text: "听响 · 低", right: "灵敏", glyph: "rec" as const },
+], true);
+
+function tuneFor(gain: Gain): GainTune {
+	for (let i = 0; i < GAINS.length; i++) {
+		if (GAINS[i].id === gain)
+			return GAINS[i];
+	}
+	return GAINS[1];
+}
+
+function pickIndexFor(sense: Sense, gain: Gain): number {
+	if (sense !== "ear")
+		return 0;
+	for (let i = 1; i < PICK_ROWS.length; i++) {
+		if (PICK_ROWS[i].gain === gain)
+			return i;
+	}
+	return 2;
+}
 
 function readNum(name: string, fallback: number): number {
 	try {
@@ -62,6 +90,22 @@ function readSense(): Sense {
 		/* */
 	}
 	return "hand";
+}
+
+function readGain(): Gain {
+	try {
+		const v = Preference.get(PREF, "gain");
+		if (v === "high" || v === "low" || v === "mid")
+			return v;
+		if (v === 0 || v === "0")
+			return "high";
+		if (v === 2 || v === "2")
+			return "low";
+	}
+	catch {
+		/* */
+	}
+	return "mid";
 }
 
 function clampCount(n: number): number {
@@ -98,8 +142,10 @@ export class AppBehavior extends Behavior {
 	volume = VOL_DEFAULT;
 	flash = 0;
 	sense: Sense = "hand";
+	gain: Gain = "mid";
 	armed = false;
 	peak = 0;
+	floor = 0;
 	loud = false;
 	lastHit = 0;
 	pickIndex = 0;
@@ -113,6 +159,7 @@ export class AppBehavior extends Behavior {
 		this.step = nearestStep(readNum("step", 1));
 		this.volume = Math.max(VOL_MIN, Math.min(VOL_MAX, readNum("volume", VOL_DEFAULT)));
 		this.sense = readSense();
+		this.gain = readGain();
 		this.power = new Power("blank");
 		this.applySense(app, false);
 		this.kb = new CardputerKeyboard();
@@ -125,6 +172,7 @@ export class AppBehavior extends Behavior {
 		this.closeSound();
 		this.armed = false;
 		this.peak = 0;
+		this.floor = 0;
 		this.loud = false;
 		this.note = "";
 		if (this.sense === "ear") {
@@ -132,8 +180,12 @@ export class AppBehavior extends Behavior {
 			if (!this.mic)
 				this.note = micFault() || "无麦克风";
 			this.armed = armDefault && !!this.mic;
-			if (this.armed)
-				this.loud = (this.mic?.peak() ?? 0) >= LOUD_OFF;
+			if (this.armed && this.mic) {
+				this.mic.takePeak();
+				this.floor = this.mic.peak();
+				this.peak = this.floor;
+				this.loud = false;
+			}
 		}
 		else {
 			releaseMic();
@@ -165,14 +217,18 @@ export class AppBehavior extends Behavior {
 	}
 
 	pollEar(app: AppHost) {
-		const peak = this.mic?.peak() ?? 0;
+		const peak = this.mic?.takePeak() ?? 0;
 		this.peak = peak;
+		const tune = tuneFor(this.gain);
 		if (this.loud) {
-			if (peak < LOUD_OFF)
+			const off = Math.max(3, this.floor + tune.rise * 0.4, this.floor * 1.25);
+			if (peak < off)
 				this.loud = false;
 			return;
 		}
-		if (peak < LOUD_ON)
+		this.floor += (peak - this.floor) * FLOOR_ALPHA;
+		const on = Math.max(tune.minOn, this.floor + tune.rise, Math.ceil(this.floor * tune.mult));
+		if (peak < on)
 			return;
 		this.loud = true;
 		const now = Date.now();
@@ -232,18 +288,22 @@ export class AppBehavior extends Behavior {
 			}
 			const dir = navDir(stroke);
 			if (dir !== 0) {
-				this.pickIndex = Math.max(0, Math.min(SENSE_ROWS.length - 1, this.pickIndex + dir));
+				this.pickIndex = Math.max(0, Math.min(PICK_ROWS.length - 1, this.pickIndex + dir));
 				this.paint(app);
 				return;
 			}
 			if (isConfirm(stroke)) {
-				const next = SENSE_ROWS[this.pickIndex]?.id ?? "hand";
+				const row = PICK_ROWS[this.pickIndex] ?? PICK_ROWS[0];
 				this.mode = "run";
-				if (next !== this.sense) {
-					this.sense = next;
+				const senseChanged = row.sense !== this.sense;
+				const gainChanged = row.gain !== this.gain;
+				this.sense = row.sense;
+				if (row.sense === "ear")
+					this.gain = row.gain;
+				if (senseChanged || gainChanged)
 					this.save();
-					this.applySense(app, next === "ear");
-				}
+				if (senseChanged)
+					this.applySense(app, row.sense === "ear");
 				else
 					this.paint(app);
 				return;
@@ -254,8 +314,23 @@ export class AppBehavior extends Behavior {
 
 		for (const ch of stroke.chars) {
 			if (ch === "m" || ch === "M") {
-				this.pickIndex = this.sense === "ear" ? 1 : 0;
+				this.pickIndex = pickIndexFor(this.sense, this.gain);
 				this.mode = "pick";
+				this.paint(app);
+				return;
+			}
+			if (ch === "s" || ch === "S") {
+				if (this.sense !== "ear")
+					continue;
+				let at = 1;
+				for (let i = 0; i < GAINS.length; i++) {
+					if (GAINS[i].id === this.gain) {
+						at = i;
+						break;
+					}
+				}
+				this.gain = GAINS[(at + 1) % GAINS.length].id;
+				this.save();
 				this.paint(app);
 				return;
 			}
@@ -278,8 +353,11 @@ export class AppBehavior extends Behavior {
 					return;
 				}
 				this.armed = !this.armed;
-				this.loud = this.armed && (this.mic.peak() >= LOUD_OFF);
+				if (this.armed)
+					this.mic.takePeak();
 				this.peak = this.mic.peak();
+				this.floor = this.peak;
+				this.loud = false;
 				this.note = "";
 				this.paint(app);
 				return;
@@ -353,6 +431,7 @@ export class AppBehavior extends Behavior {
 			Preference.set(PREF, "step", this.step);
 			Preference.set(PREF, "volume", this.volume);
 			Preference.set(PREF, "sense", this.sense);
+			Preference.set(PREF, "gain", this.gain);
 		}
 		catch {
 			/* */
@@ -373,8 +452,8 @@ export class AppBehavior extends Behavior {
 				return;
 			}
 			const lines = [];
-			for (let i = 0; i < SENSE_ROWS.length; i++) {
-				const row = SENSE_ROWS[i];
+			for (let i = 0; i < PICK_ROWS.length; i++) {
+				const row = PICK_ROWS[i];
 				lines.push({
 					text: row.text,
 					right: row.right,
@@ -420,6 +499,7 @@ export class AppBehavior extends Behavior {
 			g.kind,
 			g.level === undefined ? 0 : g.level,
 			this.sense,
+			this.gain,
 			this.armed,
 			this.peak,
 		);

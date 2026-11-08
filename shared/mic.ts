@@ -7,7 +7,10 @@ import AudioIn from "embedded:io/audio/in";
 import { writeCodec } from "sound";
 
 export type MicFeed = {
+	/** Latest chunk peak, 0..100. */
 	peak(): number;
+	/** Max peak since the previous takePeak(); holds short bursts between polls. */
+	takePeak(): number;
 	close(): void;
 };
 
@@ -30,6 +33,7 @@ export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
 	try {
 		writeCodec(true);
 		let lastPeak = 0;
+		let holdPeak = 0;
 		const input = new AudioIn({
 			sampleRate: 16000,
 			bitsPerSample: 16,
@@ -55,6 +59,8 @@ export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
 					lastPeak = Math.round(peak * 100 / 32767);
 					if (lastPeak > 100)
 						lastPeak = 100;
+					if (lastPeak > holdPeak)
+						holdPeak = lastPeak;
 					if (onPcm)
 						onPcm(pcm);
 				}
@@ -68,6 +74,11 @@ export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
 		return {
 			peak() {
 				return lastPeak;
+			},
+			takePeak() {
+				const v = holdPeak;
+				holdPeak = lastPeak;
+				return v;
 			},
 			close() {
 				try { input.stop(); } catch { /* */ }

@@ -8,8 +8,8 @@ import { drawReadout, readoutSpan } from "draw";
 import { formatNow } from "lunar";
 import { BG } from "ink";
 
-const DIGIT_W = 28;
-const COLON_W = 14;
+const DIGIT_W = 24;
+const COLON_W = 12;
 const GAP = 4;
 
 function faceFromPort(port: PortContent): string {

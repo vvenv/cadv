@@ -1,7 +1,7 @@
 /*
-	Phosphor primitives: chamfered 7-segment readouts, disks, and binary marks
-	(green check / red cross). Halo is one pixel of MID behind a lit segment.
-	Gaps stay large enough that the halo does not weld the digit into a blob.
+	Phosphor primitives: Casio-style 7-segment readouts (thick bars, 45° tips),
+	disks, and binary marks (green check / red cross). Lit segments get one
+	pixel of MID halo; tips are stepped traps (few fills, not per-pixel loops).
 
 	Each Port fillColor / drawString queues into Piu's command list. The
 	Application default is only 1024 bytes; a readout, disk, or mark face
@@ -23,30 +23,73 @@ const SEG = Object.freeze([
 	0b1011011, 0b1011111, 0b1110000, 0b1111111, 0b1111011,
 ]);
 
-/*
-	One fillColor per segment. The old chamfer loops burned dozens of
-	commands per bar and overflowed the Piu display list on HH:MM:SS.
+/**
+	Horizontal hex bar (pointed left/right). Mid body is one rect; tips are
+	a few stepped rows — Casio AE look without per-pixel chamfer spam.
 */
+function fillHTrap(port: PortContent, x: number, y: number, w: number, t: number, color: string) {
+	if (w <= 1 || t <= 0)
+		return;
+	const c = Math.max(1, Math.min(t >> 1, Math.max(1, w >> 3)));
+	for (let i = 0; i < c; i++) {
+		const inset = c - i;
+		const rw = w - (inset << 1);
+		if (rw > 0)
+			port.fillColor(color, x + inset, y + i, rw, 1);
+	}
+	const midH = t - (c << 1);
+	if (midH > 0)
+		port.fillColor(color, x, y + c, w, midH);
+	for (let i = 0; i < c; i++) {
+		const inset = i + 1;
+		const rw = w - (inset << 1);
+		if (rw > 0)
+			port.fillColor(color, x + inset, y + t - c + i, rw, 1);
+	}
+}
+
+/** Vertical hex bar (pointed top/bottom). */
+function fillVTrap(port: PortContent, x: number, y: number, h: number, t: number, color: string) {
+	if (h <= 1 || t <= 0)
+		return;
+	const c = Math.max(1, Math.min(t >> 1, Math.max(1, h >> 3)));
+	for (let i = 0; i < c; i++) {
+		const inset = c - i;
+		const rw = t - (inset << 1);
+		if (rw > 0)
+			port.fillColor(color, x + inset, y + i, rw, 1);
+	}
+	const midH = h - (c << 1);
+	if (midH > 0)
+		port.fillColor(color, x, y + c, t, midH);
+	for (let i = 0; i < c; i++) {
+		const inset = i + 1;
+		const rw = t - (inset << 1);
+		if (rw > 0)
+			port.fillColor(color, x + inset, y + h - c + i, rw, 1);
+	}
+}
+
 function paintH(port: PortContent, x: number, y: number, w: number, t: number, on: boolean) {
 	if (w <= 1 || t <= 0)
 		return;
 	if (on) {
-		port.fillColor(MID, x - 1, y - 1, w + 2, t + 2);
-		port.fillColor(ON, x, y, w, t);
+		fillHTrap(port, x - 1, y - 1, w + 2, t + 2, MID);
+		fillHTrap(port, x, y, w, t, ON);
 	}
 	else
-		port.fillColor(DIM, x, y, w, t);
+		fillHTrap(port, x, y, w, t, DIM);
 }
 
 function paintV(port: PortContent, x: number, y: number, h: number, t: number, on: boolean) {
 	if (h <= 1 || t <= 0)
 		return;
 	if (on) {
-		port.fillColor(MID, x - 1, y - 1, t + 2, h + 2);
-		port.fillColor(ON, x, y, t, h);
+		fillVTrap(port, x - 1, y - 1, h + 2, t + 2, MID);
+		fillVTrap(port, x, y, h, t, ON);
 	}
 	else
-		port.fillColor(DIM, x, y, t, h);
+		fillVTrap(port, x, y, h, t, DIM);
 }
 
 /** Thick polyline segment as stepped squares (few commands, readable at 20–64px). */
@@ -409,13 +452,17 @@ export function strokeDisk(port: PortContent, cx: number, cy: number, r: number,
 	}
 }
 
-/** One digit box. `mask` bit 6 is the top bar, bit 0 the middle bar. */
+/**
+	One digit box — Casio AE proportions: chunky bars (~w/5), hex tips,
+	clear corner gaps (H stays out of V columns; no bite into H bands).
+	`mask` bit 6 is the top bar, bit 0 the middle bar.
+*/
 export function drawSegMask(port: PortContent, x: number, y: number, w: number, h: number, mask: number) {
-	const t = Math.max(3, Math.min(8, Math.floor(w / 6)));
-	const g = Math.max(3, t >> 1);
+	const t = Math.max(4, Math.min(10, Math.floor(w / 5)));
+	const g = 2;
 	let v = Math.floor((h - 3 * t - 4 * g) / 2);
-	if (v < 2)
-		v = 2;
+	if (v < 3)
+		v = 3;
 	const block = 3 * t + 2 * v + 4 * g;
 	const y0 = y + Math.max(0, Math.floor((h - block) / 2));
 	const yMid = y0 + t + g + v + g;
@@ -423,13 +470,16 @@ export function drawSegMask(port: PortContent, x: number, y: number, w: number, 
 	const yU = y0 + t + g;
 	const yL = yMid + t + g;
 	const m = mask | 0;
-	paintH(port, x, y0, w, t, !!(m & 0b1000000));
+	// Channel between the two V columns — keeps hex tips from welding corners.
+	const hx = x + t + g;
+	const hw = Math.max(t, w - 2 * (t + g));
+	paintH(port, hx, y0, hw, t, !!(m & 0b1000000));
 	paintV(port, x + w - t, yU, v, t, !!(m & 0b0100000));
 	paintV(port, x + w - t, yL, v, t, !!(m & 0b0010000));
-	paintH(port, x, yBot, w, t, !!(m & 0b0001000));
+	paintH(port, hx, yBot, hw, t, !!(m & 0b0001000));
 	paintV(port, x, yL, v, t, !!(m & 0b0000100));
 	paintV(port, x, yU, v, t, !!(m & 0b0000010));
-	paintH(port, x, yMid, w, t, !!(m & 0b0000001));
+	paintH(port, hx, yMid, hw, t, !!(m & 0b0000001));
 }
 
 function drawColon(port: PortContent, x: number, y: number, w: number, h: number, on: boolean) {

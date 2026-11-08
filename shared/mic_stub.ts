@@ -6,6 +6,7 @@ import Timer from "timer";
 
 export type MicFeed = {
 	peak(): number;
+	takePeak(): number;
 	close(): void;
 };
 
@@ -34,6 +35,9 @@ export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
 	}
 	return {
 		peak() {
+			return 36;
+		},
+		takePeak() {
 			return 36;
 		},
 		close() {

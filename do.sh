@@ -1561,6 +1561,26 @@ cmd_ts_check() {
   check_piu_lists
 }
 
+# macOS `open -a mcsim` after AppleScript quit often returns -600 (procNotFound).
+launch_mcsim() {
+  local id="$1"
+  local sim="$MODDABLE/build/bin/mac/release/mcsim.app"
+  local so="$MODDABLE/build/bin/mac/mc/debug/$id/mc.so"
+  [ -d "$sim" ] || log_die "找不到 mcsim：$sim"
+  [ -f "$so" ] || log_die "找不到镜像：$so"
+  killall -9 mcsim 2>/dev/null || true
+  sleep 0.25
+  if open -a "$sim" "$so" 2>/dev/null; then
+    return 0
+  fi
+  sleep 0.5
+  if open -a "$sim" "$so" 2>/dev/null; then
+    return 0
+  fi
+  log_warn "open -a mcsim 失败，改为直接启动二进制"
+  ("$sim/Contents/MacOS/main" "$so" >/dev/null 2>&1 &)
+}
+
 cmd_ts_sim() {
   local id want=0
   id="$(require_fw "${1:-}")"
@@ -1576,7 +1596,9 @@ cmd_ts_sim() {
     log_info "模拟文件根：fw/${id}/sample"
   fi
   log_info "桌面模拟 $(fw_label "$id")（${id}，-dn 不弹 xsbug）"
-  (cd "$FW_ROOT/$id" && mcconfig "${mc_args[@]}")
+  # Build only, then launch ourselves — avoids make's quit→open race (-600).
+  (cd "$FW_ROOT/$id" && mcconfig "${mc_args[@]}" -t build) || return $?
+  launch_mcsim "$id"
 }
 
 need_idf() {

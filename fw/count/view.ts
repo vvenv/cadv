@@ -13,6 +13,16 @@ const TITLE_MARK = 18;
 const TITLE_MARK_GAP = 6;
 
 export type Sense = "hand" | "ear";
+/** Listen threshold: high = easiest to trigger. */
+export type Gain = "high" | "mid" | "low";
+
+export function gainLabel(gain: Gain): string {
+	if (gain === "high")
+		return "高";
+	if (gain === "low")
+		return "低";
+	return "中";
+}
 
 let face: /* Style */ object | undefined;
 function style(): /* Style */ any {
@@ -49,6 +59,7 @@ export class CountBehavior extends Behavior {
 	mark: Glyph = "";
 	level = 0;
 	sense: Sense = "hand";
+	gain: Gain = "mid";
 	armed = false;
 	peak = 0;
 
@@ -64,6 +75,7 @@ export class CountBehavior extends Behavior {
 		mark: Glyph,
 		level: number,
 		sense: Sense,
+		gain: Gain,
 		armed: boolean,
 		peak: number,
 	) {
@@ -80,6 +92,7 @@ export class CountBehavior extends Behavior {
 			&& mark === this.mark
 			&& level === this.level
 			&& sense === this.sense
+			&& gain === this.gain
 			&& armed === this.armed
 			&& nextPeak === this.peak
 		)
@@ -94,6 +107,7 @@ export class CountBehavior extends Behavior {
 		this.mark = mark;
 		this.level = level;
 		this.sense = sense;
+		this.gain = gain;
 		this.armed = armed;
 		this.peak = nextPeak;
 		if (port && typeof port === "object" && "invalidate" in port && typeof port.invalidate === "function")
@@ -147,13 +161,16 @@ export class CountBehavior extends Behavior {
 				digitW = 10;
 			span = readoutSpan(text, digitW, 8, gap);
 		}
-		const digitH = Math.min(this.sense === "ear" ? 48 : 58, Math.floor(digitW * 1.55));
+		const digitH = Math.min(this.sense === "ear" ? 52 : 64, Math.floor(digitW * 1.9));
 		const x = Math.floor((width - span) / 2);
 		drawReadout(port, text, x, 26, digitW, digitH, 8, gap, this.flash !== 0);
 
 		if (this.sense === "ear") {
 			const barY = 26 + digitH + 6;
-			drawProgress(port, 10, barY, width - 20, 6, this.armed ? this.peak : 0);
+			const label = gainLabel(this.gain);
+			const labelW = port.measureString(label, faceStyle).width;
+			drawProgress(port, 10, barY, width - 28 - labelW, 6, this.armed ? this.peak : 0);
+			port.drawString(label, faceStyle, this.armed ? ON : INK, width - 10 - labelW, barY - 4, labelW + 2);
 		}
 
 		const cy = height - 16;

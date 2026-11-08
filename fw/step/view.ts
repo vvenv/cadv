@@ -61,7 +61,7 @@ export class StepBehavior extends Behavior {
 				digitW = 10;
 			span = readoutSpan(text, digitW, 8, gap);
 		}
-		const digitH = Math.min(62, Math.floor(digitW * 1.65));
+		const digitH = Math.min(68, Math.floor(digitW * 1.9));
 		const x = Math.floor((width - span) / 2);
 		drawReadout(port, text, x, 30, digitW, digitH, 8, gap, true);
 
