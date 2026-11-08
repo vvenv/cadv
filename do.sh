@@ -13,6 +13,7 @@
 #   CADV_REFRESH=0 跳过；=ask 改回先问再生成。
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig，并扫 Piu commandList 风险
 #   ./do.sh port                    # 列出可用串口
+#   ./do.sh port free               # 结束占用串口的 idf_monitor / sd_link 等，再列出
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
 #   ./do.sh gen-words               # 从 ../alice/data 生成词库
 #                                   # 拼写：wordbank.bin、junior.bin（junior 同步到 sample）
@@ -213,6 +214,16 @@ fw_needs_bank() {
 
 cmd_port() {
   local found=0 p
+  case "${1:-}" in
+    "" | list) ;;
+    free)
+      release_upload_port
+      log_success "已释放串口占用"
+      ;;
+    *)
+      log_die "用法：./do.sh port [list|free]"
+      ;;
+  esac
   for p in /dev/cu.usbmodem* /dev/cu.wchusbserial* /dev/cu.usbserial*; do
     [ -e "$p" ] || continue
     echo "$p"
@@ -549,6 +560,9 @@ sd_route() {
   if [ "${CADV_LINK:-}" = "0" ]; then
     log_die "没有挂上 FAT/exFAT 的 SD 卡。把卡插到电脑，或 CADV_SD=/Volumes/名字"
   fi
+  # Same exclusive-port cleanup as flash: a hung prior do.sh / sd_link / idf_monitor
+  # otherwise leaves "Resource temporarily unavailable" or a stuck ping.
+  release_upload_port
   port="$(link_port)" || return $?
   printf 'device\t%s\n' "$port"
 }
@@ -1806,7 +1820,7 @@ run() {
     sd-file) cmd_sd_file "$@" ;;
     gen-font | font) cmd_gen_font "$@" ;;
     gen-words) cmd_gen_words ;;
-    port) cmd_port ;;
+    port) cmd_port "$@" ;;
     clean) cmd_clean ;;
     -h | --help | help) usage ;;
     *)
@@ -1827,6 +1841,7 @@ main_menu() {
       "gen-font:生成 UI BMFont" \
       "gen-words:从 alice/data 生成词库" \
       "port:列出串口" \
+      "port-free:释放串口占用" \
       "clean:清理临时日志" \
       "help:命令说明" \
       "quit:退出")"
@@ -1845,6 +1860,10 @@ main_menu() {
         ;;
       sd)
         sd_menu
+        ;;
+      port-free)
+        (run port free) || log_error "执行失败（port free）"
+        pause_menu
         ;;
       *)
         (run "$choice") || log_error "执行失败（${choice}）"
