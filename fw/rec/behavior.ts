@@ -11,7 +11,7 @@ import { clipNames, clipSeconds, nextClip, openClip, openClips } from "clips";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
-import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
+import { isBack, isConfirm, isHelp, isLauncher, navDir, volumeDelta } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { asMenu } from "menu-view";
 import { noteGlyph } from "ink";
@@ -21,6 +21,7 @@ import { acceptStroke, titleGlyph } from "session";
 import { releaseMic, writeCodec } from "sound";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asMeter } from "view";
+import { audioVolume, VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
 import { wavHeader } from "wav";
 import type { Directory, File } from "embedded:storage/files";
 
@@ -50,6 +51,7 @@ export class AppBehavior extends Behavior {
 	playBusy: Uint8Array[] = [];
 	audio: InstanceType<typeof AudioOut> | null = null;
 	endingPlay = false;
+	volume = VOL_DEFAULT;
 	note = "";
 	hostEnterDown = false;
 
@@ -125,6 +127,10 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 			return;
 		}
+		if (this.adjustVolume(stroke.chars)) {
+			this.paint(app);
+			return;
+		}
 		if (this.mode === "play") {
 			this.finishPlay(app);
 			return;
@@ -161,6 +167,34 @@ export class AppBehavior extends Behavior {
 			else
 				this.startRec();
 			this.paint(app);
+		}
+	}
+
+	/** Same -/= contract as piano / metro / clock. Live while playing. */
+	adjustVolume(chars: string[]): boolean {
+		const delta = volumeDelta(chars);
+		if (delta === 0)
+			return false;
+		let v = this.volume + delta;
+		if (v < VOL_MIN)
+			v = VOL_MIN;
+		if (v > VOL_MAX)
+			v = VOL_MAX;
+		this.volume = v;
+		this.applyVolume();
+		this.note = "音量 " + v;
+		return true;
+	}
+
+	applyVolume() {
+		const audio = this.audio;
+		if (!audio)
+			return;
+		try {
+			audio.enqueue(0, AudioOut.Volume, audioVolume(this.volume));
+		}
+		catch {
+			/* */
 		}
 	}
 
@@ -318,7 +352,7 @@ export class AppBehavior extends Behavior {
 			}
 			this.audio = new AudioOut({ sampleRate: 16000, bitsPerSample: 16, numChannels: 1, streams: 1 });
 			this.audio.callback = () => this.onPlayCallback(app);
-			this.audio.enqueue(0, AudioOut.Volume, 256);
+			this.audio.enqueue(0, AudioOut.Volume, audioVolume(this.volume));
 			for (let i = 0; i < PLAY_BUFFERS; i++) {
 				if (!this.feedPlay())
 					break;
