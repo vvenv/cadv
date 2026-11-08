@@ -81,6 +81,10 @@ export function connectWifi(creds: WifiCreds, done: (ok: boolean, detail: string
 	};
 
 	try {
+		// Drop a previous association before opening a new monitor.
+		try { station?.close(); } catch { /* */ }
+		station = undefined;
+
 		w = new WiFi({
 			onChanged(property) {
 				if (property !== "connection")
@@ -92,6 +96,11 @@ export function connectWifi(creds: WifiCreds, done: (ok: boolean, detail: string
 					finish(false, "WiFi fail");
 			},
 		});
+		// Already up (host left STA associated): onChanged will not re-fire.
+		if (w.connection >= 500) {
+			finish(true, w.address ?? "ok");
+			return;
+		}
 		timer = Timer.set(() => finish(false, "WiFi timeout"), WIFI_TIMEOUT_MS);
 		if (creds.password)
 			w.connect({ SSID: creds.ssid, password: creds.password });

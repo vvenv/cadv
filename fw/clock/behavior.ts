@@ -170,9 +170,22 @@ export class AppBehavior extends Behavior {
 				this.kb.available ? "按 W 配网" : "no WiFi cfg",
 			);
 			this.refreshWeather(app, false);
+			// No Wi-Fi wait — IMU can come up after the first paint.
+			this.armImu();
 		}
+	}
+
+	/**
+	 * BMI270 config load uses Timer.delay on the shared keyboard I2C bus and
+	 * stalls the XS loop. Doing that during Wi-Fi/NTP left the face on
+	 * 「正在连接」because onChanged / timeouts never ran. Arm after net.
+	 */
+	armImu() {
+		if (this.imu)
+			return;
 		Timer.set(() => {
-			this.imu = openImu();
+			if (!this.imu)
+				this.imu = openImu();
 		}, 1);
 	}
 
@@ -745,6 +758,9 @@ export class AppBehavior extends Behavior {
 		this.mode = "busy";
 		this.spinning = true;
 		this.spinDetail = creds.ssid;
+		// Drop the boot flashStatus window so a fast join cannot leave 正在连接
+		// stuck under statusUntil after mode returns to clock.
+		this.statusUntil = 0;
 		this.paintNet(app, "正在连接");
 
 		connectAndSync(creds, (msg) => {
@@ -759,6 +775,7 @@ export class AppBehavior extends Behavior {
 			this.busy = false;
 			this.mode = "clock";
 			this.dateKey = "";
+			this.statusUntil = 0;
 			this.showClock(app, true);
 			this.redrawClock(app);
 			if (!ok)
@@ -767,6 +784,7 @@ export class AppBehavior extends Behavior {
 				this.onClockTick(app);
 				this.refreshWeather(app, true);
 			}
+			this.armImu();
 		});
 	}
 
