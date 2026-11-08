@@ -1,0 +1,78 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json",
+		"./manifest_otg.json"
+	],
+	"modules": {
+		"*": [
+			"./main",
+			"./behavior",
+			"./view",
+			"./help"
+		]
+	},
+	"preload": [
+		"msc",
+		"behavior",
+		"view",
+		"help"
+	],
+	"platforms": {
+		"esp32": {
+			"defines": {
+				"sdcard": {
+					"cs": 12,
+					"mosi": 14,
+					"miso": 39,
+					"sck": 40,
+					"hz": 20000000,
+					"spi_port": "SPI2_HOST"
+				}
+			},
+			"esp32Config": {
+				"CONFIG_TINYUSB_MSC_ENABLED": "y",
+				"CONFIG_TINYUSB_CDC_ENABLED": "y",
+				"CONFIG_TINYUSB_DESC_USE_ESPRESSIF_VID": "n",
+				"CONFIG_TINYUSB_DESC_USE_DEFAULT_PID": "n",
+				"CONFIG_TINYUSB_DESC_CUSTOM_VID": "0x303A",
+				"CONFIG_TINYUSB_DESC_CUSTOM_PID": "0x4002",
+				"CONFIG_TINYUSB_DESC_MANUFACTURER_STRING": "CADV",
+				"CONFIG_TINYUSB_DESC_PRODUCT_STRING": "CADV USB Disk",
+				"CONFIG_TINYUSB_DESC_MSC_STRING": "CADV SD",
+				"CONFIG_TINYUSB_DESC_CDC_STRING": "CADV CDC",
+				"CONFIG_ESP_CONSOLE_SECONDARY_NONE": "y"
+			},
+			"modules": {
+				"msc": "./msc"
+			},
+			"dependency": [
+				{ "name": "esp_tinyusb", "version": "^2.0.1~1" },
+				{ "name": "tinyusb", "version": "^0.21.0~4", "includes": ["src"] },
+				{ "idf": "fatfs" },
+				{ "idf": "sdmmc" },
+				{ "idf": "esp_blockdev" },
+				{ "idf": "esp_hal_sd" },
+				{ "idf": "esp_driver_sdspi" },
+				{ "idf": "esp_driver_sdmmc", "includes": ["legacy/include"] }
+			]
+		},
+		"mac": {
+			"modules": {
+				"msc": "./msc_stub"
+			}
+		},
+		"lin": {
+			"modules": {
+				"msc": "./msc_stub"
+			}
+		},
+		"...": {
+			"modules": {
+				"msc": "./msc_stub"
+			}
+		}
+	}
+}
