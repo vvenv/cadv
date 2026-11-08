@@ -11,8 +11,33 @@ import config from "mc/config";
 
 const PREF = "wifi";
 const WIFI_TIMEOUT_MS = 15000;
+const NTP_TIMEOUT_MS = 15000;
+/** Moddable defaults to 1.1.1.1 / 8.8.8.8 — often unreachable in CN, so NTP never resolves. */
+const DNS_SERVERS = Object.freeze(["223.5.5.5", "119.29.29.29", "180.76.76.76"]);
 
 let station: InstanceType<typeof WiFi> | undefined;
+
+type NtpHandle = {
+	getTime: (cb: (err: unknown, value?: number) => void) => void;
+	close: () => void;
+};
+
+type NtpClient = {
+	io?: new (opts: object) => NtpHandle;
+	dns?: { io?: unknown; servers?: string[]; socket?: object };
+	socket?: object;
+	servers?: string[];
+};
+
+/** Prefer mainland DNS for NTP / HTTP name lookups on this device. */
+function preferChinaDns() {
+	const g = globalThis as {
+		device?: { network?: { dns?: { resolver?: { servers?: string[] } } } };
+	};
+	const resolver = g.device?.network?.dns?.resolver;
+	if (resolver)
+		resolver.servers = DNS_SERVERS.slice();
+}
 
 /** RSSI of the association left open by connectWifi. Null when down. */
 export function wifiRssi(): number | null {
@@ -113,22 +138,14 @@ export function connectWifi(creds: WifiCreds, done: (ok: boolean, detail: string
 }
 
 export function syncNtp(done: (ok: boolean, detail: string) => void) {
+	preferChinaDns();
+
 	const root = config as Record<string, unknown>;
 	const sntp = cfgString(root, "sntp") || "ntp.aliyun.com";
-	const servers = [sntp, "ntp.tencent.com", "pool.ntp.org"];
+	// Mainland hosts first; pool.ntp.org is often slow or filtered in CN.
+	const servers = [sntp, "ntp.tencent.com", "ntp1.aliyun.com", "pool.ntp.org"];
 	const g = globalThis as {
-		device?: {
-			network?: {
-				ntp?: {
-					client?: {
-						io?: new (opts: object) => {
-							getTime: (cb: (err: unknown, value?: number) => void) => void;
-							close: () => void;
-						};
-					};
-				};
-			};
-		};
+		device?: { network?: { ntp?: { client?: NtpClient } } };
 	};
 	const client = g.device?.network?.ntp?.client;
 	if (!client?.io) {
@@ -136,29 +153,46 @@ export function syncNtp(done: (ok: boolean, detail: string) => void) {
 		return;
 	}
 
-	let ntp: { getTime: (cb: (err: unknown, value?: number) => void) => void; close: () => void };
+	let finished = false;
+	let timer: ReturnType<typeof Timer.set> | undefined;
+	let ntp: NtpHandle | undefined;
+
+	const finish = (ok: boolean, detail: string) => {
+		if (finished)
+			return;
+		finished = true;
+		if (timer !== undefined)
+			Timer.clear(timer);
+		try { ntp?.close(); } catch { /* */ }
+		done(ok, detail);
+	};
+
 	try {
-		ntp = new client.io({ ...client, servers });
+		const dns = client.dns
+			? { ...client.dns, servers: DNS_SERVERS.slice() }
+			: undefined;
+		ntp = new client.io({ ...client, servers, ...(dns ? { dns } : {}) });
 	}
 	catch (e) {
-		done(false, String(e));
+		finish(false, String(e));
 		return;
 	}
 
-	const timer = Timer.set(() => {
-		try { ntp.close(); } catch { /* */ }
-		done(false, "NTP timeout");
-	}, 10000);
+	timer = Timer.set(() => finish(false, "NTP timeout"), NTP_TIMEOUT_MS);
 
 	ntp.getTime((error, value) => {
-		Timer.clear(timer);
-		try { ntp.close(); } catch { /* */ }
 		if (error || value === undefined) {
-			done(false, "NTP fail");
+			finish(false, "NTP fail");
 			return;
 		}
-		Time.set(value / 1000);
-		done(true, String(Math.floor(value / 1000)));
+		try {
+			Time.set(value / 1000);
+		}
+		catch (e) {
+			finish(false, String(e));
+			return;
+		}
+		finish(true, String(Math.floor(value / 1000)));
 	});
 }
 
@@ -167,6 +201,7 @@ export function connectAndSync(
 	onStatus: (msg: string) => void,
 	done: (ok: boolean, detail: string) => void,
 ) {
+	preferChinaDns();
 	onStatus(`WiFi ${creds.ssid}`);
 	connectWifi(creds, (ok, detail) => {
 		if (!ok) {
