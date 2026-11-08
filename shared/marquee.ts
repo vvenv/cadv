@@ -1,10 +1,13 @@
 /*
 	Bounce-scroll label Port behavior.
+	Optional Glyph: empty text → large centered glyph;
+	with text → small glyph on the left, line scrolls in the rest.
 */
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { BG, FONT_UI, INK, MID } from "ink";
+import { drawGlyph, drawProgress } from "draw";
+import { BG, FONT_UI, INK, MID, type Glyph, type GlyphSpec } from "ink";
 
 /** Lazily built — Moddable link rejects top-level `new Style` outside main. */
 let marqueeStyle: /* Style */ object | undefined;
@@ -17,10 +20,10 @@ function getMarqueeStyle(): /* Style */ any {
 const MARQUEE_HOLD_MS = 900;
 export const MARQUEE_MS = 50;
 const MARQUEE_PX = 1;
-/** Gap between the scrolling line and a pinned tail. */
 const TAIL_GAP = 6;
-/** Inset so a pinned tail does not sit on the bezel. */
 const TAIL_PAD = 4;
+const MARK_PAD = 4;
+const MARK_GAP = 6;
 
 export function asMarquee(target: unknown): MarqueeBehavior | null {
 	if (!target || typeof target !== "object" || !("behavior" in target))
@@ -29,20 +32,37 @@ export function asMarquee(target: unknown): MarqueeBehavior | null {
 	return b && typeof b.setText === "function" && typeof b.tick === "function" ? b : null;
 }
 
-export function setMarqueeText(target: unknown, value: string, face?: object, color?: string, tail?: string, tailFace?: object) {
+export function setMarqueeText(
+	target: unknown,
+	value: string,
+	face?: object,
+	color?: string,
+	tail?: string,
+	tailFace?: object,
+	mark?: Glyph,
+	level?: number,
+) {
 	const b = asMarquee(target);
 	if (b)
-		b.setText(target as PortContent, value, face, color, tail, tailFace);
+		b.setText(target as PortContent, value, face, color, tail, tailFace, mark, level);
 }
 
-/**
-	Bounce-scroll a single line when it is wider than the port. Ticked by AppBehavior.
-	`tail` is drawn in `tailFace` (default UI) and does not scroll: pinned to the right
-	when the line is present, centered when the line is empty.
-*/
+/** Flash a full-band glyph (clears the scrolling line). */
+export function setMarqueeMark(target: unknown, mark: Glyph, level?: number) {
+	const b = asMarquee(target);
+	if (b)
+		b.setText(target as PortContent, "", undefined, undefined, "", undefined, mark, level);
+}
+
+export function setMarqueeGlyph(target: unknown, spec: GlyphSpec) {
+	setMarqueeMark(target, spec.kind, spec.level);
+}
+
 export class MarqueeBehavior extends Behavior {
 	string = "";
 	tail = "";
+	mark: Glyph = "";
+	level = 0;
 	textW = 0;
 	offset = 0;
 	dir = 1;
@@ -51,18 +71,39 @@ export class MarqueeBehavior extends Behavior {
 	fontFace: object | undefined;
 	tailFace: object | undefined;
 
-	setText(port: PortContent, text: string, face?: object, color?: string, tail?: string, tailFace?: object) {
+	setText(
+		port: PortContent,
+		text: string,
+		face?: object,
+		color?: string,
+		tail?: string,
+		tailFace?: object,
+		mark?: Glyph,
+		level?: number,
+	) {
 		const next = face ?? getMarqueeStyle();
 		const ink = color ? color : INK;
 		const nextTail = tail ? tail : "";
-		if (text === this.string && next === this.fontFace && ink === this.color && nextTail === this.tail && tailFace === this.tailFace)
+		const nextMark = mark ? mark : "";
+		const nextLevel = level === undefined ? 0 : level;
+		if (
+			text === this.string
+			&& next === this.fontFace
+			&& ink === this.color
+			&& nextTail === this.tail
+			&& tailFace === this.tailFace
+			&& nextMark === this.mark
+			&& nextLevel === this.level
+		)
 			return;
-		const bodyChanged = text !== this.string || next !== this.fontFace;
+		const bodyChanged = text !== this.string || next !== this.fontFace || nextMark !== this.mark;
 		this.string = text;
 		this.fontFace = next;
 		this.color = ink;
 		this.tail = nextTail;
 		this.tailFace = tailFace;
+		this.mark = nextMark;
+		this.level = nextLevel;
 		this.textW = text ? port.measureString(text, next).width : 0;
 		if (bodyChanged) {
 			this.offset = 0;
@@ -72,13 +113,23 @@ export class MarqueeBehavior extends Behavior {
 		port.invalidate();
 	}
 
-	/** Width the scrolling line may use. The tail keeps the rest. */
+	markReserve(port: PortContent): number {
+		if (!this.mark || !this.string)
+			return 0;
+		if (this.mark === "progress")
+			return Math.min(port.width >> 1, 72) + MARK_GAP;
+		const side = Math.min(port.height - MARK_PAD * 2, 22);
+		return side + MARK_GAP;
+	}
+
 	bodyWidth(port: PortContent): number {
-		if (!this.tail || !this.string)
-			return port.width;
-		const face = this.tailFace ?? getMarqueeStyle();
-		const tailW = port.measureString(this.tail, face).width;
-		const room = port.width - TAIL_PAD - tailW - TAIL_GAP;
+		const markW = this.markReserve(port);
+		let room = port.width - markW;
+		if (this.tail && this.string) {
+			const face = this.tailFace ?? getMarqueeStyle();
+			const tailW = port.measureString(this.tail, face).width;
+			room -= TAIL_PAD + tailW + TAIL_GAP;
+		}
 		return room > 1 ? room : 1;
 	}
 
@@ -115,12 +166,32 @@ export class MarqueeBehavior extends Behavior {
 		port.invalidate();
 	}
 
+	paintMark(port: PortContent, cx: number, cy: number, size: number) {
+		if (this.mark === "progress") {
+			const w = Math.max(24, size);
+			drawProgress(port, cx - (w >> 1), cy - 3, w, 6, this.level);
+			return;
+		}
+		drawGlyph(port, cx, cy, size, this.mark, this.level);
+	}
+
 	onDraw(port: PortContent) {
 		const width = port.width;
 		const height = port.height;
 		port.fillColor(BG, 0, 0, width, height);
 		const text = this.string;
 		const tail = this.tail;
+		const mark = this.mark;
+		if (mark && !text && !tail) {
+			const size = Math.min(width, height) - MARK_PAD * 2;
+			this.paintMark(port, Math.floor(width / 2), Math.floor(height / 2), size);
+			return;
+		}
+		const markW = this.markReserve(port);
+		if (mark && markW > 0) {
+			const side = markW - MARK_GAP;
+			this.paintMark(port, MARK_PAD + Math.floor(side / 2), Math.floor(height / 2), side);
+		}
 		const tailFace = this.tailFace ?? getMarqueeStyle();
 		const share = tail.length > 0 && text.length > 0;
 		let tailW = 0;
@@ -130,22 +201,23 @@ export class MarqueeBehavior extends Behavior {
 			tailW = measuredTail.width;
 			tailH = measuredTail.height;
 		}
-		const bodyW = share ? Math.max(1, width - TAIL_PAD - tailW - TAIL_GAP) : width;
+		const bodyW = this.bodyWidth(port);
+		const bodyX = markW;
 		if (text) {
 			const face = this.fontFace ?? getMarqueeStyle();
 			const measured = port.measureString(text, face);
 			const textW = measured.width;
 			const maxScroll = textW - bodyW;
-			const x = maxScroll <= 0
+			const x = bodyX + (maxScroll <= 0
 				? Math.floor((bodyW - textW) / 2)
-				: -Math.floor(this.offset);
+				: -Math.floor(this.offset));
 			const y = Math.max(0, Math.floor((height - measured.height) / 2));
 			const drawW = Math.max(textW, bodyW);
 			port.drawString(text, face, this.color, x, y, drawW);
 		}
 		if (share) {
 			const tailX = width - TAIL_PAD - tailW;
-			port.fillColor(BG, bodyW, 0, width - bodyW, height);
+			port.fillColor(BG, bodyX + bodyW, 0, width - (bodyX + bodyW), height);
 			const y = Math.max(0, Math.floor((height - tailH) / 2));
 			port.drawString(tail, tailFace, this.color, tailX, y, Math.max(tailW, 1));
 		}

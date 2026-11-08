@@ -10,7 +10,7 @@ import { cardSpace } from "card";
 import { openImu, type ImuHandle } from "imu";
 import { openMic, type MicFeed } from "mic";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke, titleGlyph, titleWithPower } from "session";
 import { bootLauncher } from "boot";
 import { infoRows, type BoardSnap } from "format";
 import { helpFor, helpTitle } from "help";
@@ -19,8 +19,9 @@ import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { MENU_VISIBLE } from "list";
 import { asMenu } from "menu-view";
+import { noteGlyph } from "ink";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
-import { asInfo } from "view";
+import { asInfo, type InfoRow } from "view";
 
 type Mode = "info" | "help";
 
@@ -210,16 +211,27 @@ export class AppBehavior extends Behavior {
 		return countPair(this.sdFree, this.sdTotal);
 	}
 
-	rows() {
+	rows(): InfoRow[] {
 		if (!this.snap)
-			return [{ label: "读取", value: this.error || "失败" }];
-		const rows = infoRows(this.snap);
-		rows.push({ label: "SD", value: this.sdText() });
+			return [{ label: "读取", value: this.error || "失败", glyph: "bad" }];
+		const rows: InfoRow[] = infoRows(this.snap).map(row => {
+			if (row.label === "电池") {
+				const mv = this.snap ? this.snap.batteryMv : 0;
+				const level = Math.max(0, Math.min(100, Math.round((mv - 3300) * 100 / 900)));
+				return { label: row.label, value: row.value, glyph: "batt", level };
+			}
+			if (row.label === "无线")
+				return { label: row.label, value: row.value, glyph: "wifi" };
+			if (row.label === "蓝牙")
+				return { label: row.label, value: row.value, glyph: "bt" };
+			return { label: row.label, value: row.value };
+		});
+		rows.push({ label: "SD", value: this.sdText(), glyph: this.sdTotal > 0 ? "sd" : "bad" });
 		rows.push({ label: "麦克", value: this.mic ? this.mic.peak() + "%" : "无" });
 		const sample = this.imu?.sample();
 		rows.push({ label: "加速度", value: sample ? axisText(sample.x, sample.y, sample.z) : "无" });
 		rows.push({ label: "角速度", value: sample ? axisText(sample.gx, sample.gy, sample.gz) : "无" });
-		rows.push({ label: "亮度", value: this.power ? String(this.power.step()) : "无" });
+		rows.push({ label: "亮度", value: this.power ? String(this.power.step()) : "无", glyph: "bright", level: this.power ? this.power.step() : 1 });
 		return rows;
 	}
 
@@ -278,6 +290,7 @@ export class AppBehavior extends Behavior {
 		for (let i = 0; i < vis && start + i < n; i++)
 			lines.push(page[start + i]);
 		const title = this.power ? titleWithPower(this.power, this.note || `设备信息 ${start + 1}/${n}`) : (this.note || `设备信息 ${start + 1}/${n}`);
-		view.setRows(port, title, lines);
+		const g = noteGlyph(this.note).kind ? noteGlyph(this.note) : titleGlyph(this.power);
+		view.setRows(port, title, lines, g.kind, g.level);
 	}
 }

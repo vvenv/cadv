@@ -23,7 +23,7 @@ import {
 	type Edit,
 	type HeldState,
 } from "hid";
-import { INK, ON } from "ink";
+import { INK, ON, noteGlyph } from "ink";
 import { MENU_VISIBLE } from "list";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { asMenu } from "menu-view";
@@ -246,8 +246,8 @@ export class AppBehavior extends Behavior {
 		setVisibleProp(contentByName(app, "listPort"), false);
 		this.flash = "";
 		this.echo = "";
-		setMarqueeText(contentByName(app, "statusLabel"), "配对已清除", undefined, ON);
-		setMarqueeText(contentByName(app, "echoLabel"), "对方也要忘掉", undefined, ON);
+		setMarqueeText(contentByName(app, "statusLabel"), "配对已清除", undefined, ON, undefined, undefined, "bt");
+		setMarqueeText(contentByName(app, "echoLabel"), "对方也要忘掉", undefined, ON, undefined, undefined, "ok");
 		setMarqueeText(contentByName(app, "hintLabel"), DEVICE_NAME, undefined, INK);
 		Timer.set(() => clearBonds(), 250);
 	}
@@ -323,8 +323,16 @@ export class AppBehavior extends Behavior {
 	paint(app: AppHost) {
 		if (this.mode === "help")
 			return;
-		setMarqueeText(contentByName(app, "statusLabel"), this.statusLine(), undefined, this.statusColor());
-		setMarqueeText(contentByName(app, "echoLabel"), this.echoLine(), undefined, ON);
+		const status = this.statusLine();
+		const echo = this.echoLine();
+		let statusG = noteGlyph(status);
+		if (!statusG.kind && this.link === "ready")
+			statusG = this.caps ? { kind: "caps" } : { kind: "bt" };
+		else if (!statusG.kind && (this.link === "link" || this.link === "down"))
+			statusG = { kind: this.link === "down" ? "bad" : "bt" };
+		const echoG = noteGlyph(echo);
+		setMarqueeText(contentByName(app, "statusLabel"), status, undefined, this.statusColor(), undefined, undefined, statusG.kind, statusG.level);
+		setMarqueeText(contentByName(app, "echoLabel"), echo, undefined, ON, undefined, undefined, echoG.kind, echoG.level);
 		setMarqueeText(contentByName(app, "hintLabel"), this.hintLine(), undefined, INK);
 	}
 

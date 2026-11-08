@@ -22,4 +22,4 @@ const RecApplication = Application.template($ => ({
 	],
 }));
 
-export default new RecApplication(null, { displayListLength: 4096, touchCount: 0 });
+export default new RecApplication(null, { displayListLength: 8192, commandListLength: 8192, touchCount: 0 });

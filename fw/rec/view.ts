@@ -1,9 +1,12 @@
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { AMBER, BG, DIM, FONT_UI, INK, MID, ON } from "ink";
-import { rowTextY } from "list";
+import { drawGlyph } from "draw";
+import { AMBER, BG, DIM, FONT_UI, INK, MID, ON, type Glyph } from "ink";
+import { rowOrigin, rowTextY, ROW_PITCH } from "list";
 
 const SEGS = 14;
+const TITLE_MARK = 18;
+const TITLE_MARK_GAP = 6;
 
 let face: object | undefined;
 function style(): /* Style */ any {
@@ -24,13 +27,16 @@ export class MeterBehavior extends Behavior {
 	/** 0–100, or -1 while playback should bounce. */
 	peak = 0;
 	sub = "";
+	mark: Glyph = "";
+	level = 0;
 	hold = 0;
 	holdAt = 0;
 
-	setMeter(port: unknown, title: string, peak: number, sub: string) {
+	setMeter(port: unknown, title: string, peak: number, sub: string, mark: Glyph = "", level?: number) {
 		const anim = peak < 0;
 		const next = anim ? -1 : peak > 100 ? 100 : peak;
 		const now = Date.now();
+		const nextLevel = level === undefined ? 0 : level;
 		if (anim)
 			this.hold = 0;
 		else if (next >= this.hold) {
@@ -38,11 +44,13 @@ export class MeterBehavior extends Behavior {
 			this.holdAt = now;
 		}
 		const decaying = !anim && this.hold > next && now - this.holdAt > 400;
-		if (!anim && !decaying && title === this.title && next === this.peak && sub === this.sub)
+		if (!anim && !decaying && title === this.title && next === this.peak && sub === this.sub && mark === this.mark && nextLevel === this.level)
 			return;
 		this.title = title;
 		this.peak = next;
 		this.sub = sub;
+		this.mark = mark;
+		this.level = nextLevel;
 		if (port && typeof port === "object" && "invalidate" in port && typeof port.invalidate === "function")
 			port.invalidate();
 	}
@@ -51,7 +59,18 @@ export class MeterBehavior extends Behavior {
 		const faceStyle = style();
 		const width = port.width;
 		port.fillColor(BG, 0, 0, width, port.height);
-		port.drawString(this.title, faceStyle, ON, 6, rowTextY(0), width - 12);
+		const markW = this.mark ? TITLE_MARK + TITLE_MARK_GAP : 0;
+		if (this.mark) {
+			drawGlyph(
+				port,
+				6 + Math.floor(TITLE_MARK / 2),
+				rowOrigin(0) + Math.floor(ROW_PITCH / 2),
+				TITLE_MARK,
+				this.mark,
+				this.level,
+			);
+		}
+		port.drawString(this.title, faceStyle, ON, 6 + markW, rowTextY(0), Math.max(1, width - 12 - markW));
 		let level = this.peak;
 		if (level < 0) {
 			const t = (Date.now() % 900) / 900;

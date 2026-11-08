@@ -4,9 +4,9 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { drawReadout, fillDisk, readoutSpan, strokeDisk } from "draw";
+import { drawGlyph, drawReadout, fillDisk, readoutSpan, strokeDisk } from "draw";
 import { BG, FONT_UI, INK, MID, ON } from "ink";
-import { rowTextY } from "list";
+import { rowOrigin, rowTextY, ROW_PITCH } from "list";
 
 let face: /* Style */ object | undefined;
 function style(): /* Style */ any {
@@ -25,7 +25,7 @@ export function asMetro(target: unknown): MetroBehavior | null {
 export class MetroBehavior extends Behavior {
 	title = "节拍";
 	bpmText = "100";
-	volumeText = "";
+	volume = 0;
 	beats = 4;
 	/** Next beat index, matching the app counter. -1 hides every lamp. */
 	beat = 0;
@@ -33,12 +33,11 @@ export class MetroBehavior extends Behavior {
 
 	setRun(port: unknown, title: string, bpm: number, beats: number, beat: number, on: boolean, volume: number) {
 		const bpmText = String(bpm);
-		const volumeText = "音量 " + volume;
-		if (title === this.title && bpmText === this.bpmText && volumeText === this.volumeText && beats === this.beats && beat === this.beat && on === this.on)
+		if (title === this.title && bpmText === this.bpmText && volume === this.volume && beats === this.beats && beat === this.beat && on === this.on)
 			return;
 		this.title = title;
 		this.bpmText = bpmText;
-		this.volumeText = volumeText;
+		this.volume = volume;
 		this.beats = beats;
 		this.beat = beat;
 		this.on = on;
@@ -50,9 +49,18 @@ export class MetroBehavior extends Behavior {
 		const width = port.width;
 		const faceStyle = style();
 		port.fillColor(BG, 0, 0, width, port.height);
-		const volW = port.measureString(this.volumeText, faceStyle).width;
-		port.drawString(this.title, faceStyle, this.on ? ON : INK, 6, rowTextY(0), Math.max(1, width - volW - 18));
-		port.drawString(this.volumeText, faceStyle, INK, width - 6 - volW, rowTextY(0), volW);
+		const titleX = this.on ? 28 : 6;
+		if (this.on)
+			drawGlyph(port, 14, rowOrigin(0) + Math.floor(ROW_PITCH / 2), 16, "play");
+		port.drawString(this.title, faceStyle, this.on ? ON : INK, titleX, rowTextY(0), Math.max(1, width - titleX - 36));
+		drawGlyph(
+			port,
+			width - 16,
+			rowOrigin(0) + Math.floor(ROW_PITCH / 2),
+			18,
+			this.volume <= 0 ? "mute" : "vol",
+			this.volume,
+		);
 
 		const digitW = 36;
 		const digitH = 52;

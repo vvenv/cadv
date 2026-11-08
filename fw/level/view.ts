@@ -5,7 +5,7 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { fillDisk, strokeDisk } from "draw";
+import { drawCheck, fillDisk, strokeDisk } from "draw";
 import { AMBER, BG, FONT_UI, INK, MID, ON, WELL } from "ink";
 import { ROW_LEAD, ROW_PITCH, rowOrigin, rowTextY } from "list";
 
@@ -98,9 +98,13 @@ export class LevelViewBehavior extends Behavior {
 			this.drawEdge(port, f);
 	}
 
-	drawHeader(port: PortContent, left: string, right: string, rightColor: string) {
+	drawHeader(port: PortContent, left: string, right: string, rightColor: string, okMark = false) {
 		const y = rowTextY(0);
 		drawString(port, left, INK, 2, y);
+		if (okMark) {
+			drawCheck(port, port.width - 14, rowOrigin(0) + Math.floor(ROW_PITCH / 2), 18, ON);
+			return;
+		}
 		if (!right)
 			return;
 		const w = port.measureString(right, style()).width;
@@ -108,9 +112,9 @@ export class LevelViewBehavior extends Behavior {
 	}
 
 	drawFlat(port: PortContent, f: LevelFrame) {
-		const status = f.note ? f.note : (f.level ? "水平" : "调整");
+		const status = f.note ? f.note : (f.level ? "" : "调整");
 		const statusColor = f.note || f.level ? ON : AMBER;
-		this.drawHeader(port, "平放", status, statusColor);
+		this.drawHeader(port, "平放", status, statusColor, !f.note && f.level);
 
 		const bodyTop = rowOrigin(1);
 		const bodyH = port.height - bodyTop;
@@ -143,9 +147,9 @@ export class LevelViewBehavior extends Behavior {
 
 	drawEdge(port: PortContent, f: LevelFrame) {
 		const label = f.mode === "edgeY" ? "立边 Y" : "立边 X";
-		const status = f.note ? f.note : (f.level ? "水平" : "调整");
+		const status = f.note ? f.note : (f.level ? "" : "调整");
 		const statusColor = f.note || f.level ? ON : AMBER;
-		this.drawHeader(port, label, status, statusColor);
+		this.drawHeader(port, label, status, statusColor, !f.note && f.level);
 
 		const cx = Math.floor(port.width / 2);
 		const cy = 68;

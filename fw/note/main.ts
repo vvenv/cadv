@@ -22,4 +22,4 @@ const NoteApplication = Application.template($ => ({
 	],
 }));
 
-export default new NoteApplication(null, { displayListLength: 8192, touchCount: 0 });
+export default new NoteApplication(null, { displayListLength: 8192, commandListLength: 8192, touchCount: 0 });

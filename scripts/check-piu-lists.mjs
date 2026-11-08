@@ -24,6 +24,7 @@ const HEAVY = [
 	{ re: /\bdrawReadout\b/, why: "drawReadout", min: 8192 },
 	{ re: /\bfillDisk\b/, why: "fillDisk", min: 8192 },
 	{ re: /\bstrokeDisk\b/, why: "strokeDisk", min: 8192 },
+	{ re: /\bdrawCheck\b|\bdrawCross\b|\bdrawFlashMark\b|\bdrawGlyph\b|\bsetMarqueeMark\b/, why: "flashMark", min: 4096 },
 ];
 
 /** Many Port.fill without the shared helpers can still overflow. */

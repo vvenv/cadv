@@ -19,4 +19,4 @@ const SdApplication = Application.template($ => ({
 	],
 }));
 
-export default new SdApplication(null, { displayListLength: 4096, touchCount: 0 });
+export default new SdApplication(null, { displayListLength: 8192, commandListLength: 8192, touchCount: 0 });

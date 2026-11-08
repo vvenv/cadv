@@ -11,4 +11,4 @@ const ScanApplication = Application.template($ => ({
 	],
 }));
 
-export default new ScanApplication(null, { displayListLength: 4096, touchCount: 0 });
+export default new ScanApplication(null, { displayListLength: 8192, commandListLength: 8192, touchCount: 0 });

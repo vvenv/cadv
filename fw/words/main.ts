@@ -32,4 +32,4 @@ const WordApplication = Application.template($ => ({
 	],
 }));
 
-export default new WordApplication(null, { displayListLength: 4096, touchCount: 0 });
+export default new WordApplication(null, { displayListLength: 8192, commandListLength: 8192, touchCount: 0 });

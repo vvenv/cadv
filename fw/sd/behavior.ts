@@ -9,7 +9,7 @@ import { openInstaller, type Installer } from "boot";
 import { loadCatalog, openRead, type SdCatalog, type SdEntry } from "catalog";
 import { cardSpace } from "card";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke, titleGlyph, titleWithPower } from "session";
 import { fitsSlot } from "slot";
 import { pollLink, setLinkBusy, type LinkEvent } from "link";
 import { helpFor, helpTitle } from "help";
@@ -18,6 +18,7 @@ import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, navDir } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { asMenu } from "menu-view";
+import { noteGlyph } from "ink";
 import { contentByName, type AppHost } from "ui";
 import type { File } from "embedded:storage/files";
 
@@ -456,7 +457,9 @@ export class AppBehavior extends Behavior {
 			let text = this.linkName || "cadv";
 			if (text.length > ROW_CHARS)
 				text = "..." + text.slice(text.length - (ROW_CHARS - 3));
-			view.setList(port, this.note || "USB", [{ text, selected: true }], "");
+			const recvTitle = this.note || "USB";
+			const recvG = noteGlyph(recvTitle).kind ? noteGlyph(recvTitle) : { kind: "usb" as const, level: undefined };
+			view.setList(port, recvTitle, [{ text, selected: true }], "", recvG.kind, recvG.level);
 			return;
 		}
 		if (this.mode === "help") {
@@ -487,11 +490,11 @@ export class AppBehavior extends Behavior {
 		}
 		if (this.catalog.error && entries.length === 0) {
 			const lines = wrapText(this.catalog.error, ERROR_CHARS).map(text => ({ text, selected: false }));
-			view.setList(port, "无卡", lines, "");
+			view.setList(port, "无卡", lines, "", "sd");
 			return;
 		}
 		if (entries.length === 0) {
-			view.setList(port, "cadv 空", [{ text: "没有固件", selected: false }], "");
+			view.setList(port, "cadv 空", [{ text: "没有固件", selected: false }], "", "bad");
 			return;
 		}
 		if (this.index < 0 || this.index >= entries.length)
@@ -499,6 +502,11 @@ export class AppBehavior extends Behavior {
 		const lines = [];
 		for (let i = 0; i < entries.length; i++)
 			lines.push({ text: rowText(entries[i]), selected: i === this.index });
-		view.setList(port, this.heading(), lines, "");
+		const head = this.heading();
+		const fromNote = noteGlyph(this.note);
+		const g = fromNote.kind
+			? fromNote
+			: (entries[this.index]?.error ? { kind: "bad" as const } : titleGlyph(this.power));
+		view.setList(port, head, lines, "", g.kind, g.level);
 	}
 }

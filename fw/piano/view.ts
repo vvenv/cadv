@@ -5,8 +5,9 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
+import { drawGlyph } from "draw";
 import { BG, FONT_UI, INK, MID, ON, WELL } from "ink";
-import { rowTextY } from "list";
+import { rowOrigin, rowTextY, ROW_PITCH } from "list";
 
 const WHITES = [0, 2, 4, 5, 7, 9, 11];
 const BLACKS = [
@@ -41,19 +42,18 @@ export class PianoBehavior extends Behavior {
 	title = "琴";
 	name = "按键";
 	hzText = "";
-	volumeText = "";
+	volume = 0;
 	/** Semitone 0–11, or -1 when nothing has been played. */
 	key = -1;
 
 	setKey(port: unknown, title: string, name: string, hz: number, key: number, volume: number) {
 		const hzText = hz > 0 ? hz + "Hz" : "";
-		const volumeText = "音量 " + volume;
-		if (title === this.title && name === this.name && hzText === this.hzText && volumeText === this.volumeText && key === this.key)
+		if (title === this.title && name === this.name && hzText === this.hzText && volume === this.volume && key === this.key)
 			return;
 		this.title = title;
 		this.name = name;
 		this.hzText = hzText;
-		this.volumeText = volumeText;
+		this.volume = volume;
 		this.key = key;
 		if (port && typeof port === "object" && "invalidate" in port && typeof port.invalidate === "function")
 			port.invalidate();
@@ -62,12 +62,18 @@ export class PianoBehavior extends Behavior {
 	onDraw(port: PortContent) {
 		const width = port.width;
 		const height = port.height;
-		const faceStyle = style();
 		port.fillColor(BG, 0, 0, width, height);
-		const volW = port.measureString(this.volumeText, faceStyle).width;
-		drawText(port, this.title, ON, 6, rowTextY(0), Math.max(1, width - volW - 18));
-		drawText(port, this.volumeText, INK, width - 6 - volW, rowTextY(0), volW);
+		drawText(port, this.title, ON, 6, rowTextY(0), Math.max(1, width - 40));
+		drawGlyph(
+			port,
+			width - 16,
+			rowOrigin(0) + Math.floor(ROW_PITCH / 2),
+			18,
+			this.volume <= 0 ? "mute" : "vol",
+			this.volume,
+		);
 
+		const faceStyle = style();
 		const nameW = port.measureString(this.name, faceStyle).width;
 		const nameColor = this.key < 0 ? INK : ON;
 		drawText(port, this.name, nameColor, Math.max(6, Math.floor((width - nameW) / 2)), rowTextY(1), nameW + 2);

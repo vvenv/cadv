@@ -15,7 +15,7 @@ import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
 import { connectAndSync, loadWifiCreds, saveWifiCreds, wifiRssi, type WifiCreds } from "netboot";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke, titleGlyph, titleWithPower } from "session";
 import { openImu, type ImuHandle } from "imu";
 import { searchCity, type CityHit } from "city";
 import { Desk } from "desk";
@@ -26,7 +26,7 @@ import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_M
 import { fetchWeather, formatLunarWithWeather, weatherLabel, WEATHER_REFRESH_MS } from "weather";
 import { beijingParts, formatClockTop, formatHMS, formatLunar, formatNow, pad2, setManualClock, timeSynced } from "lunar";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
-import { ON } from "ink";
+import { ON, noteGlyph, type Glyph } from "ink";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 
 type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "alarms" | "hits" | "desk" | "menu" | "help";
@@ -182,7 +182,8 @@ export class AppBehavior extends Behavior {
 	}
 
 	flashStatus(app: AppHost, top: string, bottom: string) {
-		this.setLabels(app, top, bottom);
+		const g = noteGlyph(top).kind ? noteGlyph(top) : noteGlyph(bottom);
+		this.setLabels(app, top, bottom, g.kind, g.level);
 		this.statusUntil = Date.now() + 1500;
 	}
 
@@ -478,14 +479,16 @@ export class AppBehavior extends Behavior {
 			if (chars.some(ch => ch === "s" || ch === "S")) {
 				this.settings.sound = !this.settings.sound;
 				saveSettings(this.settings);
-				this.flashStatus(app, "Sound", formatSettings(this.settings));
+				this.setLabels(app, "声音", formatSettings(this.settings), this.settings.sound ? "on" : "off");
+				this.statusUntil = Date.now() + 1500;
 				this.maybeBeep();
 				return;
 			}
 			if (chars.some(ch => ch === "h" || ch === "H")) {
 				this.settings.hourly = !this.settings.hourly;
 				saveSettings(this.settings);
-				this.flashStatus(app, "Hourly", formatSettings(this.settings));
+				this.setLabels(app, "整点", formatSettings(this.settings), this.settings.hourly ? "on" : "off");
+				this.statusUntil = Date.now() + 1500;
 				this.maybeBeep();
 				return;
 			}
@@ -750,7 +753,7 @@ export class AppBehavior extends Behavior {
 			const title = msg.indexOf("NTP") === 0 ? "正在对时" : "正在连接";
 			this.spinTitle = title;
 			if (this.mode === "busy")
-				this.setLabels(app, title, this.spinDetail);
+				this.setLabels(app, title, this.spinDetail, "wifi");
 		}, (ok, detail) => {
 			this.spinning = false;
 			this.busy = false;
@@ -759,7 +762,7 @@ export class AppBehavior extends Behavior {
 			this.showClock(app, true);
 			this.redrawClock(app);
 			if (!ok)
-				this.setLabels(app, detail, "");
+				this.setLabels(app, detail, "", "bad");
 			else {
 				this.onClockTick(app);
 				this.refreshWeather(app, true);
@@ -803,9 +806,10 @@ export class AppBehavior extends Behavior {
 		}
 	}
 
-	setLabels(app: AppHost, top: string, bottom: string) {
+	setLabels(app: AppHost, top: string, bottom: string, mark: Glyph = "", level?: number) {
 		const titled = this.power ? titleWithPower(this.power, top) : top;
-		setMarqueeText(contentByName(app, "dateLabel"), titled);
+		const g = mark ? { kind: mark, level } : titleGlyph(this.power);
+		setMarqueeText(contentByName(app, "dateLabel"), titled, undefined, undefined, undefined, undefined, g.kind, g.level);
 		setMarqueeText(contentByName(app, "lunarLabel"), bottom);
 	}
 
@@ -834,11 +838,12 @@ export class AppBehavior extends Behavior {
 			this.menuIndex = 0;
 		const lines = [];
 		for (let i = 0; i < items.length; i++)
-			lines.push({ text: items[i].label, selected: i === this.menuIndex });
+			lines.push({ text: items[i].label, selected: i === this.menuIndex, glyph: items[i].glyph });
 		const port = contentByName(app, "listPort");
 		const view = asMenu(port);
+		const g = titleGlyph(this.power);
 		if (view)
-			view.setList(port, `功能 ${this.menuIndex + 1}/${items.length}`, lines, "");
+			view.setList(port, `功能 ${this.menuIndex + 1}/${items.length}`, lines, "", g.kind, g.level);
 	}
 
 	enterHelp(app: AppHost) {

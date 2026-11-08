@@ -10,16 +10,27 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { BG, DIM, FONT_UI, INK, ON } from "ink";
+import { drawGlyph, drawProgress } from "draw";
+import { BG, DIM, FONT_UI, INK, ON, type Glyph } from "ink";
 import { MENU_VISIBLE, ROW_PITCH, rowOrigin, rowTextY, windowStart } from "list";
 
-/** `right` draws flush-right (help: key left, action right). */
-export type MenuLine = { text: string; selected: boolean; right?: string };
+/** `right` draws flush-right (help: key left, action right). `glyph` is a leading icon. */
+export type MenuLine = {
+	text: string;
+	selected: boolean;
+	right?: string;
+	glyph?: Glyph;
+	level?: number;
+};
 
 const BAR_H = ROW_PITCH - 1;
 const PAD_X = 8;
 const GUTTER = 6;
 const INSET_X = 4;
+const TITLE_MARK = 18;
+const TITLE_MARK_GAP = 6;
+const ROW_GLYPH = 16;
+const ROW_GLYPH_GAP = 6;
 
 let menuStyle: /* Style */ object | undefined;
 function getMenuStyle(): /* Style */ any {
@@ -43,22 +54,54 @@ function sameLines(a: MenuLine[], b: MenuLine[]): boolean {
 	if (a.length !== b.length)
 		return false;
 	for (let i = 0; i < a.length; i++) {
-		if (a[i].text !== b[i].text || a[i].selected !== b[i].selected || a[i].right !== b[i].right)
+		if (
+			a[i].text !== b[i].text
+			|| a[i].selected !== b[i].selected
+			|| a[i].right !== b[i].right
+			|| a[i].glyph !== b[i].glyph
+			|| a[i].level !== b[i].level
+		)
 			return false;
 	}
 	return true;
 }
 
+function paintGlyph(port: PortContent, cx: number, cy: number, size: number, kind: Glyph, level?: number) {
+	if (kind === "progress") {
+		drawProgress(port, cx - Math.floor(size * 0.7), cy - 3, Math.floor(size * 1.4), 6, level ?? 0);
+		return;
+	}
+	drawGlyph(port, cx, cy, size, kind, level);
+}
+
 export class MenuBehavior extends Behavior {
 	title = "";
 	hint = "";
+	mark: Glyph = "";
+	level = 0;
 	lines: MenuLine[] = [];
 
-	setList(port: unknown, title: string, lines: MenuLine[], hint: string) {
-		if (title === this.title && hint === this.hint && sameLines(this.lines, lines))
+	setList(
+		port: unknown,
+		title: string,
+		lines: MenuLine[],
+		hint: string,
+		mark: Glyph = "",
+		level?: number,
+	) {
+		const nextLevel = level === undefined ? 0 : level;
+		if (
+			title === this.title
+			&& hint === this.hint
+			&& mark === this.mark
+			&& nextLevel === this.level
+			&& sameLines(this.lines, lines)
+		)
 			return;
 		this.title = title;
 		this.hint = hint;
+		this.mark = mark;
+		this.level = nextLevel;
 		this.lines = lines;
 		if (port && typeof port === "object" && "invalidate" in port && typeof port.invalidate === "function")
 			port.invalidate();
@@ -82,9 +125,22 @@ export class MenuBehavior extends Behavior {
 		const scrolling = this.lines.length > visible;
 		const gutter = scrolling ? GUTTER : 0;
 		const innerRight = width - PAD_X - gutter;
+		const titleMark = this.mark ? (this.mark === "progress" ? 56 : TITLE_MARK) + TITLE_MARK_GAP : 0;
 		const titleW = port.measureString(this.title, style).width;
-		const titleX = Math.max(0, Math.floor((width - gutter - titleW) / 2));
-		drawText(port, this.title, ON, titleX, rowTextY(0), Math.max(1, width - gutter - titleX));
+		const titleBlock = titleW + titleMark;
+		const titleX = Math.max(0, Math.floor((width - gutter - titleBlock) / 2));
+		if (this.mark) {
+			const markSize = this.mark === "progress" ? 48 : TITLE_MARK;
+			paintGlyph(
+				port,
+				titleX + Math.floor(markSize / 2),
+				rowOrigin(0) + Math.floor(ROW_PITCH / 2),
+				markSize,
+				this.mark,
+				this.level,
+			);
+		}
+		drawText(port, this.title, ON, titleX + titleMark, rowTextY(0), Math.max(1, width - gutter - titleX - titleMark));
 		for (let i = 0; i < visible; i++) {
 			const line = this.lines[start + i];
 			if (!line)
@@ -97,16 +153,29 @@ export class MenuBehavior extends Behavior {
 				port.fillColor(ON, 0, top + 6, INSET_X, BAR_H - 12);
 			}
 			const y = rowTextY(i + 1);
-			const inner = Math.max(1, innerRight - PAD_X);
+			const glyph = line.glyph || "";
+			const glyphW = glyph ? ROW_GLYPH + ROW_GLYPH_GAP : 0;
+			if (glyph) {
+				paintGlyph(
+					port,
+					PAD_X + Math.floor(ROW_GLYPH / 2),
+					top + Math.floor(ROW_PITCH / 2),
+					ROW_GLYPH,
+					glyph,
+					line.level,
+				);
+			}
+			const textX = PAD_X + glyphW;
+			const inner = Math.max(1, innerRight - textX);
 			if (line.right) {
 				const rightW = port.measureString(line.right, style).width;
 				const gap = 8;
 				const leftMax = Math.max(1, inner - rightW - gap);
-				drawText(port, line.text, color, PAD_X, y, leftMax);
+				drawText(port, line.text, color, textX, y, leftMax);
 				drawText(port, line.right, color, innerRight - rightW, y, rightW);
 			}
 			else {
-				drawText(port, line.text, color, PAD_X, y, inner);
+				drawText(port, line.text, color, textX, y, inner);
 			}
 		}
 		if (!scrolling)

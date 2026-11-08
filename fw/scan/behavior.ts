@@ -10,7 +10,8 @@ import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { asMenu } from "menu-view";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke, titleGlyph, titleWithPower } from "session";
+import { noteGlyph } from "ink";
 import { contentByName, type AppHost } from "ui";
 
 type Mode = "list" | "help";
@@ -206,15 +207,18 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		const title = this.power ? titleWithPower(this.power, this.note) : this.note;
+		const g = noteGlyph(this.note).kind ? noteGlyph(this.note) : titleGlyph(this.power);
+		const bandGlyph = g.kind || (this.band === "wifi" ? "wifi" : "bt");
 		if (!this.rows.length) {
-			view.setList(port, title, [{ text: "等待", selected: false }], "");
+			view.setList(port, title, [{ text: "等待", selected: false }], "", bandGlyph, g.level);
 			return;
 		}
 		const lines = this.rows.map((row, i) => ({
 			text: row.name,
 			right: row.extra,
 			selected: i === this.index,
+			glyph: this.band === "wifi" ? "wifi" as const : "bt" as const,
 		}));
-		view.setList(port, title, lines, "");
+		view.setList(port, title, lines, "", bandGlyph, g.level);
 	}
 }

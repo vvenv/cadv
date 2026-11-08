@@ -17,11 +17,11 @@ import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir, volumeDelta 
 import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke, titleGlyph, titleWithPower } from "session";
 import { ClockSound } from "sound";
 import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from "settings";
-import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
-import { FONT_UI, FONT_WORD, ON } from "ink";
+import { asMarquee, MARQUEE_MS, setMarqueeMark, setMarqueeText } from "marquee";
+import { FONT_UI, FONT_WORD, ON, noteGlyph, type Glyph } from "ink";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
 import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, listWordSources, puzzleCorrect, quizOrder, renderPuzzle, selectWordSource, wordAt, wordCount, wordSourceId } from "words";
 import { SOURCE_FLASH } from "wordbank";
@@ -325,8 +325,11 @@ export class AppBehavior extends Behavior {
 		saveSettings(this.settings);
 		this.sound?.setVolume(v);
 		this.maybeBeep();
-		if (this.mode === "play")
+		if (this.mode === "play") {
+			this.wordNote = "音量 " + v;
+			this.wordNoteUntil = Date.now() + 700;
 			this.paintWord(app);
+		}
 	}
 
 	showPlay(app: AppHost) {
@@ -341,9 +344,14 @@ export class AppBehavior extends Behavior {
 		setVisibleProp(contentByName(app, "puzzleLabel"), false);
 	}
 
-	setTopLine(app: AppHost, text: string, face?: object) {
+	setTopLine(app: AppHost, text: string, face?: object, mark: Glyph = "", level?: number) {
+		const g = mark ? { kind: mark, level } : titleGlyph(this.power);
+		if (g.kind && !text) {
+			setMarqueeMark(contentByName(app, "glossLabel"), g.kind, g.level);
+			return;
+		}
 		const titled = this.power ? titleWithPower(this.power, text) : text;
-		setMarqueeText(contentByName(app, "glossLabel"), titled, face);
+		setMarqueeText(contentByName(app, "glossLabel"), titled, face, undefined, undefined, undefined, g.kind, g.level);
 	}
 
 	tickMarquees(app: AppHost) {
@@ -366,11 +374,12 @@ export class AppBehavior extends Behavior {
 			this.menuIndex = 0;
 		const lines = [];
 		for (let i = 0; i < items.length; i++)
-			lines.push({ text: items[i].label, selected: i === this.menuIndex });
+			lines.push({ text: items[i].label, selected: i === this.menuIndex, glyph: items[i].glyph });
 		const port = contentByName(app, "listPort");
 		const view = asMenu(port);
+		const g = titleGlyph(this.power);
 		if (view)
-			view.setList(port, `功能 ${this.menuIndex + 1}/${items.length}`, lines, "");
+			view.setList(port, `功能 ${this.menuIndex + 1}/${items.length}`, lines, "", g.kind, g.level);
 	}
 
 	enterHelp(app: AppHost) {
@@ -571,6 +580,16 @@ export class AppBehavior extends Behavior {
 		}
 		const entry = wordAt(this.settings.wordBank, this.lexIndex());
 		const note = this.wordNote && Date.now() < this.wordNoteUntil ? this.wordNote : "";
+		const value = contentByName(app, "puzzleLabel");
+		if (hasStyle(value))
+			value.style = puzzleStyle(entry.word ? entry.word.length : 0);
+		const view = entry.word ? renderPuzzle(entry.word, this.wordHidden, this.wordTyped) : "";
+		setStringProp(contentByName(app, "puzzleLabel"), view);
+		const flash = note ? noteGlyph(note) : { kind: "" as Glyph };
+		if (flash.kind === "ok" || flash.kind === "bad" || flash.kind === "bright" || flash.kind === "vol" || flash.kind === "mute") {
+			this.setTopLine(app, "", undefined, flash.kind, flash.level);
+			return;
+		}
 		let top = !entry.word ? "无词库" : (note || entry.gloss);
 		let face = glossFace();
 		if (!note && entry.word && this.showPhone && this.settings.phone) {
@@ -578,11 +597,6 @@ export class AppBehavior extends Behavior {
 			face = entry.phone ? phoneFace() : glossFace();
 		}
 		this.setTopLine(app, top, face);
-		const value = contentByName(app, "puzzleLabel");
-		if (hasStyle(value))
-			value.style = puzzleStyle(entry.word ? entry.word.length : 0);
-		const view = entry.word ? renderPuzzle(entry.word, this.wordHidden, this.wordTyped) : "";
-		setStringProp(contentByName(app, "puzzleLabel"), view);
 	}
 
 	advanceSolved(app: AppHost) {
@@ -659,7 +673,7 @@ export class AppBehavior extends Behavior {
 				return;
 			}
 			if (puzzleCorrect(entry.word, this.wordHidden, this.wordTyped)) {
-				this.wordNote = "正确";
+				this.wordNote = "ok";
 				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
 				this.wordAdvance = true;
 				this.noteResult(entry.word, true);
@@ -667,7 +681,7 @@ export class AppBehavior extends Behavior {
 				this.maybeBeep();
 			}
 			else {
-				this.wordNote = "不对";
+				this.wordNote = "bad";
 				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
 				this.noteResult(entry.word, false);
 				this.paintWord(app);

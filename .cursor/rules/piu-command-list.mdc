@@ -13,3 +13,5 @@ When adding or changing a Port face that uses `shared/draw` or many fills:
 1. Set both in that firmware's `main.ts`, e.g. `displayListLength: 8192, commandListLength: 8192` (clock uses 16384 for HH:MM:SS).
 2. Prefer painting a first frame **before** blocking work (`openImu`, big I2C); see `fw/level/behavior.ts` / `fw/step/behavior.ts`.
 3. Run `node scripts/check-piu-lists.mjs` (also part of `./do.sh ts-check`) before shipping.
+
+Status glyphs: use `drawGlyph` / `Glyph` (`ok`/`bad`/`batt`/`bright`/`vol`/`wifi`/`bt`/`play`/`rec`/`on`/`off`/…) via marquee or menu — not bare status words alone. `noteGlyph()` / `titleGlyph()` / `powerGlyph()` map common notes.

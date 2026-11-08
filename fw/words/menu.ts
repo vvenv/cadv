@@ -2,12 +2,13 @@
 	Word-quiz function list. Drawing lives in menu-view.
 */
 
+import type { Glyph } from "ink";
 import { WORD_LEVEL_NAME, bankName, clampWordLevel } from "words";
 import { wordSourceLabel } from "wordbank";
 
 export type MenuId = "source" | "level" | "bank" | "shuffle" | "phone" | "miss" | "snd";
 
-export type MenuItem = { id: MenuId; label: string };
+export type MenuItem = { id: MenuId; label: string; glyph?: Glyph };
 
 export function menuItems(
 	sound: boolean,
@@ -23,9 +24,9 @@ export function menuItems(
 		{ id: "source", label: `来源 ${wordSourceLabel(wordSource)}` },
 		{ id: "level", label: `难度 ${level}` },
 		{ id: "bank", label: `词库 ${bankName(wordBank)}` },
-		{ id: "shuffle", label: shuffle ? "乱序 开" : "乱序 关" },
-		{ id: "phone", label: phone ? "音标 开" : "音标 关" },
-		{ id: "miss", label: onlyMiss ? "错题 只练" : "错题 全部" },
-		{ id: "snd", label: sound ? "声音 开" : "声音 关" },
+		{ id: "shuffle", label: "乱序", glyph: shuffle ? "shuffle" : "off" },
+		{ id: "phone", label: "音标", glyph: phone ? "phone" : "off" },
+		{ id: "miss", label: onlyMiss ? "只练错题" : "全部词", glyph: onlyMiss ? "miss" : "on" },
+		{ id: "snd", label: "声音", glyph: sound ? "on" : "off" },
 	];
 }

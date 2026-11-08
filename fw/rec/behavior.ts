@@ -14,9 +14,10 @@ import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { asMenu } from "menu-view";
+import { noteGlyph } from "ink";
 import { micFault, openMic, type MicFeed } from "mic";
 import { Power } from "power";
-import { acceptStroke, titleWithPower } from "session";
+import { acceptStroke, titleGlyph, titleWithPower } from "session";
 import { writeCodec } from "sound";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asMeter } from "view";
@@ -366,12 +367,15 @@ export class AppBehavior extends Behavior {
 			}
 			this.refreshNames();
 			if (!this.names.length) {
-				view.setList(port, "录音", [{ text: this.dir ? "没有录音" : "无卡", selected: false }], "");
+				const empty = this.dir ? "没有录音" : "无卡";
+				const g = noteGlyph(empty);
+				view.setList(port, "录音", [{ text: empty, selected: false }], "", g.kind || "rec", g.level);
 				return;
 			}
 			const lines = this.names.map((name, i) => ({ text: name, selected: i === this.index }));
 			const title = (this.index + 1) + "/" + this.names.length;
-			view.setList(port, this.power ? titleWithPower(this.power, title) : title, lines, "");
+			const g = titleGlyph(this.power);
+			view.setList(port, this.power ? titleWithPower(this.power, title) : title, lines, "", g.kind, g.level);
 			return;
 		}
 		const port = contentByName(app, "meterPort");
@@ -380,8 +384,11 @@ export class AppBehavior extends Behavior {
 			return;
 		const peak = this.mic ? this.mic.peak() : 0;
 		const title = this.file && this.mode === "live" ? "录音中" : (this.mode === "play" ? "播放" : "录音");
-		const banner = this.power?.banner() ?? "";
-		const sub = [banner, this.note, this.file ? Math.floor(this.pcm / 32000) + "s" : ""].filter(part => part).join(" ");
-		view.setMeter(port, title, this.mode === "play" ? -1 : peak, sub);
+		const sub = [this.note, this.file ? Math.floor(this.pcm / 32000) + "s" : ""].filter(part => part).join(" ");
+		const fromNote = noteGlyph(this.note);
+		const mark = fromNote.kind
+			? fromNote.kind
+			: (this.mode === "play" ? "play" : (this.file && this.mode === "live" ? "rec" : "rec"));
+		view.setMeter(port, title, this.mode === "play" ? -1 : peak, sub, mark, fromNote.level);
 	}
 }
