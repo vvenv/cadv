@@ -20,7 +20,7 @@ const LEVEL_HELP: readonly HelpRow[] = Object.freeze([
 ], true);
 
 export function helpTitle(): string {
-	return "水平仪帮助";
+	return "水平帮助";
 }
 
 export function helpFor(): readonly HelpRow[] {
