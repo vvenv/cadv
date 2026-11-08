@@ -19,7 +19,7 @@
 ```bash
 ./do.sh sd              # 列出 cadv/
 ./do.sh sd fw           # 全部固件（不含启动器自己）
-./do.sh sd fw clock     # 只要时间天气 → cadv/clock.bin
+./do.sh sd fw clock     # 只要时钟 → cadv/clock.bin
 ./do.sh sd file ./a.txt # 其它文件也放进 cadv/
 ```
 

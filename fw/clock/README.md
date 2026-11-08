@@ -1,4 +1,4 @@
-# 时间天气固件 — Moddable + TypeScript
+# 时钟固件 — Moddable + TypeScript
 
 这是 `fw/clock`。板端用 **TypeScript**（经 Moddable XS）跑在 ESP32-S3 上。  
 桌面模拟器用 **PIU** 画时钟；真机同样走 PIU + Cardputer-Adv ST7789 / TCA8418 键盘 / ES8311 扬声器。
@@ -43,7 +43,7 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 在仓库根目录：
 
 ```bash
-./do.sh sim clock      # 桌面模拟时间天气
+./do.sh sim clock      # 桌面模拟时钟
 ./do.sh sd fw clock    # 镜像进卡上的 cadv/（芯片里先 ./do.sh flash 启动器）
 ```
 

@@ -24,13 +24,13 @@ const SEG = Object.freeze([
 ]);
 
 /**
-	Horizontal hex bar (pointed left/right). Mid body is one rect; tips are
-	a few stepped rows — Casio AE look without per-pixel chamfer spam.
+	Horizontal hex bar — Casio 45° tips (pointed left/right).
+	Chamfer depth is ~t/2 so the end reads as a real miter, not a blunt stub.
 */
 function fillHTrap(port: PortContent, x: number, y: number, w: number, t: number, color: string) {
 	if (w <= 1 || t <= 0)
 		return;
-	const c = Math.max(1, Math.min(t >> 1, Math.max(1, w >> 3)));
+	const c = Math.max(1, Math.min(t >> 1, (w - 1) >> 1));
 	for (let i = 0; i < c; i++) {
 		const inset = c - i;
 		const rw = w - (inset << 1);
@@ -48,11 +48,11 @@ function fillHTrap(port: PortContent, x: number, y: number, w: number, t: number
 	}
 }
 
-/** Vertical hex bar (pointed top/bottom). */
+/** Vertical hex bar — Casio 45° tips (pointed top/bottom). */
 function fillVTrap(port: PortContent, x: number, y: number, h: number, t: number, color: string) {
 	if (h <= 1 || t <= 0)
 		return;
-	const c = Math.max(1, Math.min(t >> 1, Math.max(1, h >> 3)));
+	const c = Math.max(1, Math.min(t >> 1, (h - 1) >> 1));
 	for (let i = 0; i < c; i++) {
 		const inset = c - i;
 		const rw = t - (inset << 1);

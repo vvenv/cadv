@@ -289,7 +289,7 @@ export class AppBehavior extends Behavior {
 		const lines = [];
 		for (let i = 0; i < vis && start + i < n; i++)
 			lines.push(page[start + i]);
-		const title = this.note || `设备信息 ${start + 1}/${n}`;
+		const title = this.note || `设备 ${start + 1}/${n}`;
 		const g = noteGlyph(this.note).kind ? noteGlyph(this.note) : titleGlyph(this.power);
 		view.setRows(port, title, lines, g.kind, g.level);
 	}
