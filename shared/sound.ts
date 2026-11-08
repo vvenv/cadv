@@ -12,7 +12,7 @@ const SAMPLE_RATE = 16000;
 const ES8311_ADDR = 0x18;
 const REG_DAC_VOL = 0x32;
 
-// M5Unified _speaker_enabled_cb_cardputer_adv bulk init
+// M5Unified _speaker_enabled_cb_cardputer_adv
 const ES8311_ON: number[][] = Object.freeze([
 	[0x00, 0x80],
 	[0x01, 0xb5],
@@ -25,15 +25,17 @@ const ES8311_ON: number[][] = Object.freeze([
 ], true) as number[][];
 
 /*
-	ADC path. 0x01 = 0xBA selects MCLK from BCLK; the speaker block above
-	leaves 0xB5, and the ADC stays silent with that clock. ASDOUT is GPIO46.
+	M5Unified _microphone_enabled_cb_cardputer_adv.
+	Full sequence (includes soft reset). Do not layer this on ES8311_ON —
+	0x01 must be 0xBA for the ADC clock, not the speaker's 0xB5.
 */
 const ES8311_MIC: number[][] = Object.freeze([
+	[0x00, 0x80],
 	[0x01, 0xba],
-	[0x09, 0x0c],
+	[0x02, 0x18],
+	[0x0d, 0x01],
 	[0x0e, 0x02],
-	[0x14, 0x1a],
-	[0x15, 0x00],
+	[0x14, 0x10],
 	[0x17, 0xbf],
 	[0x1c, 0x6a],
 ], true) as number[][];
@@ -51,12 +53,9 @@ export function writeCodec(mic: boolean) {
 			data: pins.sda,
 			clock: pins.scl,
 		});
-		for (const [reg, val] of ES8311_ON)
+		const table = mic ? ES8311_MIC : ES8311_ON;
+		for (const [reg, val] of table)
 			bus.writeUint8(reg, val);
-		if (mic) {
-			for (const [reg, val] of ES8311_MIC)
-				bus.writeUint8(reg, val);
-		}
 	}
 	catch {
 		/* no codec on the desktop, or the bus is busy */
@@ -171,11 +170,19 @@ export class ClockSound {
 		]);
 	}
 
-	/** Turn the ADC on without dropping the speaker path. */
+	/** Turn the ADC on without a soft reset (keeps the speaker path). */
 	enableMic() {
 		if (!this.#codec)
 			return;
-		for (const [reg, val] of ES8311_MIC) {
+		/* Skip the mic soft-reset/power row; only the ADC clock + PGA regs. */
+		const overlay: number[][] = [
+			[0x01, 0xba],
+			[0x0e, 0x02],
+			[0x14, 0x10],
+			[0x17, 0xbf],
+			[0x1c, 0x6a],
+		];
+		for (const [reg, val] of overlay) {
 			try {
 				this.#codec.writeUint8(reg, val);
 			}

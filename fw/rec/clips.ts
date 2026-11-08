@@ -60,6 +60,19 @@ export function clipNames(dir: Directory): string[] {
 	return names;
 }
 
+/** PCM seconds from a WAV on the card (16 kHz mono 16-bit). */
+export function clipSeconds(dir: Directory, name: string): number {
+	try {
+		const size = dir.status(name).size;
+		if (typeof size !== "number" || size <= 44)
+			return 0;
+		return Math.floor((size - 44) / 32000);
+	}
+	catch {
+		return 0;
+	}
+}
+
 export function nextClip(names: string[]): string {
 	let n = 0;
 	for (let i = 0; i < names.length; i++) {

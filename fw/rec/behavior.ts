@@ -7,7 +7,7 @@ import {} from "piu/MC";
 import Timer from "timer";
 import AudioOut from "pins/audioout";
 import { bootLauncher } from "boot";
-import { clipNames, nextClip, openClip, openClips } from "clips";
+import { clipNames, clipSeconds, nextClip, openClip, openClips } from "clips";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
@@ -168,8 +168,12 @@ export class AppBehavior extends Behavior {
 		if (this.mic)
 			return;
 		this.mic = openMic(pcm => {
-			if (this.file)
-				this.pending.push(pcm.slice());
+			if (!this.file || this.mode === "play")
+				return;
+			/* Copy out of the AudioIn recycle buffer before the next read. */
+			const copy = new Int16Array(pcm.length);
+			copy.set(pcm);
+			this.pending.push(copy);
 		});
 	}
 
@@ -209,7 +213,8 @@ export class AppBehavior extends Behavior {
 		catch {
 			this.note = "写失败";
 		}
-		this.note = "已存 " + this.name;
+		const sec = Math.floor(this.pcm / 32000);
+		this.note = sec > 0 ? ("已存 " + this.name + " " + sec + "s") : ("已存 " + this.name + " 空");
 	}
 
 	flush() {
@@ -222,8 +227,9 @@ export class AppBehavior extends Behavior {
 			if (!pcm)
 				break;
 			try {
-				file.write(pcm.buffer, 44 + this.pcm);
-				this.pcm += pcm.byteLength;
+				const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+				file.write(bytes, 44 + this.pcm);
+				this.pcm += bytes.byteLength;
 			}
 			catch {
 				this.note = "写失败";
@@ -303,7 +309,6 @@ export class AppBehavior extends Behavior {
 		for (let i = 0; i < PLAY_BUFFERS; i++)
 			this.playFree.push(new Uint8Array(new SharedArrayBuffer(CHUNK)));
 		try {
-			writeCodec(false);
 			this.audio = new AudioOut({ sampleRate: 16000, bitsPerSample: 16, numChannels: 1, streams: 1 });
 			this.audio.callback = () => this.onPlayCallback(app);
 			this.audio.enqueue(0, AudioOut.Volume, 256);
@@ -316,7 +321,9 @@ export class AppBehavior extends Behavior {
 				this.finishPlay(app);
 				return;
 			}
+			/* I2S clocks first, then ES8311 speaker path (M5 order). */
 			this.audio.start();
+			writeCodec(false);
 		}
 		catch {
 			this.note = "无法播放";
@@ -363,7 +370,8 @@ export class AppBehavior extends Behavior {
 				return false;
 			}
 			this.playAt += samples << 1;
-			audio.enqueue(0, AudioOut.RawSamples, buf as unknown as HostBuffer, 1, 0, samples);
+			/* RawSamples needs a non-relocatable HostBuffer (SharedArrayBuffer). */
+			audio.enqueue(0, AudioOut.RawSamples, buf.buffer as unknown as HostBuffer, 1, 0, samples);
 			audio.enqueue(0, AudioOut.Callback, samples << 1);
 			this.playBusy.push(buf);
 			return true;
@@ -443,7 +451,10 @@ export class AppBehavior extends Behavior {
 				view.setList(port, "录音", [{ text: empty, selected: false }], "", g.kind || "rec", g.level);
 				return;
 			}
-			const lines = this.names.map((name, i) => ({ text: name, selected: i === this.index }));
+			const lines = this.names.map((name, i) => {
+				const sec = this.dir ? clipSeconds(this.dir, name) : 0;
+				return { text: sec > 0 ? (name + " " + sec + "s") : (name + " 空"), selected: i === this.index };
+			});
 			const title = (this.index + 1) + "/" + this.names.length;
 			const g = titleGlyph(this.power);
 			view.setList(port, this.power ? titleWithPower(this.power, title) : title, lines, "", g.kind, g.level);
