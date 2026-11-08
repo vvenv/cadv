@@ -21,7 +21,7 @@ const FW = path.join(ROOT, "fw");
 
 /** Apps that call these must raise commandListLength well above the default. */
 const HEAVY = [
-	{ re: /\bdrawReadout\b/, why: "drawReadout", min: 8192 },
+	{ re: /\bdrawReadout\b|\bSevenSegBehavior\b|\basSevenSeg\b/, why: "drawReadout", min: 8192 },
 	{ re: /\bfillDisk\b/, why: "fillDisk", min: 8192 },
 	{ re: /\bstrokeDisk\b/, why: "strokeDisk", min: 8192 },
 	{ re: /\bdrawCheck\b|\bdrawCross\b|\bdrawGlyph\b|\bsetMarqueeMark\b/, why: "glyph", min: 4096 },
@@ -75,10 +75,15 @@ function readMain(id) {
 }
 
 function scanApp(id) {
-	const sources = walkTs(path.join(FW, id)).map((file) => ({
+	const dir = path.join(FW, id);
+	const sources = walkTs(dir).map((file) => ({
 		file,
 		text: fs.readFileSync(file, "utf8"),
 	}));
+	// main.ts is where Port templates bind SevenSegBehavior / list lengths.
+	const mainFile = path.join(dir, "main.ts");
+	if (fs.existsSync(mainFile))
+		sources.push({ file: mainFile, text: fs.readFileSync(mainFile, "utf8") });
 	const body = sources.map((s) => s.text).join("\n");
 	const hits = [];
 	let min = 0;

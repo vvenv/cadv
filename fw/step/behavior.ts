@@ -15,8 +15,9 @@ import { asMenu } from "menu-view";
 import { imuError, openImu, type ImuHandle } from "imu";
 import { Power } from "power";
 import { acceptStroke } from "session";
+import { asSevenSeg } from "sevenseg";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
-import { asStep } from "view";
+import { asStepFooter, asStepTop } from "view";
 
 const PREF = "step";
 
@@ -190,9 +191,13 @@ export class AppBehavior extends Behavior {
 
 	paint(app: AppHost) {
 		const list = contentByName(app, "listPort");
+		const titlePort = contentByName(app, "titlePort");
 		const face = contentByName(app, "facePort");
+		const footer = contentByName(app, "footerPort");
 		if (this.mode === "help") {
+			setVisibleProp(titlePort, false);
 			setVisibleProp(face, false);
+			setVisibleProp(footer, false);
 			setVisibleProp(list, true);
 			const view = asMenu(list);
 			if (view)
@@ -200,12 +205,19 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		setVisibleProp(list, false);
+		setVisibleProp(titlePort, true);
 		setVisibleProp(face, true);
-		const view = asStep(face);
-		if (!view)
-			return;
+		setVisibleProp(footer, true);
 		const meters = Math.round(this.steps * this.stride / 100);
-		const title = this.note || this.day;
-		view.setStep(face, title, this.steps, meters, this.stride);
+		const heading = this.note || this.day;
+		const top = asStepTop(titlePort);
+		if (top)
+			top.setTop(titlePort, heading);
+		const seg = asSevenSeg(face);
+		if (seg)
+			seg.setFace(face, String(this.steps < 0 ? 0 : this.steps), true);
+		const foot = asStepFooter(footer);
+		if (foot)
+			foot.setFooter(footer, meters, this.stride);
 	}
 }

@@ -11,8 +11,9 @@ import { Power } from "power";
 import { acceptStroke } from "session";
 import { ClockSound } from "sound";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
+import { asSevenSeg } from "sevenseg";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
-import { asMetro } from "view";
+import { asMetroFooter, asMetroTop } from "view";
 
 type Mode = "run" | "help";
 
@@ -133,9 +134,13 @@ export class AppBehavior extends Behavior {
 
 	paint(app: AppHost) {
 		const list = contentByName(app, "listPort");
+		const titlePort = contentByName(app, "titlePort");
 		const face = contentByName(app, "facePort");
+		const footer = contentByName(app, "footerPort");
 		if (this.mode === "help") {
+			setVisibleProp(titlePort, false);
 			setVisibleProp(face, false);
+			setVisibleProp(footer, false);
 			setVisibleProp(list, true);
 			const view = asMenu(list);
 			if (view)
@@ -143,15 +148,22 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		setVisibleProp(list, false);
+		setVisibleProp(titlePort, true);
 		setVisibleProp(face, true);
-		const view = asMetro(face);
-		if (!view)
-			return;
-		view.setRun(face, this.on ? "进行" : "节拍", this.bpm, this.beats, this.beat, this.on, this.volume);
+		setVisibleProp(footer, true);
+		const top = asMetroTop(titlePort);
+		if (top)
+			top.setTop(titlePort, this.on ? "进行" : "节拍", this.volume, this.on);
+		const seg = asSevenSeg(face);
+		if (seg)
+			seg.setFace(face, String(this.bpm), true);
+		const foot = asMetroFooter(footer);
+		if (foot)
+			foot.setFooter(footer, this.beats, this.beat, this.on);
 	}
 }
 
-function helpPage(rows: { key: string; action: string }[], host: { helpIndex: number }) {
+function helpPage(rows: readonly { key: string; action: string }[], host: { helpIndex: number }) {
 	const n = rows.length;
 	const vis = MENU_VISIBLE;
 	let start = host.helpIndex;

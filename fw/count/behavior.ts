@@ -18,8 +18,9 @@ import { Power } from "power";
 import { acceptStroke, titleGlyph } from "session";
 import { ClockSound, releaseMic } from "sound";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
+import { asSevenSeg } from "sevenseg";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
-import { asCount, type Gain, type Sense } from "view";
+import { asCountFooter, asCountTop, type Gain, type Sense } from "view";
 
 const PREF = "count";
 const STEPS = Object.freeze([1, 2, 5, 10, 20, 50, 100]);
@@ -440,9 +441,13 @@ export class AppBehavior extends Behavior {
 
 	paint(app: AppHost) {
 		const list = contentByName(app, "listPort");
+		const titlePort = contentByName(app, "titlePort");
 		const face = contentByName(app, "facePort");
+		const footer = contentByName(app, "footerPort");
 		if (this.mode === "help" || this.mode === "pick") {
+			setVisibleProp(titlePort, false);
 			setVisibleProp(face, false);
+			setVisibleProp(footer, false);
 			setVisibleProp(list, true);
 			const view = asMenu(list);
 			if (!view)
@@ -466,11 +471,10 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		setVisibleProp(list, false);
+		setVisibleProp(titlePort, true);
 		setVisibleProp(face, true);
-		const view = asCount(face);
-		if (!view)
-			return;
-		const title = this.sense === "ear" ? "听声" : "计数";
+		setVisibleProp(footer, true);
+		const heading = this.sense === "ear" ? "听声" : "计数";
 		const status =
 			this.flash > 0 && this.flash !== 2
 				? { kind: "ok" as const }
@@ -487,22 +491,35 @@ export class AppBehavior extends Behavior {
 		const stepIndex = STEPS.indexOf(this.step);
 		if (this.sense === "ear" && this.mic && !this.armed)
 			this.peak = this.mic.peak();
-		view.setRun(
-			face,
-			title,
-			this.count,
-			this.step,
-			stepIndex < 0 ? 0 : stepIndex,
-			STEPS.length,
-			this.volume,
-			this.flash,
-			g.kind,
-			g.level === undefined ? 0 : g.level,
-			this.sense,
-			this.gain,
-			this.armed,
-			this.peak,
-		);
+		const top = asCountTop(titlePort);
+		if (top) {
+			top.setTop(
+				titlePort,
+				heading,
+				this.volume,
+				g.kind,
+				g.level === undefined ? 0 : g.level,
+				this.sense,
+				this.armed,
+			);
+		}
+		const seg = asSevenSeg(face);
+		if (seg)
+			seg.setFace(face, String(this.count < 0 ? 0 : this.count), this.flash !== 0);
+		const foot = asCountFooter(footer);
+		if (foot) {
+			foot.setFooter(
+				footer,
+				this.step,
+				stepIndex < 0 ? 0 : stepIndex,
+				STEPS.length,
+				this.flash,
+				this.sense,
+				this.gain,
+				this.armed,
+				this.peak,
+			);
+		}
 	}
 }
 
