@@ -1,7 +1,8 @@
 /*
 	Bounce-scroll label Port behavior.
 	Optional Glyph: empty text → large centered glyph;
-	with text → small glyph on the left, line scrolls in the rest.
+	short text + glyph → glyph+text cluster centered on the band;
+	overflowing text → small glyph pinned left, line scrolls in the rest.
 */
 
 import {} from "piu/MC";
@@ -184,10 +185,6 @@ export class MarqueeBehavior extends Behavior {
 			return;
 		}
 		const markW = this.markReserve(port);
-		if (mark && markW > 0) {
-			const side = markW - MARK_GAP;
-			this.paintMark(port, MARK_PAD + Math.floor(side / 2), Math.floor(height / 2), side);
-		}
 		const tailFace = this.tailFace ?? getMarqueeStyle();
 		const share = tail.length > 0 && text.length > 0;
 		let tailW = 0;
@@ -198,22 +195,38 @@ export class MarqueeBehavior extends Behavior {
 			tailH = measuredTail.height;
 		}
 		const bodyW = this.bodyWidth(port);
-		const bodyX = markW;
+		const face = this.fontFace ?? getMarqueeStyle();
+		let textW = 0;
+		let textH = 0;
 		if (text) {
-			const face = this.fontFace ?? getMarqueeStyle();
 			const measured = port.measureString(text, face);
-			const textW = measured.width;
-			const maxScroll = textW - bodyW;
+			textW = measured.width;
+			textH = measured.height;
+		}
+		const maxScroll = text ? textW - bodyW : 0;
+		// Short line + glyph: center the glyph+text cluster on the full band
+		// (not only in the leftover body), so status like 正在连接 looks centered.
+		const cluster = markW > 0 && text.length > 0 && maxScroll <= 0 && !share;
+		const bodyX = cluster
+			? Math.floor((width - (markW + textW)) / 2) + markW
+			: markW;
+		if (mark && markW > 0) {
+			const side = markW - MARK_GAP;
+			const markLeft = cluster ? bodyX - markW : 0;
+			this.paintMark(port, markLeft + MARK_PAD + Math.floor(side / 2), Math.floor(height / 2), side);
+		}
+		if (text) {
 			const x = bodyX + (maxScroll <= 0
-				? Math.floor((bodyW - textW) / 2)
+				? (cluster ? 0 : Math.floor((bodyW - textW) / 2))
 				: -Math.floor(this.offset));
-			const y = Math.max(0, Math.floor((height - measured.height) / 2));
+			const y = Math.max(0, Math.floor((height - textH) / 2));
 			const drawW = Math.max(textW, bodyW);
 			port.drawString(text, face, this.color, x, y, drawW);
 		}
 		if (share) {
+			const shareBodyX = markW;
 			const tailX = width - TAIL_PAD - tailW;
-			port.fillColor(BG, bodyX + bodyW, 0, width - (bodyX + bodyW), height);
+			port.fillColor(BG, shareBodyX + bodyW, 0, width - (shareBodyX + bodyW), height);
 			const y = Math.max(0, Math.floor((height - tailH) / 2));
 			port.drawString(tail, tailFace, this.color, tailX, y, Math.max(tailW, 1));
 		}
