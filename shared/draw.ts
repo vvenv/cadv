@@ -1,8 +1,8 @@
 /*
-	Phosphor primitives: Casio AE-style 7-segment readouts (italic lean, thick
-	hex bars, 45° tips), disks, and binary marks (green check / red cross).
-	Lit segments get one pixel of MID halo. One fillColor per scanline — not
-	per-pixel loops — so HH:MM:SS stays inside commandListLength.
+	Phosphor primitives: upright 7-segment readouts (thick hex bars, 45° tips),
+	disks, and binary marks (green check / red cross). Lit segments get one
+	pixel of MID halo. One fillColor per scanline — not per-pixel loops — so
+	HH:MM:SS stays inside commandListLength.
 
 	Each Port fillColor / drawString queues into Piu's command list. The
 	Application default is only 1024 bytes; a readout, disk, or mark face
@@ -24,108 +24,52 @@ const SEG = Object.freeze([
 	0b1011011, 0b1011111, 0b1110000, 0b1111111, 0b1111011,
 ]);
 
-/** Rightward italic shift in px for a digit of width `w` (Casio lean). */
-function digitShear(w: number): number {
-	return Math.max(2, Math.floor(w / 5));
-}
-
-/**
-	Horizontal hex bar — pointed left/right. `shear` / `yRef` lean the bar
-	like a Casio digit (top shifts right relative to the bottom).
-*/
-function fillHTrap(
-	port: PortContent,
-	x: number,
-	y: number,
-	w: number,
-	t: number,
-	color: string,
-	shear: number,
-	yRef: number,
-	hShear: number,
-) {
+/** Horizontal hex bar — pointed left/right. */
+function fillHTrap(port: PortContent, x: number, y: number, w: number, t: number, color: string) {
 	if (w <= 1 || t <= 0)
 		return;
 	const c = Math.max(1, Math.min(t >> 1, (w - 1) >> 1));
-	const denom = hShear < 1 ? 1 : hShear;
 	for (let i = 0; i < t; i++) {
 		const inset = Math.max(0, c - Math.min(i, t - 1 - i));
 		const rw = w - (inset << 1);
-		if (rw <= 0)
-			continue;
-		const yy = y + i;
-		const xx = x + inset + Math.round((yRef - yy) * shear / denom);
-		port.fillColor(color, xx, yy, rw, 1);
+		if (rw > 0)
+			port.fillColor(color, x + inset, y + i, rw, 1);
 	}
 }
 
-/** Vertical hex bar — pointed top/bottom, same italic shear. */
-function fillVTrap(
-	port: PortContent,
-	x: number,
-	y: number,
-	h: number,
-	t: number,
-	color: string,
-	shear: number,
-	yRef: number,
-	hShear: number,
-) {
+/** Vertical hex bar — pointed top/bottom. */
+function fillVTrap(port: PortContent, x: number, y: number, h: number, t: number, color: string) {
 	if (h <= 1 || t <= 0)
 		return;
 	const c = Math.max(1, Math.min(t >> 1, (h - 1) >> 1));
-	const denom = hShear < 1 ? 1 : hShear;
 	for (let i = 0; i < h; i++) {
 		const inset = Math.max(0, c - Math.min(i, h - 1 - i));
 		const rw = t - (inset << 1);
-		if (rw <= 0)
-			continue;
-		const yy = y + i;
-		const xx = x + inset + Math.round((yRef - yy) * shear / denom);
-		port.fillColor(color, xx, yy, rw, 1);
+		if (rw > 0)
+			port.fillColor(color, x + inset, y + i, rw, 1);
 	}
 }
 
-function paintH(
-	port: PortContent,
-	x: number,
-	y: number,
-	w: number,
-	t: number,
-	on: boolean,
-	shear: number,
-	yRef: number,
-	hShear: number,
-) {
+function paintH(port: PortContent, x: number, y: number, w: number, t: number, on: boolean) {
 	if (w <= 1 || t <= 0)
 		return;
 	if (on) {
-		fillHTrap(port, x - 1, y - 1, w + 2, t + 2, MID, shear, yRef, hShear);
-		fillHTrap(port, x, y, w, t, ON, shear, yRef, hShear);
+		fillHTrap(port, x - 1, y - 1, w + 2, t + 2, MID);
+		fillHTrap(port, x, y, w, t, ON);
 	}
 	else
-		fillHTrap(port, x, y, w, t, DIM, shear, yRef, hShear);
+		fillHTrap(port, x, y, w, t, DIM);
 }
 
-function paintV(
-	port: PortContent,
-	x: number,
-	y: number,
-	h: number,
-	t: number,
-	on: boolean,
-	shear: number,
-	yRef: number,
-	hShear: number,
-) {
+function paintV(port: PortContent, x: number, y: number, h: number, t: number, on: boolean) {
 	if (h <= 1 || t <= 0)
 		return;
 	if (on) {
-		fillVTrap(port, x - 1, y - 1, h + 2, t + 2, MID, shear, yRef, hShear);
-		fillVTrap(port, x, y, h, t, ON, shear, yRef, hShear);
+		fillVTrap(port, x - 1, y - 1, h + 2, t + 2, MID);
+		fillVTrap(port, x, y, h, t, ON);
 	}
 	else
-		fillVTrap(port, x, y, h, t, DIM, shear, yRef, hShear);
+		fillVTrap(port, x, y, h, t, DIM);
 }
 
 /** Thick polyline segment as stepped squares (few commands, readable at 20–64px). */
@@ -489,7 +433,7 @@ export function strokeDisk(port: PortContent, cx: number, cy: number, r: number,
 }
 
 /**
-	One digit box — Casio AE: chunky bars (~w/4.5), 45° tips, mild italic,
+	One digit box — chunky bars (~w/4.5), 45° tips, upright.
 	V tips bite into H bands while H stays out of V columns (corner notch,
 	no welded overlap). `mask` bit 6 is the top bar, bit 0 the middle bar.
 */
@@ -497,8 +441,6 @@ export function drawSegMask(port: PortContent, x: number, y: number, w: number, 
 	const t = Math.max(4, Math.min(10, Math.floor(w / 4.5)));
 	const g = 2;
 	const bite = Math.min(t >> 1, g + 1);
-	const shear = digitShear(w);
-	const yRef = y + h;
 	let v = Math.floor((h - 3 * t - 4 * g + 2 * bite) / 2);
 	if (v < 3)
 		v = 3;
@@ -512,33 +454,29 @@ export function drawSegMask(port: PortContent, x: number, y: number, w: number, 
 	// H between V columns; V may share the H y-band via bite, never the x-band.
 	const hx = x + t + g;
 	const hw = Math.max(t, w - 2 * (t + g));
-	paintH(port, hx, y0, hw, t, !!(m & 0b1000000), shear, yRef, h);
-	paintV(port, x + w - t, yU, v, t, !!(m & 0b0100000), shear, yRef, h);
-	paintV(port, x + w - t, yL, v, t, !!(m & 0b0010000), shear, yRef, h);
-	paintH(port, hx, yBot, hw, t, !!(m & 0b0001000), shear, yRef, h);
-	paintV(port, x, yL, v, t, !!(m & 0b0000100), shear, yRef, h);
-	paintV(port, x, yU, v, t, !!(m & 0b0000010), shear, yRef, h);
-	paintH(port, hx, yMid, hw, t, !!(m & 0b0000001), shear, yRef, h);
+	paintH(port, hx, y0, hw, t, !!(m & 0b1000000));
+	paintV(port, x + w - t, yU, v, t, !!(m & 0b0100000));
+	paintV(port, x + w - t, yL, v, t, !!(m & 0b0010000));
+	paintH(port, hx, yBot, hw, t, !!(m & 0b0001000));
+	paintV(port, x, yL, v, t, !!(m & 0b0000100));
+	paintV(port, x, yU, v, t, !!(m & 0b0000010));
+	paintH(port, hx, yMid, hw, t, !!(m & 0b0000001));
 }
 
 function drawColon(port: PortContent, x: number, y: number, w: number, h: number, on: boolean) {
 	const s = Math.max(3, Math.floor(h / 14));
-	const shear = digitShear(Math.max(w, 12));
-	const yRef = y + h;
+	const cx = x + ((w - s) >> 1);
 	const y1 = y + Math.floor(h * 0.32) - (s >> 1);
 	const y2 = y + Math.floor(h * 0.68) - (s >> 1);
-	const base = x + ((w - s) >> 1);
-	const cx1 = base + Math.round((yRef - y1) * shear / h);
-	const cx2 = base + Math.round((yRef - y2) * shear / h);
 	if (on) {
-		port.fillColor(MID, cx1 - 1, y1 - 1, s + 2, s + 2);
-		port.fillColor(MID, cx2 - 1, y2 - 1, s + 2, s + 2);
-		port.fillColor(ON, cx1, y1, s, s);
-		port.fillColor(ON, cx2, y2, s, s);
+		port.fillColor(MID, cx - 1, y1 - 1, s + 2, s + 2);
+		port.fillColor(MID, cx - 1, y2 - 1, s + 2, s + 2);
+		port.fillColor(ON, cx, y1, s, s);
+		port.fillColor(ON, cx, y2, s, s);
 	}
 	else {
-		port.fillColor(DIM, cx1, y1, s, s);
-		port.fillColor(DIM, cx2, y2, s, s);
+		port.fillColor(DIM, cx, y1, s, s);
+		port.fillColor(DIM, cx, y2, s, s);
 	}
 }
 
@@ -550,7 +488,7 @@ function cellWidth(ch: string, digitW: number): number {
 	return digitW;
 }
 
-/** Width of a readout, including gaps and the italic overhang of the last digit. */
+/** Width of a readout, including gaps between cells. */
 export function readoutSpan(text: string, digitW: number, colonW: number, gap: number): number {
 	const n = text.length;
 	if (n <= 0)
@@ -562,7 +500,7 @@ export function readoutSpan(text: string, digitW: number, colonW: number, gap: n
 		if (i + 1 < n)
 			w += gap;
 	}
-	return w + digitShear(digitW);
+	return w;
 }
 
 /**

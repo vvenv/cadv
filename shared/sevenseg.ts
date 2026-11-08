@@ -1,5 +1,5 @@
 /*
-	Casio-style middle-band 7-segment Port. Glyphs live in shared/draw.
+	Middle-band 7-segment Port. Glyphs live in shared/draw (upright hex bars).
 	Clock drives it via Application faceText() + a 250 ms tick;
 	other faces call setFace from paint.
 */
@@ -9,7 +9,7 @@ import type { Port as PortContent } from "piu/MC";
 import { drawReadout, readoutSpan } from "draw";
 import { BG } from "ink";
 
-/** Classic AE proportions inside the middle band (clock HH:MM:SS). */
+/** Digit proportions inside the middle band (clock HH:MM:SS). */
 const DIGIT_W = 24;
 const COLON_W = 12;
 const GAP = 4;
