@@ -27,6 +27,8 @@ import type { Directory, File } from "embedded:storage/files";
 type Mode = "live" | "list" | "play" | "help";
 
 const CHUNK = 2048;
+/** Keep two PCM slabs so RawSamples is never rewritten while the mixer still holds it. */
+const PLAY_BUFFERS = 2;
 
 export class AppBehavior extends Behavior {
 	mode: Mode = "live";
@@ -44,8 +46,10 @@ export class AppBehavior extends Behavior {
 	helpIndex = 0;
 	playAt = 44;
 	playSize = 0;
-	playPcm: Uint8Array | null = null;
+	playFree: Uint8Array[] = [];
+	playBusy: Uint8Array[] = [];
 	audio: InstanceType<typeof AudioOut> | null = null;
+	endingPlay = false;
 	note = "";
 	hostEnterDown = false;
 
@@ -62,7 +66,8 @@ export class AppBehavior extends Behavior {
 	}
 
 	onKeyboardTick(app: AppHost) {
-		this.flush();
+		if (this.mode !== "play")
+			this.flush();
 		const raw = this.kb?.poll() ?? null;
 		const stroke = this.power ? acceptStroke(this.power, raw, true) : raw;
 		const bumped = this.power?.takeNote() ?? "";
@@ -99,6 +104,8 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (isHelp(stroke) && this.mode !== "help") {
+			if (this.mode === "play")
+				this.stopPlay();
 			this.helpIndex = 0;
 			this.mode = "help";
 			this.showList(app, true);
@@ -119,10 +126,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (this.mode === "play") {
-			if (isBack(stroke) || isConfirm(stroke))
-				this.stopPlay();
-			this.mode = "list";
-			this.paint(app);
+			this.finishPlay(app);
 			return;
 		}
 		if (this.mode === "list") {
@@ -143,6 +147,8 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (stroke.chars.some(ch => ch === ".")) {
+			if (this.file)
+				this.stopRec();
 			this.mode = "list";
 			this.refreshNames();
 			this.showList(app, true);
@@ -208,7 +214,8 @@ export class AppBehavior extends Behavior {
 
 	flush() {
 		const file = this.file;
-		if (!file)
+		/* Never write into the file opened for playback. */
+		if (!file || this.mode === "play")
 			return;
 		while (this.pending.length) {
 			const pcm = this.pending.shift();
@@ -254,8 +261,25 @@ export class AppBehavior extends Behavior {
 		if (!name || !this.dir)
 			return;
 		this.stopRec();
+		this.pending = [];
 		try { this.mic?.close(); } catch { /* */ }
 		this.mic = null;
+		this.endingPlay = false;
+		this.mode = "play";
+		this.note = name;
+		this.showList(app, false);
+		this.paint(app);
+		/*
+			Mic and speaker share I2S1. Closing AudioIn posts a final machine
+			message before the channel is fully gone; open AudioOut on the next
+			turn so that message runs first and i2s_new_channel does not stall.
+		*/
+		Timer.set(() => this.beginPlay(app, name), 1);
+	}
+
+	beginPlay(app: AppHost, name: string) {
+		if (this.mode !== "play" || this.note !== name || !this.dir)
+			return;
 		let file: File;
 		try {
 			file = openClip(this.dir, name, "r");
@@ -263,74 +287,121 @@ export class AppBehavior extends Behavior {
 		}
 		catch {
 			this.note = "读失败";
-			this.attachMic();
+			this.finishPlay(app);
+			return;
+		}
+		if (this.playSize <= 44) {
+			try { file.close(); } catch { /* */ }
+			this.note = "空录音";
+			this.finishPlay(app);
 			return;
 		}
 		this.file = file;
 		this.playAt = 44;
-		this.mode = "play";
-		this.note = name;
+		this.playFree = [];
+		this.playBusy = [];
+		for (let i = 0; i < PLAY_BUFFERS; i++)
+			this.playFree.push(new Uint8Array(new SharedArrayBuffer(CHUNK)));
 		try {
 			writeCodec(false);
 			this.audio = new AudioOut({ sampleRate: 16000, bitsPerSample: 16, numChannels: 1, streams: 1 });
-			this.audio.callback = () => this.feedPlay(app);
+			this.audio.callback = () => this.onPlayCallback(app);
+			this.audio.enqueue(0, AudioOut.Volume, 256);
+			for (let i = 0; i < PLAY_BUFFERS; i++) {
+				if (!this.feedPlay())
+					break;
+			}
+			if (!this.playBusy.length) {
+				this.note = "空录音";
+				this.finishPlay(app);
+				return;
+			}
 			this.audio.start();
-			this.feedPlay(app);
 		}
 		catch {
 			this.note = "无法播放";
-			this.stopPlay();
+			this.finishPlay(app);
 		}
-		this.showList(app, false);
 		this.paint(app);
 	}
 
-	feedPlay(app: AppHost) {
-		const file = this.file;
-		const audio = this.audio;
-		if (!file || !audio || this.mode !== "play")
+	onPlayCallback(app: AppHost) {
+		const done = this.playBusy.shift();
+		if (done)
+			this.playFree.push(done);
+		if (this.mode !== "play" || this.endingPlay)
 			return;
-		if (this.playAt >= this.playSize) {
-			this.stopPlay();
-			this.mode = "list";
-			this.showList(app, true);
-			this.paint(app);
-			return;
-		}
-		let n = this.playSize - this.playAt;
-		if (n > CHUNK)
-			n = CHUNK;
-		try {
-			if (!this.playPcm)
-				this.playPcm = new Uint8Array(new SharedArrayBuffer(CHUNK));
-			const got = file.read(this.playPcm.subarray(0, n), this.playAt);
-			const samples = got >> 1;
-			if (samples <= 0) {
-				this.stopPlay();
-				this.mode = "list";
-				this.showList(app, true);
-				this.paint(app);
+		if (!this.feedPlay()) {
+			if (this.playBusy.length)
 				return;
-			}
-			this.playAt += samples << 1;
-			audio.enqueue(0, AudioOut.Volume, 256);
-			audio.enqueue(0, AudioOut.RawSamples, this.playPcm as unknown as HostBuffer, 1, 0, samples);
-			audio.enqueue(0, AudioOut.Callback, 0);
-		}
-		catch {
-			this.note = "读失败";
-			this.stopPlay();
+			Timer.set(() => this.finishPlay(app), 1);
 		}
 	}
 
+	/** Enqueue one PCM slab. Returns false when the clip is done or failed. */
+	feedPlay(): boolean {
+		const file = this.file;
+		const audio = this.audio;
+		if (!file || !audio || this.mode !== "play" || this.endingPlay)
+			return false;
+		if (this.playAt >= this.playSize)
+			return false;
+		let n = this.playSize - this.playAt;
+		if (n > CHUNK)
+			n = CHUNK;
+		n -= n & 1;
+		if (n < 2)
+			return false;
+		const buf = this.playFree.pop();
+		if (!buf)
+			return true;
+		try {
+			const got = file.read(buf.subarray(0, n), this.playAt);
+			const samples = got >> 1;
+			if (samples <= 0) {
+				this.playFree.push(buf);
+				return false;
+			}
+			this.playAt += samples << 1;
+			audio.enqueue(0, AudioOut.RawSamples, buf as unknown as HostBuffer, 1, 0, samples);
+			audio.enqueue(0, AudioOut.Callback, samples << 1);
+			this.playBusy.push(buf);
+			return true;
+		}
+		catch {
+			this.playFree.push(buf);
+			this.note = "读失败";
+			return false;
+		}
+	}
+
+	finishPlay(app: AppHost) {
+		if (this.endingPlay)
+			return;
+		this.endingPlay = true;
+		this.stopPlay();
+		this.mode = "list";
+		this.showList(app, true);
+		this.paint(app);
+		this.endingPlay = false;
+	}
+
 	stopPlay() {
-		try { this.audio?.stop(); } catch { /* */ }
-		try { this.audio?.close(); } catch { /* */ }
+		const audio = this.audio;
 		this.audio = null;
+		this.playBusy = [];
+		this.playFree = [];
+		if (audio) {
+			try { audio.callback = () => {}; } catch { /* */ }
+			try { audio.stop(); } catch { /* */ }
+			try { audio.close(); } catch { /* */ }
+		}
 		try { this.file?.close(); } catch { /* */ }
 		this.file = null;
-		if (!this.mic)
-			this.attachMic();
+		Timer.set(() => {
+			if (!this.mic && this.mode !== "play")
+				this.attachMic();
+		}, 1);
 	}
 
 	showList(app: AppHost, on: boolean) {
