@@ -11,7 +11,7 @@
 #   模拟不写 id 时列出 fw/*/label。菜单「上传固件」可多选：空格勾选，a 全选，不含启动器。取消则什么都不做。
 #   构建/模拟时自动判断：词库或字体比源文件旧就重做。拼写或查词才检查词库。
 #   CADV_REFRESH=0 跳过；=ask 改回先问再生成。
-#   ./do.sh ts-check                # 检查 MODDABLE / mcconfig
+#   ./do.sh ts-check                # 检查 MODDABLE / mcconfig，并扫 Piu commandList 风险
 #   ./do.sh port                    # 列出可用串口
 #   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
 #   ./do.sh gen-words               # 从 ../alice/data 生成词库
@@ -1322,6 +1322,19 @@ ts_wifi_args() {
   printf '%s\n' "password=$password"
 }
 
+check_piu_lists() {
+  # Heavy Port faces (7-seg / disks) need commandListLength or the panel stays black.
+  if ! command -v node >/dev/null 2>&1; then
+    log_warn "没有 node，跳过 Piu commandList 检查"
+    return 0
+  fi
+  if [ "$#" -gt 0 ]; then
+    node "$ROOT/scripts/check-piu-lists.mjs" "$@"
+  else
+    node "$ROOT/scripts/check-piu-lists.mjs"
+  fi
+}
+
 cmd_ts_check() {
   if [ -z "${MODDABLE:-}" ]; then
     if [ -d "$ROOT/third_party/moddable" ]; then
@@ -1374,6 +1387,8 @@ cmd_ts_check() {
   else
     log_warn "Espressif tools 尚未安装（./install.sh esp32s3）"
   fi
+  log_info "检查 Piu commandList（重绘制固件）"
+  check_piu_lists
 }
 
 cmd_ts_sim() {
@@ -1432,6 +1447,7 @@ build_fw_image() {
   refresh_generated "$want"
   need_moddable
   need_idf
+  check_piu_lists "$id" || log_die "Piu commandList 检查未过：$id"
   local wifi_args=() line
   if [ -f "$FW_ROOT/$id/wifi.local.json.example" ]; then
     while IFS= read -r line; do
@@ -1603,7 +1619,7 @@ main_menu() {
       "flash:烧录启动器" \
       "sim:桌面模拟" \
       "sd:SD 卡（列出 / 上传 / 删除）" \
-      "ts-check:检查 Moddable / TS 环境" \
+      "ts-check:检查 Moddable / TS / Piu lists" \
       "gen-font:生成 UI BMFont" \
       "gen-words:从 alice/data 生成词库" \
       "port:列出串口" \

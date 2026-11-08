@@ -71,9 +71,11 @@ fw/新名字/
 ./do.sh sd fw           # 把全部固件拷进 cadv/（不含启动器）
 ./do.sh sd fw clock     # 只拷时间天气
 ./do.sh sd file ./a.txt # 把文件拷进 cadv/
-./do.sh ts-check        # Moddable + ESP-IDF 是否就绪
+./do.sh ts-check        # Moddable + ESP-IDF 是否就绪；并扫 Piu commandList 风险
 ./do.sh help
 ```
+
+Port 七段/圆盘绘制会撑爆 Piu 默认的 `commandListLength`（1024 字节），表现为有背光黑屏。`ts-check` 与编镜像前会跑 `scripts/check-piu-lists.mjs`；桌面模拟若溢出会打印 `command list overflowed`。
 
 构建或模拟时会自动判断：词库或字体比源文件旧就重做。只有选中拼写或查词时才检查词库。`CADV_REFRESH=0` 跳过，`CADV_REFRESH=ask` 改回先问。
 

@@ -2,6 +2,13 @@
 	Phosphor primitives: chamfered 7-segment readouts, disks, nothing else.
 	Halo is one pixel of MID behind a lit segment. Gaps stay large enough
 	that the halo does not weld the digit into a blob.
+
+	Each Port fillColor / drawString queues into Piu's command list. The
+	Application default is only 1024 bytes; a readout or disk face overflows
+	it and leaves the backlight on a black panel. Callers must set
+	commandListLength (and usually displayListLength) in main.ts — see
+	fw/clock/main.ts and scripts/check-piu-lists.mjs. Sim/debug throws
+	"command list overflowed".
 */
 
 import {} from "piu/MC";

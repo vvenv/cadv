@@ -1,0 +1,15 @@
+---
+description: Avoid Piu command-list overflow black screens when drawing Port faces
+globs: fw/**/*.{ts,js}, shared/draw.ts
+alwaysApply: false
+---
+
+# Piu command list
+
+Port `fillColor` / `drawString` / `drawReadout` / `fillDisk` / `strokeDisk` queue into a **byte** buffer sized by `Application`'s `commandListLength` (default **1024**). Overflow → sim throws `command list overflowed`; on device the backlight stays on and the panel stays black.
+
+When adding or changing a Port face that uses `shared/draw` or many fills:
+
+1. Set both in that firmware's `main.ts`, e.g. `displayListLength: 8192, commandListLength: 8192` (clock uses 16384 for HH:MM:SS).
+2. Prefer painting a first frame **before** blocking work (`openImu`, big I2C); see `fw/level/behavior.ts` / `fw/step/behavior.ts`.
+3. Run `node scripts/check-piu-lists.mjs` (also part of `./do.sh ts-check`) before shipping.
