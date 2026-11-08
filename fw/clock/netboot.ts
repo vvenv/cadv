@@ -80,21 +80,19 @@ export function connectWifi(creds: WifiCreds, done: (ok: boolean, detail: string
 		done(ok, detail);
 	};
 
-	w = new WiFi({
-		onChanged(property) {
-			if (property !== "connection")
-				return;
-			const c = this.connection;
-			if (c >= 500)
-				finish(true, this.address ?? "ok");
-			else if (c <= 200)
-				finish(false, "WiFi fail");
-		},
-	});
-
-	timer = Timer.set(() => finish(false, "WiFi timeout"), WIFI_TIMEOUT_MS);
-
 	try {
+		w = new WiFi({
+			onChanged(property) {
+				if (property !== "connection")
+					return;
+				const c = this.connection;
+				if (c >= 500)
+					finish(true, this.address ?? "ok");
+				else if (c <= 200)
+					finish(false, "WiFi fail");
+			},
+		});
+		timer = Timer.set(() => finish(false, "WiFi timeout"), WIFI_TIMEOUT_MS);
 		if (creds.password)
 			w.connect({ SSID: creds.ssid, password: creds.password });
 		else

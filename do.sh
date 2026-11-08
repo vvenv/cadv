@@ -487,7 +487,8 @@ SD_DIR=cadv
 
 fw_image() {
   need_moddable
-  printf '%s\n' "$MODDABLE/build/bin/esp32/esp32s3_cdc/debug/$1/xs_esp32.bin"
+  # Card images are release builds. A debug image waits on xsbug and never draws.
+  printf '%s\n' "$MODDABLE/build/bin/esp32/esp32s3_cdc/release/$1/xs_esp32.bin"
 }
 
 # Optional SD word packs: fw/words/<id>.bin except the flash-embedded
@@ -1437,7 +1438,9 @@ build_fw_image() {
       [ -n "$line" ] && wifi_args+=("$line")
     done < <(ts_wifi_args "$id")
   fi
-  esp_mc "$id"
+  # Release, not -dn. Debug images own USB for xsbug, so the clock never
+  # paints and a port open is read as "restart" — the launcher's "校验…" stays up and flashes.
+  ESP_MC=(-m -p esp32/esp32s3_cdc)
   if [ "${#wifi_args[@]}" -gt 0 ]; then
     (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}" -t build "${wifi_args[@]}")
   else

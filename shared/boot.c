@@ -8,30 +8,7 @@
 
 #include "esp_err.h"
 #include "esp_ota_ops.h"
-#include "esp_rom_gpio.h"
 #include "esp_system.h"
-#include "hal/gpio_ll.h"
-
-/*
-	Until the display driver runs, RST/CS/backlight float and the ST7789
-	will clock in garbage, then scan cold-boot noise. Hold reset, deselect,
-	and keep the backlight off. manifest.json wakes the panel and the driver
-	asserts DISPON only after a black fill.
-*/
-static void panel_drive(int pin, int level)
-{
-	esp_rom_gpio_pad_unhold(pin);
-	esp_rom_gpio_pad_select_gpio(pin);
-	gpio_ll_output_enable(GPIO_LL_GET_HW(0), pin);
-	gpio_ll_set_level(GPIO_LL_GET_HW(0), pin, level);
-}
-
-__attribute__((constructor)) static void panel_hold(void)
-{
-	panel_drive(33, 0);
-	panel_drive(37, 1);
-	panel_drive(38, 0);
-}
 
 static esp_ota_handle_t gHandle;
 static const esp_partition_t *gDest;

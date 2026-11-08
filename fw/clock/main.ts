@@ -45,4 +45,9 @@ const ClockApplication = Application.template($ => ({
 	],
 }));
 
-export default new ClockApplication(null, { displayListLength: 4096, touchCount: 0 });
+// Port.fill queue the Piu command list (default 1024). HH:MM:SS + marquees overflow it.
+export default new ClockApplication(null, {
+	displayListLength: 8192,
+	commandListLength: 16384,
+	touchCount: 0,
+});

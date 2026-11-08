@@ -96,8 +96,6 @@
 					"row_offset": 53,
 					"spi_port": "SPI3_HOST",
 					"spi_mode": 0,
-					"erase_width": 240,
-					"erase_height": 135,
 					"registers": [
 						"0x01, 0,",
 						"0xff, 150,",

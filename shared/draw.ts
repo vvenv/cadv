@@ -13,53 +13,30 @@ const SEG = [
 	0b1011011, 0b1011111, 0b1110000, 0b1111111, 0b1111011,
 ];
 
-function taper(i: number, t: number): number {
-	const half = t >> 1;
-	const edge = i < half ? i : t - 1 - i;
-	const inset = half - edge;
-	return inset > 0 ? inset : 0;
-}
-
-function chamferH(port: PortContent, x: number, y: number, w: number, t: number, color: string) {
+/*
+	One fillColor per segment. The old chamfer loops burned dozens of
+	commands per bar and overflowed the Piu display list on HH:MM:SS.
+*/
+function paintH(port: PortContent, x: number, y: number, w: number, t: number, on: boolean) {
 	if (w <= 1 || t <= 0)
 		return;
-	for (let i = 0; i < t; i++) {
-		const inset = taper(i, t);
-		const ww = w - inset * 2;
-		if (ww <= 0)
-			continue;
-		port.fillColor(color, x + inset, y + i, ww, 1);
-	}
-}
-
-function chamferV(port: PortContent, x: number, y: number, h: number, t: number, color: string) {
-	if (h <= 1 || t <= 0)
-		return;
-	for (let i = 0; i < t; i++) {
-		const inset = taper(i, t);
-		const hh = h - inset * 2;
-		if (hh <= 0)
-			continue;
-		port.fillColor(color, x + i, y + inset, 1, hh);
-	}
-}
-
-function paintH(port: PortContent, x: number, y: number, w: number, t: number, on: boolean) {
 	if (on) {
-		chamferH(port, x - 1, y - 1, w + 2, t + 2, MID);
-		chamferH(port, x, y, w, t, ON);
+		port.fillColor(MID, x - 1, y - 1, w + 2, t + 2);
+		port.fillColor(ON, x, y, w, t);
 	}
 	else
-		chamferH(port, x, y, w, t, DIM);
+		port.fillColor(DIM, x, y, w, t);
 }
 
 function paintV(port: PortContent, x: number, y: number, h: number, t: number, on: boolean) {
+	if (h <= 1 || t <= 0)
+		return;
 	if (on) {
-		chamferV(port, x - 1, y - 1, h + 2, t + 2, MID);
-		chamferV(port, x, y, h, t, ON);
+		port.fillColor(MID, x - 1, y - 1, t + 2, h + 2);
+		port.fillColor(ON, x, y, t, h);
 	}
 	else
-		chamferV(port, x, y, h, t, DIM);
+		port.fillColor(DIM, x, y, t, h);
 }
 
 export function fillDisk(port: PortContent, cx: number, cy: number, r: number, color: string) {
@@ -120,19 +97,19 @@ export function drawSegMask(port: PortContent, x: number, y: number, w: number, 
 }
 
 function drawColon(port: PortContent, x: number, y: number, w: number, h: number, on: boolean) {
-	const r = Math.max(2, Math.floor(h / 16));
-	const cx = x + (w >> 1);
-	const y1 = y + Math.floor(h * 0.32);
-	const y2 = y + Math.floor(h * 0.68);
+	const s = Math.max(3, Math.floor(h / 14));
+	const cx = x + ((w - s) >> 1);
+	const y1 = y + Math.floor(h * 0.32) - (s >> 1);
+	const y2 = y + Math.floor(h * 0.68) - (s >> 1);
 	if (on) {
-		fillDisk(port, cx, y1, r + 1, MID);
-		fillDisk(port, cx, y2, r + 1, MID);
-		fillDisk(port, cx, y1, r, ON);
-		fillDisk(port, cx, y2, r, ON);
+		port.fillColor(MID, cx - 1, y1 - 1, s + 2, s + 2);
+		port.fillColor(MID, cx - 1, y2 - 1, s + 2, s + 2);
+		port.fillColor(ON, cx, y1, s, s);
+		port.fillColor(ON, cx, y2, s, s);
 	}
 	else {
-		fillDisk(port, cx, y1, r, DIM);
-		fillDisk(port, cx, y2, r, DIM);
+		port.fillColor(DIM, cx, y1, s, s);
+		port.fillColor(DIM, cx, y2, s, s);
 	}
 }
 
