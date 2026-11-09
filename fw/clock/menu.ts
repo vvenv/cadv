@@ -21,7 +21,7 @@ export function menuItems(sound: boolean, hourly: boolean, quiet: string): MenuI
 		{ id: "city", label: "城市" },
 		{ id: "manual", label: "手动校时" },
 		{ id: "quiet", label: quiet },
-		{ id: "wx", label: "刷新天气" },
+		{ id: "wx", label: "天气" },
 		{ id: "wifi", label: "Wi-Fi", glyph: "wifi" },
 		{ id: "snd", label: "声音", glyph: sound ? "on" : "off" },
 		{ id: "hour", label: "整点", glyph: hourly ? "on" : "off" },

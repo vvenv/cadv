@@ -23,14 +23,14 @@ import { poseRotation } from "pose";
 import { alarmLine, cycleDays, dueAlarm, inQuiet, quietLabel } from "when";
 import { ClockSound } from "sound";
 import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_MIN, type ClockSettings } from "settings";
-import { fetchWeather, formatLunarWithWeather, weatherLabel, WEATHER_REFRESH_MS } from "weather";
+import { fetchWeather, formatLunarWithWeather, weatherCityName, weatherDetailLines, weatherLabel, WEATHER_REFRESH_MS } from "weather";
 import { beijingParts, formatClockTop, formatHMS, formatLunar, formatNow, pad2, setManualClock, timeSynced } from "lunar";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { batteryPercent } from "battery";
 import { ON, noteGlyph, type Glyph } from "ink";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 
-type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "alarms" | "hits" | "desk" | "menu" | "help";
+type Mode = "clock" | "ssid" | "pass" | "busy" | "cd_edit" | "cd_run" | "cd_done" | "al_edit" | "al_ring" | "alarms" | "hits" | "desk" | "menu" | "help" | "wx";
 
 /** One bright digit walking across four ghosts, then back. */
 const NET_SPIN = Object.freeze(["8   ", " 8  ", "  8 ", "   8"]);
@@ -374,6 +374,10 @@ export class AppBehavior extends Behavior {
 			this.onHits(app, stroke);
 			return;
 		}
+		if (this.mode === "wx") {
+			this.onWeather(app, stroke);
+			return;
+		}
 		if (this.mode === "desk") {
 			this.onDesk(app, stroke);
 			return;
@@ -545,7 +549,7 @@ export class AppBehavior extends Behavior {
 				return;
 			}
 			if (chars.some(ch => ch === "t" || ch === "T")) {
-				this.refreshWeather(app, true);
+				this.enterWeather(app);
 				this.maybeBeep();
 				return;
 			}
@@ -829,6 +833,12 @@ export class AppBehavior extends Behavior {
 
 	refreshWeather(app: AppHost, force: boolean) {
 		fetchWeather(force, (ok, detail) => {
+			if (this.mode === "wx") {
+				this.paintWeather(app, force && !ok ? detail : "");
+				if (ok)
+					this.dateKey = "";
+				return;
+			}
 			if (this.mode !== "clock")
 				return;
 			if (force) {
@@ -844,6 +854,40 @@ export class AppBehavior extends Behavior {
 				return;
 			this.paintClockLabels(app);
 		});
+	}
+
+	enterWeather(app: AppHost) {
+		this.statusUntil = 0;
+		this.mode = "wx";
+		this.showList(app, true);
+		this.paintWeather(app, "刷新中");
+		this.refreshWeather(app, true);
+	}
+
+	paintWeather(app: AppHost, note = "") {
+		const rows = weatherDetailLines();
+		const lines = [];
+		for (let i = 0; i < rows.length; i++)
+			lines.push({ text: rows[i].text, right: rows[i].right, selected: false });
+		const port = contentByName(app, "listPort");
+		const view = asMenu(port);
+		const city = weatherCityName();
+		const title = note ? `天气 ${note}` : `天气 ${city}`;
+		if (view)
+			view.setList(port, title, lines, "");
+	}
+
+	onWeather(app: AppHost, stroke: KeyStroke) {
+		if (isBack(stroke)) {
+			this.resumeClock(app);
+			this.maybeBeep();
+			return;
+		}
+		if (stroke.chars.some(ch => ch === "t" || ch === "T")) {
+			this.paintWeather(app, "刷新中");
+			this.refreshWeather(app, true);
+			this.maybeBeep();
+		}
 	}
 
 	showClock(app: AppHost, on: boolean) {
@@ -945,6 +989,11 @@ export class AppBehavior extends Behavior {
 			this.paintHits(app);
 			return;
 		}
+		if (from === "wx") {
+			this.showList(app, true);
+			this.paintWeather(app);
+			return;
+		}
 		if (from === "desk") {
 			this.paintDesk(app);
 			return;
@@ -1027,8 +1076,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (id === "wx") {
-			this.resumeClock(app);
-			this.refreshWeather(app, true);
+			this.enterWeather(app);
 			return;
 		}
 		if (id === "wifi") {

@@ -19,7 +19,9 @@ const CLOCK_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "-/=", action: "小声/大声" },
 	{ key: "C", action: "倒计时" },
 	{ key: "A", action: "闹钟列表" },
-	{ key: "T", action: "拉天气" },
+	{ key: "T", action: "天气详情" },
+	{ key: "详情+T", action: "再刷新" },
+	{ key: "详情+BS", action: "回时钟" },
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "Fn+BS", action: "回选应用" },
 ], true);
@@ -64,6 +66,12 @@ const DESK_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "BS", action: "回时钟" },
 ], true);
 
+const WX_HELP: readonly HelpRow[] = Object.freeze([
+	{ key: "?", action: "打开本页" },
+	{ key: "T", action: "刷新天气" },
+	{ key: "BS", action: "回时钟" },
+], true);
+
 export function helpTopic(mode: string): string {
 	if (mode === "menu" || mode === "hits")
 		return "menu";
@@ -73,6 +81,8 @@ export function helpTopic(mode: string): string {
 		return "al";
 	if (mode === "desk")
 		return "desk";
+	if (mode === "wx")
+		return "wx";
 	return "clock";
 }
 
@@ -85,6 +95,8 @@ export function helpTitle(topic: string): string {
 		return "闹钟帮助";
 	if (topic === "desk")
 		return "工具帮助";
+	if (topic === "wx")
+		return "天气帮助";
 	return "时钟帮助";
 }
 
@@ -97,5 +109,7 @@ export function helpFor(topic: string): readonly HelpRow[] {
 		return AL_HELP;
 	if (topic === "desk")
 		return DESK_HELP;
+	if (topic === "wx")
+		return WX_HELP;
 	return CLOCK_HELP;
 }

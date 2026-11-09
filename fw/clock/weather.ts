@@ -1,5 +1,5 @@
 /*
-	Open-Meteo current weather (HTTP, no API key).
+	Open-Meteo current + 2-day daily forecast (HTTP, no API key).
 	Default: 福清 lat/lon; override via mc/config weatherLat/weatherLon/weatherHost.
 */
 
@@ -8,15 +8,31 @@ import Timer from "timer";
 import config from "mc/config";
 import { loadSettings } from "settings";
 
+export type DayForecast = {
+	/** YYYY-MM-DD in Asia/Shanghai. */
+	date: string;
+	code: number;
+	tMin: number;
+	tMax: number;
+	/** 0..100, or -1 when missing. */
+	pop: number;
+};
+
 export type WeatherSnapshot = {
 	tempC: number;
 	humidity: number;
+	code: number;
+	/** km/h; -1 when missing. */
+	windKmh: number;
+	today: DayForecast | null;
+	tomorrow: DayForecast | null;
 	atMs: number;
 };
 
 const DEFAULT_LAT = 25.7212;
 const DEFAULT_LON = 119.3841;
 const DEFAULT_HOST = "api.open-meteo.com";
+const DEFAULT_NAME = "福清";
 /** Min gap between attempts (success or fail). */
 export const WEATHER_RETRY_MS = 60_000;
 /** Normal refresh after a good reading. */
@@ -64,15 +80,57 @@ function endpoint(): { host: string; port?: number; lat: number; lon: number } {
 	};
 }
 
+/** City shown on the weather detail title. */
+export function weatherCityName(): string {
+	const saved = loadSettings();
+	if (saved.cityName.length > 0)
+		return saved.cityName;
+	return cfgString(config as Record<string, unknown>, "weatherName", DEFAULT_NAME);
+}
+
 export function getWeather(): WeatherSnapshot | null {
 	return state.cached;
+}
+
+/** WMO weather interpretation → short Chinese for the 240px panel. */
+export function weatherCodeLabel(code: number): string {
+	const n = code | 0;
+	if (n === 0)
+		return "晴";
+	if (n === 1)
+		return "少云";
+	if (n === 2)
+		return "多云";
+	if (n === 3)
+		return "阴";
+	if (n === 45 || n === 48)
+		return "雾";
+	if (n >= 51 && n <= 57)
+		return "毛毛雨";
+	if (n >= 61 && n <= 67)
+		return "雨";
+	if (n >= 71 && n <= 77)
+		return "雪";
+	if (n >= 80 && n <= 82)
+		return "阵雨";
+	if (n === 85 || n === 86)
+		return "阵雪";
+	if (n === 95)
+		return "雷雨";
+	if (n === 96 || n === 99)
+		return "雷雹";
+	return "—";
+}
+
+function roundTemp(n: number): number {
+	return Math.round(n);
 }
 
 /** Weather fragment `XX℃ YY%`; long lines marquee on the bottom port. */
 export function weatherLabel(): string {
 	if (!state.cached)
 		return "";
-	const t = Math.round(state.cached.tempC);
+	const t = roundTemp(state.cached.tempC);
 	const h = Math.round(state.cached.humidity);
 	return `${t}℃ ${h}%`;
 }
@@ -83,27 +141,121 @@ export function formatLunarWithWeather(lunar: string): string {
 	return w ? `${lunar} ${w}` : lunar;
 }
 
+function dayLine(day: DayForecast | null, fallback: string): string {
+	if (!day)
+		return fallback;
+	const lo = roundTemp(day.tMin);
+	const hi = roundTemp(day.tMax);
+	const sky = weatherCodeLabel(day.code);
+	if (day.pop >= 0)
+		return `${lo}~${hi}℃ ${sky} ${day.pop}%`;
+	return `${lo}~${hi}℃ ${sky}`;
+}
+
+/**
+	Detail rows for the weather list (`text` left, `right` flush-right).
+	Empty cache → a single “暂无” row.
+*/
+export function weatherDetailLines(): { text: string; right: string }[] {
+	const snap = state.cached;
+	if (!snap)
+		return [{ text: "暂无", right: "按 T 刷新" }];
+	const now = `${roundTemp(snap.tempC)}℃ ${weatherCodeLabel(snap.code)}`;
+	const hum = `${Math.round(snap.humidity)}%`;
+	const lines = [
+		{ text: "现在", right: now },
+		{ text: "湿度", right: hum },
+	];
+	if (snap.windKmh >= 0)
+		lines.push({ text: "风速", right: `${Math.round(snap.windKmh)}km/h` });
+	lines.push({ text: "今天", right: dayLine(snap.today, "—") });
+	lines.push({ text: "明天", right: dayLine(snap.tomorrow, "—") });
+	return lines;
+}
+
+function asNum(v: unknown): number | null {
+	return typeof v === "number" && v === v ? v : null;
+}
+
+function readDay(
+	times: unknown,
+	codes: unknown,
+	mins: unknown,
+	maxs: unknown,
+	pops: unknown,
+	index: number,
+): DayForecast | null {
+	if (!Array.isArray(times) || index >= times.length)
+		return null;
+	const date = times[index];
+	if (typeof date !== "string" || !date.length)
+		return null;
+	const code = Array.isArray(codes) ? asNum(codes[index]) : null;
+	const tMin = Array.isArray(mins) ? asNum(mins[index]) : null;
+	const tMax = Array.isArray(maxs) ? asNum(maxs[index]) : null;
+	if (code === null || tMin === null || tMax === null)
+		return null;
+	const popRaw = Array.isArray(pops) ? asNum(pops[index]) : null;
+	return {
+		date,
+		code,
+		tMin,
+		tMax,
+		pop: popRaw === null ? -1 : Math.max(0, Math.min(100, Math.round(popRaw))),
+	};
+}
+
 function parseWeatherBody(body: string): WeatherSnapshot | null {
 	try {
-		const filtered = JSON.parse(body, [
-			"current",
-			"temperature_2m",
-			"relative_humidity_2m",
-		]) as {
-			current?: { temperature_2m?: number; relative_humidity_2m?: number };
-		};
-		let temp = filtered.current?.temperature_2m;
-		let humidity = filtered.current?.relative_humidity_2m;
-		if (typeof temp !== "number" || typeof humidity !== "number") {
-			const full = JSON.parse(body) as {
-				current?: { temperature_2m?: number; relative_humidity_2m?: number };
+		const data = JSON.parse(body) as {
+			current?: {
+				temperature_2m?: number;
+				relative_humidity_2m?: number;
+				weather_code?: number;
+				wind_speed_10m?: number;
 			};
-			temp = full.current?.temperature_2m;
-			humidity = full.current?.relative_humidity_2m;
-		}
-		if (typeof temp !== "number" || typeof humidity !== "number")
+			daily?: {
+				time?: string[];
+				weather_code?: number[];
+				temperature_2m_min?: number[];
+				temperature_2m_max?: number[];
+				precipitation_probability_max?: number[];
+			};
+		};
+		const temp = asNum(data.current?.temperature_2m);
+		const humidity = asNum(data.current?.relative_humidity_2m);
+		if (temp === null || humidity === null)
 			return null;
-		return { tempC: temp, humidity, atMs: Date.now() };
+		const code = asNum(data.current?.weather_code);
+		const wind = asNum(data.current?.wind_speed_10m);
+		const daily = data.daily;
+		return {
+			tempC: temp,
+			humidity,
+			code: code === null ? -1 : code,
+			windKmh: wind === null ? -1 : wind,
+			today: daily
+				? readDay(
+					daily.time,
+					daily.weather_code,
+					daily.temperature_2m_min,
+					daily.temperature_2m_max,
+					daily.precipitation_probability_max,
+					0,
+				)
+				: null,
+			tomorrow: daily
+				? readDay(
+					daily.time,
+					daily.weather_code,
+					daily.temperature_2m_min,
+					daily.temperature_2m_max,
+					daily.precipitation_probability_max,
+					1,
+				)
+				: null,
+			atMs: Date.now(),
+		};
 	}
 	catch {
 		return null;
@@ -127,7 +279,9 @@ export function fetchWeather(
 	const { host, port, lat, lon } = endpoint();
 	const path =
 		`/v1/forecast?latitude=${lat}&longitude=${lon}` +
-		"&current=temperature_2m,relative_humidity_2m&timezone=Asia%2FShanghai";
+		"&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m" +
+		"&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+		"&forecast_days=2&timezone=Asia%2FShanghai";
 
 	state.inflight = true;
 	state.lastAttemptMs = now;
