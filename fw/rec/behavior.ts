@@ -12,7 +12,8 @@ import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, isLauncher, navDir, volumeDelta } from "keys";
-import { MENU_VISIBLE, menuStep } from "list";
+import { helpList } from "help-ui";
+import { menuStep } from "list";
 import { asMenu } from "menu-view";
 import { noteGlyph } from "ink";
 import { micFault, openMic, type MicFeed } from "mic";
@@ -470,23 +471,8 @@ export class AppBehavior extends Behavior {
 			if (!view)
 				return;
 			if (this.mode === "help") {
-				const page = helpFor();
-				const n = page.length;
-				const vis = MENU_VISIBLE;
-				let start = this.helpIndex;
-				const max = n > vis ? n - vis : 0;
-				if (start < 0)
-					start = 0;
-				if (start > max)
-					start = max;
-				this.helpIndex = start;
-				const lines = [];
-				for (let i = 0; i < vis; i++) {
-					const row = page[start + i];
-					if (row)
-						lines.push({ text: row.key, right: row.action, selected: false });
-				}
-				view.setList(port, `${helpTitle()} ${start + 1}/${n}`, lines, "");
+				const page = helpList(helpFor(), this, helpTitle());
+				view.setList(port, page.title, page.lines, "");
 				return;
 			}
 			this.refreshNames();

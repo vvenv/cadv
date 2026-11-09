@@ -13,7 +13,9 @@
 			"./hostkey",
 			"./volume",
 			"./session",
-			"./battery"
+			"./battery",
+			"./help-ui",
+			"./pref"
 		]
 	},
 	"preload": [
@@ -30,6 +32,8 @@
 		"volume",
 		"session",
 		"battery",
+		"help-ui",
+		"pref",
 		"keyboard",
 		"sound",
 		"boot",

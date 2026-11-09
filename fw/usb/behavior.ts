@@ -10,7 +10,7 @@ import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { noteGlyph, type Glyph } from "ink";
 import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
-import { MENU_VISIBLE } from "list";
+import { helpList } from "help-ui";
 import { asMenu } from "menu-view";
 import { start as mscStart, stop as mscStop, status as mscStatus } from "msc";
 import { Power } from "power";
@@ -172,23 +172,8 @@ export class AppBehavior extends Behavior {
 			const view = asMenu(list);
 			if (!view)
 				return;
-			const page = helpFor();
-			const n = page.length;
-			const vis = MENU_VISIBLE;
-			let start = this.helpIndex;
-			const max = n > vis ? n - vis : 0;
-			if (start < 0)
-				start = 0;
-			if (start > max)
-				start = max;
-			this.helpIndex = start;
-			const lines = [];
-			for (let i = 0; i < vis; i++) {
-				const row = page[start + i];
-				if (row)
-					lines.push({ text: row.key, right: row.action, selected: false });
-			}
-			view.setList(list, `${helpTitle()} ${start + 1}/${n}`, lines, "");
+			const page = helpList(helpFor(), this, helpTitle());
+			view.setList(list, page.title, page.lines, "");
 			return;
 		}
 		setVisibleProp(list, false);

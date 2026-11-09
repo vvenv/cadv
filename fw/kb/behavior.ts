@@ -24,7 +24,7 @@ import {
 	type HeldState,
 } from "hid";
 import { INK, ON, noteGlyph } from "ink";
-import { MENU_VISIBLE } from "list";
+import { clampHelpIndex, helpList } from "help-ui";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { asMenu } from "menu-view";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
@@ -292,13 +292,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	scrollHelp(app: AppHost, dir: -1 | 1) {
-		const n = helpRows().length;
-		const max = n > MENU_VISIBLE ? n - MENU_VISIBLE : 0;
-		let next = this.helpIndex + dir;
-		if (next < 0)
-			next = 0;
-		if (next > max)
-			next = max;
+		const next = clampHelpIndex(this.helpIndex + dir, helpRows().length);
 		if (next === this.helpIndex)
 			return;
 		this.helpIndex = next;
@@ -306,26 +300,11 @@ export class AppBehavior extends Behavior {
 	}
 
 	paintHelp(app: AppHost) {
-		const page = helpRows();
-		const n = page.length;
-		const vis = MENU_VISIBLE;
-		let start = this.helpIndex;
-		const max = n > vis ? n - vis : 0;
-		if (start < 0)
-			start = 0;
-		if (start > max)
-			start = max;
-		this.helpIndex = start;
-		const lines = [];
-		for (let i = 0; i < vis; i++) {
-			const row = page[start + i];
-			if (row)
-				lines.push({ text: row.key, right: row.action, selected: false });
-		}
+		const page = helpList(helpRows(), this, helpTitle());
 		const port = contentByName(app, "listPort");
 		const view = asMenu(port);
 		if (view)
-			view.setList(port, `${helpTitle()} ${start + 1}/${n}`, lines, "");
+			view.setList(port, page.title, page.lines, "");
 	}
 
 	tickMarquees(app: AppHost) {

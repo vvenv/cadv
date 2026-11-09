@@ -8,11 +8,13 @@ import Timer from "timer";
 import Preference from "preference";
 import { bootLauncher } from "boot";
 import { helpFor, helpTitle } from "help";
+import { helpList } from "help-ui";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { asMenu } from "menu-view";
 import { imuError, openImu, type ImuHandle } from "imu";
+import { pref } from "pref";
 import { Power } from "power";
 import { acceptStroke } from "session";
 import { asSevenSeg } from "sevenseg";
@@ -20,6 +22,7 @@ import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asStepFooter, asStepTop } from "view";
 
 const PREF = "step";
+const store = pref(PREF);
 
 type Mode = "step" | "help";
 
@@ -28,23 +31,6 @@ function today(): string {
 	const m = t.getMonth() + 1;
 	const d = t.getDate();
 	return t.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (d < 10 ? "0" + d : d);
-}
-
-function readNum(name: string, fallback: number): number {
-	try {
-		const v = Preference.get(PREF, name);
-		if (typeof v === "number" && v === v)
-			return v;
-		if (typeof v === "string") {
-			const n = parseInt(v, 10);
-			if (n === n)
-				return n;
-		}
-	}
-	catch {
-		/* */
-	}
-	return fallback;
 }
 
 export class AppBehavior extends Behavior {
@@ -59,6 +45,7 @@ export class AppBehavior extends Behavior {
 	steps = 0;
 	stride = 70;
 	note = "";
+	helpIndex = 0;
 	hostEnterDown = false;
 
 	onDisplaying(content: unknown) {
@@ -74,9 +61,9 @@ export class AppBehavior extends Behavior {
 				return "";
 			}
 		})();
-		this.saved = storedDay === this.day ? readNum("count", 0) : 0;
+		this.saved = storedDay === this.day ? store.getNum("count", 0) : 0;
 		this.steps = this.saved;
-		this.stride = readNum("stride", 70);
+		this.stride = store.getNum("stride", 70);
 		if (this.stride < 30)
 			this.stride = 30;
 		if (this.stride > 120)
@@ -165,6 +152,7 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		if (isHelp(stroke) && this.mode !== "help") {
+			this.helpIndex = 0;
 			this.mode = "help";
 			this.paint(app);
 			return;
@@ -172,6 +160,11 @@ export class AppBehavior extends Behavior {
 		if (this.mode === "help") {
 			if (isBack(stroke) || isConfirm(stroke))
 				this.mode = "step";
+			else {
+				const dir = navDir(stroke);
+				if (dir !== 0)
+					this.helpIndex += dir;
+			}
 			this.paint(app);
 			return;
 		}
@@ -206,8 +199,10 @@ export class AppBehavior extends Behavior {
 			setVisibleProp(footer, false);
 			setVisibleProp(list, true);
 			const view = asMenu(list);
-			if (view)
-				view.setList(list, helpTitle(), helpFor().map(row => ({ text: row.key, right: row.action, selected: false })), "");
+			if (view) {
+				const page = helpList(helpFor(), this, helpTitle());
+				view.setList(list, page.title, page.lines, "");
+			}
 			return;
 		}
 		setVisibleProp(list, false);

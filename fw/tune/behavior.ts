@@ -4,7 +4,8 @@ import { bootLauncher } from "boot";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
-import { isBack, isConfirm, isHelp, isLauncher } from "keys";
+import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
+import { helpList } from "help-ui";
 import { asMenu } from "menu-view";
 import { openMic, type MicFeed } from "mic";
 import { fundamental, noteName } from "pitch";
@@ -30,6 +31,7 @@ export class AppBehavior extends Behavior {
 	cents: number | null = null;
 	hz = 0;
 	measured = 0;
+	helpIndex = 0;
 	hostEnterDown = false;
 
 	onDisplaying(content: unknown) {
@@ -106,10 +108,19 @@ export class AppBehavior extends Behavior {
 			bootLauncher();
 			return;
 		}
-		if (isHelp(stroke) && this.mode !== "help")
+		if (isHelp(stroke) && this.mode !== "help") {
+			this.helpIndex = 0;
 			this.mode = "help";
-		else if (this.mode === "help" && (isBack(stroke) || isConfirm(stroke)))
-			this.mode = "tune";
+		}
+		else if (this.mode === "help") {
+			if (isBack(stroke) || isConfirm(stroke))
+				this.mode = "tune";
+			else {
+				const dir = navDir(stroke);
+				if (dir !== 0)
+					this.helpIndex += dir;
+			}
+		}
 		this.paint(app);
 	}
 
@@ -120,8 +131,10 @@ export class AppBehavior extends Behavior {
 			setVisibleProp(face, false);
 			setVisibleProp(list, true);
 			const view = asMenu(list);
-			if (view)
-				view.setList(list, helpTitle(), helpFor().map(row => ({ text: row.key, right: row.action, selected: false })), "");
+			if (view) {
+				const page = helpList(helpFor(), this, helpTitle());
+				view.setList(list, page.title, page.lines, "");
+			}
 			return;
 		}
 		setVisibleProp(list, false);

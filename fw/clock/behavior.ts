@@ -9,9 +9,10 @@ import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { asMenu } from "menu-view";
 import { helpFor, helpTitle, helpTopic } from "help";
+import { clampHelpIndex, helpList } from "help-ui";
 import { bootLauncher } from "boot";
 import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir, volumeDelta } from "keys";
-import { MENU_VISIBLE, menuStep } from "list";
+import { menuStep } from "list";
 import { menuItems } from "menu";
 import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
 import { Power } from "power";
@@ -330,14 +331,7 @@ export class AppBehavior extends Behavior {
 			}
 			const dir = navDir(stroke);
 			if (dir !== 0) {
-				const max = helpFor(this.helpTopicId).length - MENU_VISIBLE;
-				let next = this.helpIndex + dir;
-				if (next < 0)
-					next = 0;
-				if (max < 0)
-					next = 0;
-				else if (next > max)
-					next = max;
+				const next = clampHelpIndex(this.helpIndex + dir, helpFor(this.helpTopicId).length);
 				if (next !== this.helpIndex) {
 					this.helpIndex = next;
 					this.paintHelp(app);
@@ -1037,26 +1031,11 @@ export class AppBehavior extends Behavior {
 	}
 
 	paintHelp(app: AppHost) {
-		const page = helpFor(this.helpTopicId);
-		const n = page.length;
-		const vis = MENU_VISIBLE;
-		let start = this.helpIndex;
-		const max = n > vis ? n - vis : 0;
-		if (start < 0)
-			start = 0;
-		if (start > max)
-			start = max;
-		this.helpIndex = start;
-		const lines = [];
-		for (let i = 0; i < vis; i++) {
-			const row = page[start + i];
-			if (row)
-				lines.push({ text: row.key, right: row.action, selected: false });
-		}
+		const page = helpList(helpFor(this.helpTopicId), this, helpTitle(this.helpTopicId));
 		const port = contentByName(app, "listPort");
 		const view = asMenu(port);
 		if (view)
-			view.setList(port, `${helpTitle(this.helpTopicId)} ${start + 1}/${n}`, lines, "");
+			view.setList(port, page.title, page.lines, "");
 	}
 
 	activateMenu(app: AppHost) {

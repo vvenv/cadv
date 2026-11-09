@@ -6,6 +6,8 @@
 	psramTotal psramFree wifi ble reset uptime tempDeci slot idf
 */
 
+import { batteryLabel } from "battery";
+
 export type BoardExtra = {
 	batteryMv: number;
 	keyboard: string;
@@ -54,12 +56,6 @@ const RESET = Object.freeze([
 	"毛刺",
 	"锁死",
 ]);
-
-/** Below this, GPIO10 is the divider sitting on ground: no cell. */
-const BATTERY_ABSENT_MV = 2800;
-/** Linear estimate. A resting 1S cell, not a fuel gauge. */
-const BATTERY_EMPTY_MV = 3300;
-const BATTERY_FULL_MV = 4200;
 
 function num(text: string | undefined): number {
 	if (text == null || text === "")
@@ -165,18 +161,6 @@ export function resetText(code: number): string {
 	return RESET[code];
 }
 
-export function batteryText(mv: number): string {
-	if (mv < BATTERY_ABSENT_MV || mv !== mv)
-		return "无";
-	const v = (Math.round(mv / 10) / 100).toFixed(2) + "V";
-	let pct = Math.round((mv - BATTERY_EMPTY_MV) * 100 / (BATTERY_FULL_MV - BATTERY_EMPTY_MV));
-	if (pct < 0)
-		pct = 0;
-	if (pct > 100)
-		pct = 100;
-	return v + " " + pct + "%";
-}
-
 function textOrNone(value: string): string {
 	return value ? value : "无";
 }
@@ -196,7 +180,7 @@ export function infoRows(snap: BoardSnap): InfoRow[] {
 		{ label: "启动", value: resetText(snap.reset) },
 		{ label: "运行", value: uptimeText(snap.uptime) },
 		{ label: "温度", value: tempText(snap.tempDeci) },
-		{ label: "电池", value: batteryText(snap.batteryMv) },
+		{ label: "电池", value: batteryLabel(snap.batteryMv) },
 		{ label: "键盘", value: textOrNone(snap.keyboard) },
 		{ label: "姿态", value: textOrNone(snap.imu) },
 		{ label: "声卡", value: textOrNone(snap.codec) },

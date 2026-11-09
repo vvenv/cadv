@@ -8,12 +8,13 @@ import Timer from "timer";
 import Preference from "preference";
 import { bootLauncher } from "boot";
 import { helpFor, helpTitle } from "help";
+import { helpList } from "help-ui";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, isLauncher, navDir, volumeDelta } from "keys";
-import { MENU_VISIBLE } from "list";
 import { asMenu } from "menu-view";
 import { micFault, openMic, type MicFeed } from "mic";
+import { pref } from "pref";
 import { Power } from "power";
 import { acceptStroke, titleGlyph } from "session";
 import { ClockSound, releaseMic } from "sound";
@@ -23,6 +24,7 @@ import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asCountFooter, asCountTop, type Gain, type Sense } from "view";
 
 const PREF = "count";
+const store = pref(PREF);
 const STEPS = Object.freeze([1, 2, 5, 10, 20, 50, 100]);
 const COUNT_MAX = 999999;
 /** Hit when peak clearly rises above a slow ambient floor. */
@@ -62,23 +64,6 @@ function pickIndexFor(sense: Sense, gain: Gain): number {
 			return i;
 	}
 	return 2;
-}
-
-function readNum(name: string, fallback: number): number {
-	try {
-		const v = Preference.get(PREF, name);
-		if (typeof v === "number" && v === v)
-			return v;
-		if (typeof v === "string") {
-			const n = parseInt(v, 10);
-			if (n === n)
-				return n;
-		}
-	}
-	catch {
-		/* */
-	}
-	return fallback;
 }
 
 function readSense(): Sense {
@@ -156,9 +141,9 @@ export class AppBehavior extends Behavior {
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
-		this.count = clampCount(readNum("value", 0));
-		this.step = nearestStep(readNum("step", 1));
-		this.volume = Math.max(VOL_MIN, Math.min(VOL_MAX, readNum("volume", VOL_DEFAULT)));
+		this.count = clampCount(store.getNum("value", 0));
+		this.step = nearestStep(store.getNum("step", 1));
+		this.volume = Math.max(VOL_MIN, Math.min(VOL_MAX, store.getNum("volume", VOL_DEFAULT)));
 		this.sense = readSense();
 		this.gain = readGain();
 		this.power = new Power("blank");
@@ -465,7 +450,8 @@ export class AppBehavior extends Behavior {
 			if (!view)
 				return;
 			if (this.mode === "help") {
-				view.setList(list, helpTitle(), helpPage(helpFor(), this), "");
+				const page = helpList(helpFor(), this, helpTitle());
+				view.setList(list, page.title, page.lines, "");
 				return;
 			}
 			const lines = [];
@@ -531,23 +517,4 @@ export class AppBehavior extends Behavior {
 			);
 		}
 	}
-}
-
-function helpPage(rows: readonly { key: string; action: string }[], host: { helpIndex: number }) {
-	const n = rows.length;
-	const vis = MENU_VISIBLE;
-	let start = host.helpIndex;
-	const max = n > vis ? n - vis : 0;
-	if (start < 0)
-		start = 0;
-	if (start > max)
-		start = max;
-	host.helpIndex = start;
-	const lines = [];
-	for (let i = 0; i < vis; i++) {
-		const row = rows[start + i];
-		if (row)
-			lines.push({ text: row.key, right: row.action, selected: false });
-	}
-	return lines;
 }

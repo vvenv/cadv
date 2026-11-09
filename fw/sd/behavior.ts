@@ -16,7 +16,8 @@ import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, navDir } from "keys";
-import { MENU_VISIBLE, menuStep } from "list";
+import { clampHelpIndex, helpList } from "help-ui";
+import { menuStep } from "list";
 import { asMenu } from "menu-view";
 import { asHome, type HomeTile } from "view";
 import { noteGlyph } from "ink";
@@ -295,14 +296,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	stepHelp(app: AppHost, dir: -1 | 1) {
-		const max = helpFor().length - MENU_VISIBLE;
-		let next = this.helpIndex + dir;
-		if (next < 0)
-			next = 0;
-		if (max < 0)
-			next = 0;
-		else if (next > max)
-			next = max;
+		const next = clampHelpIndex(this.helpIndex + dir, helpFor().length);
 		if (next === this.helpIndex)
 			return;
 		this.helpIndex = next;
@@ -492,23 +486,8 @@ export class AppBehavior extends Behavior {
 		}
 		if (this.mode === "help") {
 			this.showHome(app, false);
-			const page = helpFor();
-			const n = page.length;
-			const vis = MENU_VISIBLE;
-			let start = this.helpIndex;
-			const max = n > vis ? n - vis : 0;
-			if (start < 0)
-				start = 0;
-			if (start > max)
-				start = max;
-			this.helpIndex = start;
-			const lines = [];
-			for (let i = 0; i < vis; i++) {
-				const row = page[start + i];
-				if (row)
-					lines.push({ text: row.key, right: row.action, selected: false });
-			}
-			list.setList(listPort, `${helpTitle()} ${start + 1}/${n}`, lines, "");
+			const page = helpList(helpFor(), this, helpTitle());
+			list.setList(listPort, page.title, page.lines, "");
 			return;
 		}
 		const entries = this.catalog.entries;

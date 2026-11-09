@@ -5,7 +5,7 @@ import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, isLauncher, navDir, volumeDelta } from "keys";
-import { MENU_VISIBLE } from "list";
+import { helpList } from "help-ui";
 import { asMenu } from "menu-view";
 import { Power } from "power";
 import { acceptStroke } from "session";
@@ -121,8 +121,10 @@ export class AppBehavior extends Behavior {
 			setVisibleProp(face, false);
 			setVisibleProp(list, true);
 			const view = asMenu(list);
-			if (view)
-				view.setList(list, helpTitle(), helpPage(helpFor(), this), "");
+			if (view) {
+				const page = helpList(helpFor(), this, helpTitle());
+				view.setList(list, page.title, page.lines, "");
+			}
 			return;
 		}
 		setVisibleProp(list, false);
@@ -132,23 +134,4 @@ export class AppBehavior extends Behavior {
 			return;
 		view.setKey(face, "琴", this.note, this.hz, this.key, this.volume);
 	}
-}
-
-function helpPage(rows: { key: string; action: string }[], host: { helpIndex: number }) {
-	const n = rows.length;
-	const vis = MENU_VISIBLE;
-	let start = host.helpIndex;
-	const max = n > vis ? n - vis : 0;
-	if (start < 0)
-		start = 0;
-	if (start > max)
-		start = max;
-	host.helpIndex = start;
-	const lines = [];
-	for (let i = 0; i < vis; i++) {
-		const row = rows[start + i];
-		if (row)
-			lines.push({ text: row.key, right: row.action, selected: false });
-	}
-	return lines;
 }

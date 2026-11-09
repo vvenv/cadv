@@ -2,11 +2,11 @@
 	Clock sound preferences (NVS Preference).
 */
 
-import Preference from "preference";
+import { pref } from "pref";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
 import { DAY_ALL, type Alarm } from "when";
 
-const PREF = "clock";
+const store = pref("clock");
 export { VOL_DEFAULT, VOL_MAX, VOL_MIN };
 
 export type ClockSettings = {
@@ -25,55 +25,6 @@ export type ClockSettings = {
 
 function blankAlarm(): Alarm {
 	return { on: false, hh: 7, mm: 0, days: DAY_ALL };
-}
-
-function readBool(name: string, fallback: boolean): boolean {
-	try {
-		const v = Preference.get(PREF, name);
-		if (typeof v === "boolean")
-			return v;
-		if (typeof v === "number")
-			return v !== 0;
-		if (typeof v === "string")
-			return v === "1" || v === "true";
-	}
-	catch {
-		/* */
-	}
-	return fallback;
-}
-
-function readInt(name: string, fallback: number, min: number, max: number): number {
-	try {
-		const v = Preference.get(PREF, name);
-		let n = fallback;
-		if (typeof v === "number")
-			n = v;
-		else if (typeof v === "string")
-			n = parseInt(v, 10);
-		if (typeof n !== "number" || n !== n)
-			n = fallback;
-		if (n < min)
-			n = min;
-		if (n > max)
-			n = max;
-		return n | 0;
-	}
-	catch {
-		return fallback;
-	}
-}
-
-function readString(name: string, fallback: string): string {
-	try {
-		const v = Preference.get(PREF, name);
-		if (typeof v === "string")
-			return v;
-	}
-	catch {
-		/* */
-	}
-	return fallback;
 }
 
 function parseAlarms(raw: string): Alarm[] {
@@ -109,33 +60,16 @@ function clamp(n: number, min: number, max: number, fallback: number): number {
 
 export function loadSettings(): ClockSettings {
 	return {
-		sound: readBool("sound", true),
-		hourly: readBool("hourly", true),
-		volume: readInt("volume", VOL_DEFAULT, VOL_MIN, VOL_MAX),
-		alarms: parseAlarms(readString("alarms", "")),
-		quietStart: readInt("quietStart", -1, -1, 1439),
-		quietEnd: readInt("quietEnd", -1, -1, 1439),
-		cityName: readString("cityName", ""),
-		cityLat: readFloat("cityLat", 25.7212),
-		cityLon: readFloat("cityLon", 119.3841),
+		sound: store.getBool("sound", true),
+		hourly: store.getBool("hourly", true),
+		volume: store.getInt("volume", VOL_DEFAULT, VOL_MIN, VOL_MAX),
+		alarms: parseAlarms(store.getString("alarms", "")),
+		quietStart: store.getInt("quietStart", -1, -1, 1439),
+		quietEnd: store.getInt("quietEnd", -1, -1, 1439),
+		cityName: store.getString("cityName", ""),
+		cityLat: store.getFloat("cityLat", 25.7212),
+		cityLon: store.getFloat("cityLon", 119.3841),
 	};
-}
-
-function readFloat(name: string, fallback: number): number {
-	try {
-		const v = Preference.get(PREF, name);
-		let n = fallback;
-		if (typeof v === "number")
-			n = v;
-		else if (typeof v === "string")
-			n = parseFloat(v);
-		if (n !== n)
-			return fallback;
-		return n;
-	}
-	catch {
-		return fallback;
-	}
 }
 
 function packAlarms(alarms: Alarm[]): string {
@@ -148,15 +82,15 @@ function packAlarms(alarms: Alarm[]): string {
 }
 
 export function saveSettings(s: ClockSettings) {
-	Preference.set(PREF, "sound", s.sound ? 1 : 0);
-	Preference.set(PREF, "hourly", s.hourly ? 1 : 0);
-	Preference.set(PREF, "volume", s.volume);
-	Preference.set(PREF, "alarms", packAlarms(s.alarms));
-	Preference.set(PREF, "quietStart", s.quietStart);
-	Preference.set(PREF, "quietEnd", s.quietEnd);
-	Preference.set(PREF, "cityName", s.cityName);
-	Preference.set(PREF, "cityLat", s.cityLat);
-	Preference.set(PREF, "cityLon", s.cityLon);
+	store.set("sound", s.sound ? 1 : 0);
+	store.set("hourly", s.hourly ? 1 : 0);
+	store.set("volume", s.volume);
+	store.set("alarms", packAlarms(s.alarms));
+	store.set("quietStart", s.quietStart);
+	store.set("quietEnd", s.quietEnd);
+	store.set("cityName", s.cityName);
+	store.set("cityLat", s.cityLat);
+	store.set("cityLon", s.cityLon);
 }
 
 export function formatAlarm(s: ClockSettings): string {
@@ -181,4 +115,3 @@ export function formatAlarm(s: ClockSettings): string {
 export function formatSettings(s: ClockSettings): string {
 	return `Snd:${s.sound ? "ON" : "OFF"} Hour:${s.hourly ? "ON" : "OFF"} Vol:${s.volume}`;
 }
-

@@ -7,10 +7,10 @@ import {} from "piu/MC";
 import Timer from "timer";
 import { bootLauncher } from "boot";
 import { helpFor, helpTitle } from "help";
+import { helpList } from "help-ui";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isLauncher, navDir } from "keys";
-import { MENU_VISIBLE } from "list";
 import { asMenu } from "menu-view";
 import { Power } from "power";
 import { acceptStroke } from "session";
@@ -456,23 +456,8 @@ export class AppBehavior extends Behavior {
 		if (!view)
 			return;
 		if (this.mode === "help") {
-			const page = helpFor();
-			const n = page.length;
-			const vis = MENU_VISIBLE;
-			let start = this.helpIndex;
-			const max = n > vis ? n - vis : 0;
-			if (start < 0)
-				start = 0;
-			if (start > max)
-				start = max;
-			this.helpIndex = start;
-			const lines = [];
-			for (let i = 0; i < vis; i++) {
-				const row = page[start + i];
-				if (row)
-					lines.push({ text: row.key, right: row.action, selected: false });
-			}
-			view.setList(port, helpTitle() + " " + (start + 1) + "/" + n, lines, "");
+			const page = helpList(helpFor(), this, helpTitle());
+			view.setList(port, page.title, page.lines, "");
 			return;
 		}
 		const context = this.contextText();

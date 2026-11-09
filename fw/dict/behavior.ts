@@ -14,7 +14,8 @@ import { hostStroke } from "hostkey";
 import { FONT_UI, INK, ON } from "ink";
 import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir } from "keys";
 import { lexCount, lexGloss, lexLower, lexPhone, lexPrefixEnd, lexWord } from "lex";
-import { MENU_VISIBLE, menuStep } from "list";
+import { helpList } from "help-ui";
+import { menuStep } from "list";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { asMenu } from "menu-view";
 import { Power } from "power";
@@ -256,25 +257,10 @@ export class AppBehavior extends Behavior {
 	}
 
 	paintHelp(app: AppHost) {
-		const page = helpFor();
-		const n = page.length;
-		const vis = MENU_VISIBLE;
-		let start = this.helpIndex;
-		const max = n > vis ? n - vis : 0;
-		if (start < 0)
-			start = 0;
-		if (start > max)
-			start = max;
-		this.helpIndex = start;
-		const lines = [];
-		for (let i = 0; i < vis; i++) {
-			const row = page[start + i];
-			if (row)
-				lines.push({ text: row.key, right: row.action, selected: false });
-		}
+		const page = helpList(helpFor(), this, helpTitle());
 		const port = contentByName(app, "listPort");
 		const view = asMenu(port);
 		if (view)
-			view.setList(port, helpTitle() + " " + (start + 1) + "/" + n, lines, "");
+			view.setList(port, page.title, page.lines, "");
 	}
 }
