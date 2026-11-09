@@ -17,14 +17,15 @@ echo $MODDABLE   # 指向 Moddable 仓库根目录
 command -v mcconfig
 ```
 
-本仓库已装到 `third_party/moddable`；也可用：
+本仓库习惯把 SDK 放在 `third_party/moddable`；也可用：
 
 ```bash
-./scripts/setup-moddable-env.sh   # 写入 ~/.zshrc（含 python@3.12 PATH + IDF 镜像）
-# 或手动：
-export MODDABLE="$HOME/vvenv/cadv/third_party/moddable"
+# 在仓库根目录
+./scripts/setup-moddable-env.sh   # 按本仓路径写入 ~/.zshrc（含 python@3.12 PATH + IDF 镜像）
+# 或手动（把下面路径换成你的实际位置）：
+export MODDABLE="$PWD/third_party/moddable"
 export PATH="/opt/homebrew/opt/python@3.12/bin:$MODDABLE/build/bin/mac/release:$PATH"
-export IDF_PATH="$HOME/esp32/esp-idf-v6.1"
+export IDF_PATH="${IDF_PATH:-$HOME/esp32/esp-idf-v6.1}"
 export IDF_GITHUB_ASSETS="dl.espressif.com/github_assets"  # 工具包走乐鑫 CDN
 source "$IDF_PATH/export.sh"      # 烧录 ESP32 前需要
 ```
@@ -33,7 +34,7 @@ source "$IDF_PATH/export.sh"      # 烧录 ESP32 前需要
 
 ```bash
 export PATH="/opt/homebrew/opt/python@3.12/bin:$PATH"
-export IDF_PATH="$HOME/esp32/esp-idf-v6.1"
+export IDF_PATH="${IDF_PATH:-$HOME/esp32/esp-idf-v6.1}"
 export IDF_GITHUB_ASSETS="dl.espressif.com/github_assets"
 cd "$IDF_PATH" && ./install.sh esp32s3
 ```

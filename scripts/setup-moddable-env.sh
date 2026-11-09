@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ZSHRC="${HOME}/.zshrc"
 MARKER_BEGIN="# >>> cadv moddable >>>"
 MARKER_END="# <<< cadv moddable <<<"
-MODDABLE_DIR="${HOME}/vvenv/cadv/third_party/moddable"
-IDF_DIR="${HOME}/esp32/esp-idf-v6.1"
+MODDABLE_DIR="${ROOT}/third_party/moddable"
+IDF_DIR="${IDF_PATH:-${HOME}/esp32/esp-idf-v6.1}"
 block=$(cat <<EOB
 ${MARKER_BEGIN}
 export MODDABLE="${MODDABLE_DIR}"
