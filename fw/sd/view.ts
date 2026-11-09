@@ -93,6 +93,7 @@ export class HomeBehavior extends Behavior {
 	level = 0;
 	index = 0;
 	tiles: HomeTile[] = [];
+	themeGen = -1;
 
 	setHome(
 		port: unknown,
@@ -108,12 +109,14 @@ export class HomeBehavior extends Behavior {
 			nextIndex = 0;
 		if (tiles.length && nextIndex >= tiles.length)
 			nextIndex = tiles.length - 1;
+		const gen = themeGeneration();
 		if (
 			title === this.title
 			&& mark === this.mark
 			&& nextLevel === this.level
 			&& nextIndex === this.index
 			&& sameTiles(this.tiles, tiles)
+			&& gen === this.themeGen
 		)
 			return;
 		this.title = title;
@@ -121,6 +124,7 @@ export class HomeBehavior extends Behavior {
 		this.level = nextLevel;
 		this.index = nextIndex;
 		this.tiles = tiles;
+		this.themeGen = gen;
 		if (port && typeof port === "object" && "invalidate" in port && typeof port.invalidate === "function")
 			port.invalidate();
 	}

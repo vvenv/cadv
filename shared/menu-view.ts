@@ -103,6 +103,7 @@ export class MenuBehavior extends Behavior {
 	mark: Glyph = "";
 	level = 0;
 	lines: MenuLine[] = [];
+	themeGen = -1;
 
 	setList(
 		port: unknown,
@@ -113,12 +114,14 @@ export class MenuBehavior extends Behavior {
 		level?: number,
 	) {
 		const nextLevel = level === undefined ? 0 : level;
+		const gen = themeGeneration();
 		if (
 			title === this.title
 			&& hint === this.hint
 			&& mark === this.mark
 			&& nextLevel === this.level
 			&& sameLines(this.lines, lines)
+			&& gen === this.themeGen
 		)
 			return;
 		this.title = title;
@@ -126,6 +129,7 @@ export class MenuBehavior extends Behavior {
 		this.mark = mark;
 		this.level = nextLevel;
 		this.lines = lines;
+		this.themeGen = gen;
 		if (port && typeof port === "object" && "invalidate" in port && typeof port.invalidate === "function")
 			port.invalidate();
 	}
