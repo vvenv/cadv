@@ -3,6 +3,7 @@
 	Optional Glyph: empty text → large centered glyph;
 	short text + glyph → glyph+text cluster centered on the band;
 	overflowing text → small glyph pinned left, line scrolls in the rest.
+	Optional rightMark stays pinned on the right (clock battery, etc.).
 */
 
 import {} from "piu/MC";
@@ -42,10 +43,12 @@ export function setMarqueeText(
 	tailFace?: object,
 	mark?: Glyph,
 	level?: number,
+	rightMark?: Glyph,
+	rightLevel?: number,
 ) {
 	const b = asMarquee(target);
 	if (b)
-		b.setText(target as PortContent, value, face, color, tail, tailFace, mark, level);
+		b.setText(target as PortContent, value, face, color, tail, tailFace, mark, level, rightMark, rightLevel);
 }
 
 /** Flash a full-band glyph (clears the scrolling line). */
@@ -60,6 +63,8 @@ export class MarqueeBehavior extends Behavior {
 	tail = "";
 	mark: Glyph = "";
 	level = 0;
+	rightMark: Glyph = "";
+	rightLevel = 0;
 	textW = 0;
 	offset = 0;
 	dir = 1;
@@ -77,12 +82,16 @@ export class MarqueeBehavior extends Behavior {
 		tailFace?: object,
 		mark?: Glyph,
 		level?: number,
+		rightMark?: Glyph,
+		rightLevel?: number,
 	) {
 		const next = face ?? getMarqueeStyle();
 		const ink = color ? color : INK;
 		const nextTail = tail ? tail : "";
 		const nextMark = mark ? mark : "";
 		const nextLevel = level === undefined ? 0 : level;
+		const nextRight = rightMark ? rightMark : "";
+		const nextRightLevel = rightLevel === undefined ? 0 : rightLevel;
 		if (
 			text === this.string
 			&& next === this.fontFace
@@ -91,9 +100,12 @@ export class MarqueeBehavior extends Behavior {
 			&& tailFace === this.tailFace
 			&& nextMark === this.mark
 			&& nextLevel === this.level
+			&& nextRight === this.rightMark
+			&& nextRightLevel === this.rightLevel
 		)
 			return;
-		const bodyChanged = text !== this.string || next !== this.fontFace || nextMark !== this.mark;
+		const bodyChanged = text !== this.string || next !== this.fontFace || nextMark !== this.mark
+			|| nextRight !== this.rightMark;
 		this.string = text;
 		this.fontFace = next;
 		this.color = ink;
@@ -101,6 +113,8 @@ export class MarqueeBehavior extends Behavior {
 		this.tailFace = tailFace;
 		this.mark = nextMark;
 		this.level = nextLevel;
+		this.rightMark = nextRight;
+		this.rightLevel = nextRightLevel;
 		this.textW = text ? port.measureString(text, next).width : 0;
 		if (bodyChanged) {
 			this.offset = 0;
@@ -110,18 +124,34 @@ export class MarqueeBehavior extends Behavior {
 		port.invalidate();
 	}
 
+	glyphSide(port: PortContent, kind: Glyph): number {
+		if (!kind)
+			return 0;
+		if (kind === "progress")
+			return Math.min(port.width >> 1, 72);
+		const side = Math.min(port.height - MARK_PAD * 2, 22);
+		// Battery outline is wider than tall.
+		if (kind === "batt")
+			return Math.max(side, Math.floor(side * 1.35));
+		return side;
+	}
+
 	markReserve(port: PortContent): number {
 		if (!this.mark || !this.string)
 			return 0;
-		if (this.mark === "progress")
-			return Math.min(port.width >> 1, 72) + MARK_GAP;
-		const side = Math.min(port.height - MARK_PAD * 2, 22);
-		return side + MARK_GAP;
+		return this.glyphSide(port, this.mark) + MARK_GAP;
+	}
+
+	rightReserve(port: PortContent): number {
+		if (!this.rightMark)
+			return 0;
+		return this.glyphSide(port, this.rightMark) + MARK_GAP;
 	}
 
 	bodyWidth(port: PortContent): number {
 		const markW = this.markReserve(port);
-		let room = port.width - markW;
+		const rightW = this.rightReserve(port);
+		let room = port.width - markW - rightW;
 		if (this.tail && this.string) {
 			const face = this.tailFace ?? getMarqueeStyle();
 			const tailW = port.measureString(this.tail, face).width;
@@ -163,13 +193,13 @@ export class MarqueeBehavior extends Behavior {
 		port.invalidate();
 	}
 
-	paintMark(port: PortContent, cx: number, cy: number, size: number) {
-		if (this.mark === "progress") {
+	paintMark(port: PortContent, kind: Glyph, level: number, cx: number, cy: number, size: number) {
+		if (kind === "progress") {
 			const w = Math.max(24, size);
-			drawProgress(port, cx - (w >> 1), cy - 3, w, 6, this.level);
+			drawProgress(port, cx - (w >> 1), cy - 3, w, 6, level);
 			return;
 		}
-		drawGlyph(port, cx, cy, size, this.mark, this.level);
+		drawGlyph(port, cx, cy, size, kind, level);
 	}
 
 	onDraw(port: PortContent) {
@@ -179,12 +209,14 @@ export class MarqueeBehavior extends Behavior {
 		const text = this.string;
 		const tail = this.tail;
 		const mark = this.mark;
-		if (mark && !text && !tail) {
+		const rightMark = this.rightMark;
+		if (mark && !text && !tail && !rightMark) {
 			const size = Math.min(width, height) - MARK_PAD * 2;
-			this.paintMark(port, Math.floor(width / 2), Math.floor(height / 2), size);
+			this.paintMark(port, mark, this.level, Math.floor(width / 2), Math.floor(height / 2), size);
 			return;
 		}
 		const markW = this.markReserve(port);
+		const rightW = this.rightReserve(port);
 		const tailFace = this.tailFace ?? getMarqueeStyle();
 		const share = tail.length > 0 && text.length > 0;
 		let tailW = 0;
@@ -204,16 +236,24 @@ export class MarqueeBehavior extends Behavior {
 			textH = measured.height;
 		}
 		const maxScroll = text ? textW - bodyW : 0;
-		// Short line + glyph: center the glyph+text cluster on the full band
-		// (not only in the leftover body), so status like 正在连接 looks centered.
+		// Short line + left glyph: center the cluster in the band left of a fixed
+		// right mark (battery), so status like 正在连接 still looks centered.
 		const cluster = markW > 0 && text.length > 0 && maxScroll <= 0 && !share;
+		const usable = width - rightW;
 		const bodyX = cluster
-			? Math.floor((width - (markW + textW)) / 2) + markW
+			? Math.floor((usable - (markW + textW)) / 2) + markW
 			: markW;
 		if (mark && markW > 0) {
 			const side = markW - MARK_GAP;
 			const markLeft = cluster ? bodyX - markW : 0;
-			this.paintMark(port, markLeft + MARK_PAD + Math.floor(side / 2), Math.floor(height / 2), side);
+			this.paintMark(
+				port,
+				mark,
+				this.level,
+				markLeft + MARK_PAD + Math.floor(side / 2),
+				Math.floor(height / 2),
+				side,
+			);
 		}
 		if (text) {
 			const x = bodyX + (maxScroll <= 0
@@ -225,15 +265,26 @@ export class MarqueeBehavior extends Behavior {
 		}
 		if (share) {
 			const shareBodyX = markW;
-			const tailX = width - TAIL_PAD - tailW;
-			port.fillColor(BG, shareBodyX + bodyW, 0, width - (shareBodyX + bodyW), height);
+			const tailX = width - rightW - TAIL_PAD - tailW;
+			port.fillColor(BG, shareBodyX + bodyW, 0, width - rightW - (shareBodyX + bodyW), height);
 			const y = Math.max(0, Math.floor((height - tailH) / 2));
 			port.drawString(tail, tailFace, this.color, tailX, y, Math.max(tailW, 1));
 		}
 		else if (tail) {
-			const x = tailW >= width ? 0 : Math.floor((width - tailW) / 2);
+			const x = tailW >= usable ? 0 : Math.floor((usable - tailW) / 2);
 			const y = Math.max(0, Math.floor((height - tailH) / 2));
-			port.drawString(tail, tailFace, this.color, x, y, Math.max(tailW, width));
+			port.drawString(tail, tailFace, this.color, x, y, Math.max(tailW, usable));
+		}
+		if (rightMark && rightW > 0) {
+			const side = rightW - MARK_GAP;
+			this.paintMark(
+				port,
+				rightMark,
+				this.rightLevel,
+				width - MARK_PAD - Math.floor(side / 2),
+				Math.floor(height / 2),
+				side,
+			);
 		}
 	}
 }

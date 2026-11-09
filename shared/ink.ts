@@ -25,7 +25,7 @@ export const FONT_WORD = "bold 48px Word";
 
 /**
 	Shared status glyph. `level` meaning depends on kind:
-	batt/progress 0..100; bright 1..4; vol 0..10 (0 = mute look).
+	batt/progress 0..100 (batt drawn as 4 bars); bright 1..4; vol 0..10 (0 = mute look).
 */
 export type Glyph =
 	| ""

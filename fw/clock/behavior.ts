@@ -13,7 +13,7 @@ import { bootLauncher } from "boot";
 import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir, volumeDelta } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { menuItems } from "menu";
-import { connectAndSync, loadWifiCreds, saveWifiCreds, wifiRssi, type WifiCreds } from "netboot";
+import { connectAndSync, loadWifiCreds, saveWifiCreds, type WifiCreds } from "netboot";
 import { Power } from "power";
 import { acceptStroke, titleGlyph } from "session";
 import { openImu, type ImuHandle } from "imu";
@@ -26,6 +26,7 @@ import { formatAlarm, formatSettings, loadSettings, saveSettings, VOL_MAX, VOL_M
 import { fetchWeather, formatLunarWithWeather, weatherLabel, WEATHER_REFRESH_MS } from "weather";
 import { beijingParts, formatClockTop, formatHMS, formatLunar, formatNow, pad2, setManualClock, timeSynced } from "lunar";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
+import { batteryPercent } from "battery";
 import { ON, noteGlyph, type Glyph } from "ink";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 
@@ -86,7 +87,6 @@ export class AppBehavior extends Behavior {
 	cityHits: CityHit[] = [];
 	cityIndex = 0;
 	rotation = 0;
-	rssiText = "";
 	kbTimer: unknown = null;
 	labelTimer: unknown = null;
 	marqueeTimer: unknown = null;
@@ -221,16 +221,24 @@ export class AppBehavior extends Behavior {
 		const p = beijingParts();
 		const day = timeSynced() ? `${p.y}-${p.m}-${p.d}` : "unsynced";
 		const wx = weatherLabel() || "-";
-		return `${day}|${formatAlarm(this.settings)}|${wx}|${this.power?.short() ?? ""}|${this.rssiText}`;
+		const batt = this.power ? String(this.power.millivolts()) : "";
+		return `${day}|${formatAlarm(this.settings)}|${wx}|${batt}`;
 	}
 
 	paintClockLabels(app: AppHost) {
-		const rssi = wifiRssi();
-		this.rssiText = rssi === null ? "" : String(rssi);
-		const tail = [this.power?.short() ?? "", this.rssiText].filter(part => part.length > 0).join(" ");
-		this.setLabels(app, formatClockTop(this.settings, tail), formatLunarWithWeather(formatLunar()));
+		this.setLabels(app, formatClockTop(this.settings), formatLunarWithWeather(formatLunar()));
 		this.dateKey = this.clockLabelKey();
 		this.weatherKey = weatherLabel();
+	}
+
+	/** Right-pinned 4-bar battery when a cell is present. */
+	battMark(): { kind: Glyph; level: number } {
+		if (!this.power)
+			return { kind: "", level: 0 };
+		const pct = batteryPercent(this.power.millivolts());
+		if (pct === null)
+			return { kind: "", level: 0 };
+		return { kind: "batt", level: pct };
 	}
 
 	/** Clear status overlay / ensure 7-seg + date/lunar are showing. */
@@ -856,8 +864,21 @@ export class AppBehavior extends Behavior {
 	}
 
 	setLabels(app: AppHost, top: string, bottom: string, mark: Glyph = "", level?: number) {
-		const g = mark ? { kind: mark, level } : titleGlyph(this.power);
-		setMarqueeText(contentByName(app, "dateLabel"), top, undefined, undefined, undefined, undefined, g.kind, g.level);
+		// Status glyphs stay on the left; battery is always pinned top-right.
+		const left = mark ? { kind: mark, level } : { kind: "" as Glyph, level: undefined as number | undefined };
+		const batt = this.battMark();
+		setMarqueeText(
+			contentByName(app, "dateLabel"),
+			top,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			left.kind,
+			left.level,
+			batt.kind,
+			batt.level,
+		);
 		setMarqueeText(contentByName(app, "lunarLabel"), bottom);
 	}
 

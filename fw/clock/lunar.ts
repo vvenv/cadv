@@ -107,7 +107,7 @@ function formatDate(): string {
 	return `${p.y}-${pad2(p.m)}-${pad2(p.d)} ${WEEKDAYS_EN[p.w]}`;
 }
 
-/** Top line: date, armed alarms, then battery / signal. */
+/** Top line: date and armed alarms. Battery lives in the right-side glyph. */
 export function formatClockTop(s: ClockSettings, tail = ""): string {
 	const base = formatDate();
 	let shown = false;

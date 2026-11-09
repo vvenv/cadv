@@ -117,9 +117,9 @@ export function drawCross(port: PortContent, cx: number, cy: number, size: numbe
 	fillThickLine(port, cx + r, cy - r, cx - r, cy + r, t, color);
 }
 
-/** Battery outline + fill. `level` is 0..100. */
+/** Battery outline + 4 bars. `level` is 0..100 (coarse estimate → 0..4 cells). */
 export function drawBattery(port: PortContent, cx: number, cy: number, size: number, level = 50, color: string = ON) {
-	const w = Math.max(14, Math.floor(size * 1.2));
+	const w = Math.max(16, Math.floor(size * 1.35));
 	const h = Math.max(8, Math.floor(size * 0.55));
 	const x = cx - (w >> 1);
 	const y = cy - (h >> 1);
@@ -134,11 +134,16 @@ export function drawBattery(port: PortContent, cx: number, cy: number, size: num
 		pct = 0;
 	if (pct > 100)
 		pct = 100;
-	const inner = w - 4;
-	const fill = Math.max(pct > 0 ? 1 : 0, Math.floor(inner * pct / 100));
-	const fillColor = pct <= 15 ? RED : pct <= 30 ? AMBER : color;
-	if (fill > 0)
-		port.fillColor(fillColor, x + 2, y + 2, fill, h - 4);
+	const bars = pct <= 0 ? 0 : Math.min(4, Math.ceil(pct / 25));
+	const fillColor = bars <= 1 ? RED : bars <= 2 ? AMBER : color;
+	const innerH = h - 4;
+	const gap = 1;
+	const barW = Math.max(1, Math.floor((w - 4 - gap * 3) / 4));
+	for (let i = 0; i < 4; i++) {
+		if (i >= bars)
+			break;
+		port.fillColor(fillColor, x + 2 + i * (barW + gap), y + 2, barW, innerH);
+	}
 }
 
 /** Sun disk + up to 4 rays. `level` is 1..4. */

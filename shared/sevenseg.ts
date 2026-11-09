@@ -87,20 +87,28 @@ export class SevenSegBehavior extends Behavior {
 		}
 		port.fillColor(BG, 0, 0, port.width, port.height);
 		const text = this.string;
-		const digitH = Math.max(12, port.height - 6);
-		const n = text.length || 1;
-		const maxW = port.width - 8;
+		const digitH = Math.max(12, port.height - 4);
+		// Bleed a couple of pixels so the face kisses the edges without clipping.
+		const maxW = Math.max(8, port.width - 4);
 		let digitW = DIGIT_W;
 		let colonW = COLON_W;
-		let span = readoutSpan(text, digitW, colonW, GAP);
-		if (span > maxW) {
-			digitW = Math.floor((maxW - GAP * Math.max(0, n - 1)) / n);
-			if (digitW < 8)
-				digitW = 8;
+		let gap = GAP;
+		let span = readoutSpan(text, digitW, colonW, gap);
+		if (span > 0 && maxW > 0) {
+			const scale = maxW / span;
+			digitW = Math.max(8, Math.floor(DIGIT_W * scale));
 			colonW = Math.max(4, digitW >> 1);
-			span = readoutSpan(text, digitW, colonW, GAP);
+			gap = Math.max(2, Math.floor(digitW / 6));
+			span = readoutSpan(text, digitW, colonW, gap);
+			while (span > maxW && digitW > 8) {
+				digitW--;
+				colonW = Math.max(4, digitW >> 1);
+				gap = Math.max(2, Math.floor(digitW / 6));
+				span = readoutSpan(text, digitW, colonW, gap);
+			}
 		}
 		const x = Math.floor((port.width - span) / 2);
-		drawReadout(port, text, x, 2, digitW, digitH, colonW, GAP, this.blink);
+		const y = Math.max(0, Math.floor((port.height - digitH) / 2));
+		drawReadout(port, text, x, y, digitW, digitH, colonW, gap, this.blink);
 	}
 }
