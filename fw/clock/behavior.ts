@@ -154,7 +154,8 @@ export class AppBehavior extends Behavior {
 		this.kbTimer = Timer.repeat(() => this.onKeyboardTick(app), 25);
 		this.labelTimer = Timer.repeat(() => this.onClockTick(app), 250);
 		this.marqueeTimer = Timer.repeat(() => this.tickMarquees(app), MARQUEE_MS);
-		this.weatherTimer = Timer.repeat(() => this.refreshWeather(app, false), WEATHER_REFRESH_MS);
+		// Weather HTTP must not run until after net settles — fetching in the
+		// NTP done callback was aborting XS (RTC_SW_CPU_RST) in a reconnect loop.
 
 		this.flashStatus(app, `${this.kb.status} ${this.sound.status}`, formatSettings(this.settings));
 
@@ -169,10 +170,17 @@ export class AppBehavior extends Behavior {
 				this.kb.available ? "no WiFi" : this.kb.status,
 				this.kb.available ? "按 W 配网" : "no WiFi cfg",
 			);
-			this.refreshWeather(app, false);
-			// No Wi-Fi wait — IMU can come up after the first paint.
+			this.armWeather(app);
 			this.armImu();
 		}
+	}
+
+	/** Periodic weather only after the face is up; never from the NTP callback. */
+	armWeather(app: AppHost) {
+		if (this.weatherTimer)
+			return;
+		this.weatherTimer = Timer.repeat(() => this.refreshWeather(app, false), WEATHER_REFRESH_MS);
+		Timer.set(() => this.refreshWeather(app, true), 2000);
 	}
 
 	/**
@@ -183,10 +191,19 @@ export class AppBehavior extends Behavior {
 	armImu() {
 		if (this.imu)
 			return;
+		// openImu uses Timer.delay and can throw (NACK / 配置超时). An uncaught
+		// throw in this timer aborts XS → esp_restart → boot loops through
+		// 「正在连接」/「正在对时」forever.
 		Timer.set(() => {
-			if (!this.imu)
+			if (this.imu)
+				return;
+			try {
 				this.imu = openImu();
-		}, 1);
+			}
+			catch {
+				this.imu = null;
+			}
+		}, 50);
 	}
 
 	maybeBeep() {
@@ -763,13 +780,21 @@ export class AppBehavior extends Behavior {
 		this.statusUntil = 0;
 		this.paintNet(app, "正在连接");
 
+		let phase: "wifi" | "ntp" = "wifi";
 		connectAndSync(creds, (msg) => {
 			if (!this.spinning)
 				return;
-			const title = msg.indexOf("NTP") === 0 ? "正在对时" : "正在连接";
+			// Only move forward: never paint 「正在连接」 again after NTP starts.
+			if (msg.indexOf("NTP") === 0)
+				phase = "ntp";
+			else if (phase === "ntp")
+				return;
+			const title = phase === "ntp" ? "正在对时" : "正在连接";
 			this.spinTitle = title;
+			// Skip wifi glyph during spin — strokeDisk arcs blow the display list
+			// while sevenseg is already chasing every 250 ms.
 			if (this.mode === "busy")
-				this.setLabels(app, title, this.spinDetail, "wifi");
+				this.setLabels(app, title, this.spinDetail);
 		}, (ok, detail) => {
 			this.spinning = false;
 			this.busy = false;
@@ -778,12 +803,18 @@ export class AppBehavior extends Behavior {
 			this.statusUntil = 0;
 			this.showClock(app, true);
 			this.redrawClock(app);
-			if (!ok)
-				this.setLabels(app, detail, "", "bad");
-			else {
-				this.onClockTick(app);
-				this.refreshWeather(app, true);
+			try {
+				if (!ok)
+					this.setLabels(app, detail, "", "bad");
+				else
+					this.onClockTick(app);
 			}
+			catch {
+				try { this.setLabels(app, ok ? "已对时" : detail, ""); } catch { /* */ }
+			}
+			// Defer HTTP — doing Request in this callback reset the chip every time.
+			if (ok)
+				this.armWeather(app);
 			this.armImu();
 		});
 	}

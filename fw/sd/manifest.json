@@ -13,6 +13,8 @@
 			"./behavior",
 			"./catalog",
 			"./help",
+			"./view",
+			"./icons",
 			"../../shared/slot"
 		]
 	},
@@ -22,7 +24,9 @@
 		"slot",
 		"behavior",
 		"catalog",
-		"help"
+		"help",
+		"view",
+		"icons"
 	],
 	"platforms": {
 		"esp32": {

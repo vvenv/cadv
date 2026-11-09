@@ -7,7 +7,8 @@ export type HelpRow = { key: string; action: string };
 
 const LIST_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
-	{ key: "K/J", action: "上下" },
+	{ key: "K/J", action: "左右" },
+	{ key: "→", action: "下一个" },
 	{ key: "Enter", action: "再按载入" },
 	{ key: "超", action: "镜像写不进槽" },
 	{ key: "Fn+[/]", action: "暗/亮" },

@@ -11,6 +11,16 @@ import { MenuBehavior } from "menu-view";
 import { BG } from "ink";
 import { SevenSegBehavior } from "sevenseg";
 
+declare function trace(message: string): void;
+
+// Keep the VM up long enough to print why we were about to restart.
+(globalThis as { abort?: (msg: string, exception: { stack?: string }) => boolean }).abort = function (msg, exception) {
+	trace("ABORT " + msg + "\n");
+	if (exception && exception.stack)
+		trace(exception.stack + "\n");
+	return false;
+};
+
 const ClockApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),
 	Behavior: AppBehavior,
@@ -45,9 +55,11 @@ const ClockApplication = Application.template($ => ({
 	],
 }));
 
-// Port.fill queue the Piu command list (default 1024). HH:MM:SS + marquees overflow it.
+// Port fills queue Piu lists (default 1024). HH:MM:SS + marquees + wifi glyph
+// overflow 8192 → "display list overflowed" abort flood → stuck on 正在对时.
+// Match count/step (16384); clock has two marquees on top of the Casio face.
 export default new ClockApplication(null, {
-	displayListLength: 8192,
-	commandListLength: 16384,
+	displayListLength: 32768,
+	commandListLength: 32768,
 	touchCount: 0,
 });

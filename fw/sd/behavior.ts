@@ -1,6 +1,6 @@
 /*
-	Lists firmware images in cadv/. Enter twice writes the chosen image
-	into the other flash slot and reboots into it.
+	Lists firmware images in cadv/ as a horizontal icon grid.
+	Enter twice writes the chosen image into the other flash slot and reboots.
 */
 
 import {} from "piu/MC";
@@ -18,8 +18,9 @@ import { hostStroke } from "hostkey";
 import { isBack, isConfirm, isHelp, navDir } from "keys";
 import { MENU_VISIBLE, menuStep } from "list";
 import { asMenu } from "menu-view";
+import { asHome, type HomeTile } from "view";
 import { noteGlyph } from "ink";
-import { contentByName, type AppHost } from "ui";
+import { contentByName, setVisibleProp, type AppHost } from "ui";
 import type { File } from "embedded:storage/files";
 
 type Mode = "list" | "help" | "arm" | "load" | "recv";
@@ -54,12 +55,25 @@ function installNote(message: string): string {
 	return message;
 }
 
-function rowText(entry: SdEntry): string {
-	const big = entry.size > 0 && !fitsSlot(entry.size);
-	let text = (entry.error ? "!" : "") + (big ? "超 " : "") + entry.label;
-	if (text.length <= ROW_CHARS)
-		return text;
-	return "..." + text.slice(text.length - (ROW_CHARS - 3));
+function entryId(entry: SdEntry): string {
+	const path = entry.path;
+	if (path.length > 4 && path.endsWith(".bin"))
+		return path.slice(0, -4);
+	return path;
+}
+
+function homeTiles(entries: SdEntry[]): HomeTile[] {
+	const tiles: HomeTile[] = [];
+	for (let i = 0; i < entries.length; i++) {
+		const entry = entries[i];
+		tiles.push({
+			id: entryId(entry),
+			label: entry.label,
+			big: entry.size > 0 && !fitsSlot(entry.size),
+			bad: !!entry.error,
+		});
+	}
+	return tiles;
 }
 
 function wrapText(text: string, width: number): string[] {
@@ -259,7 +273,7 @@ export class AppBehavior extends Behavior {
 			this.startScan(app);
 			return;
 		}
-		const dir = navDir(stroke);
+		const dir = stroke.right ? 1 : navDir(stroke);
 		if (dir !== 0) {
 			const n = this.catalog.entries.length;
 			if (n > 0) {
@@ -448,21 +462,30 @@ export class AppBehavior extends Behavior {
 		return pos + " " + formatCount(entry.size) + free;
 	}
 
+	showHome(app: AppHost, on: boolean) {
+		setVisibleProp(contentByName(app, "homePort"), on);
+		setVisibleProp(contentByName(app, "listPort"), !on);
+	}
+
 	paint(app: AppHost) {
-		const port = contentByName(app, "listPort");
-		const view = asMenu(port);
-		if (!view)
+		const listPort = contentByName(app, "listPort");
+		const list = asMenu(listPort);
+		const homePort = contentByName(app, "homePort");
+		const home = asHome(homePort);
+		if (!list || !home)
 			return;
 		if (this.mode === "recv") {
+			this.showHome(app, false);
 			let text = this.linkName || "cadv";
 			if (text.length > ROW_CHARS)
 				text = "..." + text.slice(text.length - (ROW_CHARS - 3));
 			const recvTitle = this.note || "USB";
 			const recvG = noteGlyph(recvTitle).kind ? noteGlyph(recvTitle) : { kind: "usb" as const, level: undefined };
-			view.setList(port, recvTitle, [{ text, selected: true }], "", recvG.kind, recvG.level);
+			list.setList(listPort, recvTitle, [{ text, selected: true }], "", recvG.kind, recvG.level);
 			return;
 		}
 		if (this.mode === "help") {
+			this.showHome(app, false);
 			const page = helpFor();
 			const n = page.length;
 			const vis = MENU_VISIBLE;
@@ -479,33 +502,34 @@ export class AppBehavior extends Behavior {
 				if (row)
 					lines.push({ text: row.key, right: row.action, selected: false });
 			}
-			view.setList(port, `${helpTitle()} ${start + 1}/${n}`, lines, "");
+			list.setList(listPort, `${helpTitle()} ${start + 1}/${n}`, lines, "");
 			return;
 		}
 		const entries = this.catalog.entries;
 		if (this.scanning) {
-			view.setList(port, "扫描", [{ text: "读取目录", selected: false }], "");
+			this.showHome(app, false);
+			list.setList(listPort, "扫描", [{ text: "读取目录", selected: false }], "");
 			return;
 		}
 		if (this.catalog.error && entries.length === 0) {
+			this.showHome(app, false);
 			const lines = wrapText(this.catalog.error, ERROR_CHARS).map(text => ({ text, selected: false }));
-			view.setList(port, "无卡", lines, "", "sd");
+			list.setList(listPort, "无卡", lines, "", "sd");
 			return;
 		}
 		if (entries.length === 0) {
-			view.setList(port, "cadv 空", [{ text: "没有固件", selected: false }], "", "bad");
+			this.showHome(app, false);
+			list.setList(listPort, "cadv 空", [{ text: "没有固件", selected: false }], "", "bad");
 			return;
 		}
 		if (this.index < 0 || this.index >= entries.length)
 			this.index = 0;
-		const lines = [];
-		for (let i = 0; i < entries.length; i++)
-			lines.push({ text: rowText(entries[i]), selected: i === this.index });
+		this.showHome(app, true);
 		const head = this.heading();
 		const fromNote = noteGlyph(this.note);
 		const g = fromNote.kind
 			? fromNote
 			: (entries[this.index]?.error ? { kind: "bad" as const } : titleGlyph(this.power));
-		view.setList(port, head, lines, "", g.kind, g.level);
+		home.setHome(homePort, head, homeTiles(entries), this.index, g.kind, g.level);
 	}
 }

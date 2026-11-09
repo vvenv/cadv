@@ -2,7 +2,15 @@
 	Desktop stand-in. The USB link only exists on the device.
 */
 
-export function pollLink(): null {
+export interface LinkEvent {
+	phase: "recv" | "done" | "err";
+	name: string;
+	got: number;
+	total: number;
+	message: string;
+}
+
+export function pollLink(): LinkEvent | null {
 	return null;
 }
 

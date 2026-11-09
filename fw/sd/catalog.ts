@@ -1,7 +1,7 @@
 /*
 	Only the cadv/ directory on the card. The rest of a large card is never scanned.
 	*.bin there are firmware images. A sibling <id>.txt is the one-line label.
-	Known labels so the UI font includes them: 时钟 拼写
+	Known labels so the UI font includes them: 时钟 拼写 查词 键盘 水平 设备 优盘 录音 记事 计算 扫描 节拍 调音 计步 计数 钢琴
 */
 
 import Modules from "modules";

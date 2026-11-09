@@ -31,12 +31,17 @@ type NtpClient = {
 
 /** Prefer mainland DNS for NTP / HTTP name lookups on this device. */
 function preferChinaDns() {
-	const g = globalThis as {
-		device?: { network?: { dns?: { resolver?: { servers?: string[] } } } };
-	};
-	const resolver = g.device?.network?.dns?.resolver;
-	if (resolver)
-		resolver.servers = DNS_SERVERS.slice();
+	try {
+		const g = globalThis as {
+			device?: { network?: { dns?: { resolver?: { servers?: string[] } } } };
+		};
+		const resolver = g.device?.network?.dns?.resolver;
+		if (resolver)
+			resolver.servers = DNS_SERVERS.slice();
+	}
+	catch {
+		/* resolver may be frozen on some hosts */
+	}
 }
 
 /** RSSI of the association left open by connectWifi. Null when down. */
@@ -106,9 +111,21 @@ export function connectWifi(creds: WifiCreds, done: (ok: boolean, detail: string
 	};
 
 	try {
-		// Drop a previous association before opening a new monitor.
-		try { station?.close(); } catch { /* */ }
-		station = undefined;
+		// Reuse a live association. Closing + connect() while already joined
+		// makes ESP-IDF reconnect (disconnect→got-ip), which flaps the UI.
+		if (station) {
+			try {
+				if (station.connection >= 500) {
+					done(true, station.address ?? "ok");
+					return;
+				}
+			}
+			catch {
+				/* fall through and replace the monitor */
+			}
+			try { station.close(); } catch { /* */ }
+			station = undefined;
+		}
 
 		w = new WiFi({
 			onChanged(property) {
@@ -143,9 +160,12 @@ export function syncNtp(done: (ok: boolean, detail: string) => void) {
 	const root = config as Record<string, unknown>;
 	const sntp = cfgString(root, "sntp") || "ntp.aliyun.com";
 	// Mainland hosts first; pool.ntp.org is often slow or filtered in CN.
-	const servers = [sntp, "ntp.tencent.com", "ntp1.aliyun.com", "pool.ntp.org"];
+	const servers = [sntp, "ntp.tencent.com", "ntp1.aliyun.com"];
 	const g = globalThis as {
-		device?: { network?: { ntp?: { client?: NtpClient } } };
+		device?: {
+			io?: { UDP?: unknown };
+			network?: { ntp?: { client?: NtpClient } };
+		};
 	};
 	const client = g.device?.network?.ntp?.client;
 	if (!client?.io) {
@@ -164,14 +184,29 @@ export function syncNtp(done: (ok: boolean, detail: string) => void) {
 		if (timer !== undefined)
 			Timer.clear(timer);
 		try { ntp?.close(); } catch { /* */ }
-		done(ok, detail);
+		try { done(ok, detail); } catch { /* UI must not kill the net path */ }
 	};
 
 	try {
+		// config.js leaves socket.io as the string "UDP". Resolve the class so
+		// `new socket.io(...)` / DNS sends don't throw inside a timer (abort→reboot).
+		const UDP = g.device?.io?.UDP;
+		const socket = UDP ? { ...(client.socket ?? {}), io: UDP } : client.socket;
 		const dns = client.dns
-			? { ...client.dns, servers: DNS_SERVERS.slice() }
+			? {
+				...client.dns,
+				servers: DNS_SERVERS.slice(),
+				socket: UDP && client.dns.socket
+					? { ...client.dns.socket, io: UDP }
+					: client.dns.socket,
+			}
 			: undefined;
-		ntp = new client.io({ ...client, servers, ...(dns ? { dns } : {}) });
+		ntp = new client.io({
+			...client,
+			servers,
+			...(socket ? { socket } : {}),
+			...(dns ? { dns } : {}),
+		});
 	}
 	catch (e) {
 		finish(false, String(e));
@@ -180,20 +215,24 @@ export function syncNtp(done: (ok: boolean, detail: string) => void) {
 
 	timer = Timer.set(() => finish(false, "NTP timeout"), NTP_TIMEOUT_MS);
 
-	ntp.getTime((error, value) => {
-		if (error || value === undefined) {
-			finish(false, "NTP fail");
-			return;
-		}
-		try {
-			Time.set(value / 1000);
-		}
-		catch (e) {
-			finish(false, String(e));
-			return;
-		}
-		finish(true, String(Math.floor(value / 1000)));
-	});
+	try {
+		ntp.getTime((error, value) => {
+			try {
+				if (error || value === undefined || typeof value !== "number" || value !== value) {
+					finish(false, "NTP fail");
+					return;
+				}
+				Time.set(value / 1000);
+				finish(true, String(Math.floor(value / 1000)));
+			}
+			catch (e) {
+				finish(false, String(e));
+			}
+		});
+	}
+	catch (e) {
+		finish(false, String(e));
+	}
 }
 
 export function connectAndSync(

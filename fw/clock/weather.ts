@@ -146,45 +146,54 @@ export function fetchWeather(
 			Timer.clear(timer);
 		try { request?.close(); } catch { /* */ }
 		trace(`wx done ${ok} ${detail}\n`);
-		done?.(ok, detail);
+		try { done?.(ok, detail); } catch { /* */ }
 	};
 
-	try {
-		const opts: { host: string; path: string; response: typeof String; port?: number } = {
-			host,
-			path,
-			response: String,
-		};
-		if (port !== undefined)
-			opts.port = port;
-		request = new Request(opts);
-	}
-	catch (e) {
-		finish(false, String(e));
-		return;
-	}
+	// Defer construct so we never open a socket from inside another network
+	// callback (NTP done). That path was hard-resetting the chip.
+	Timer.set(() => {
+		if (finished)
+			return;
+		try {
+			const opts: { host: string; path: string; response: typeof String; port?: number } = {
+				host,
+				path,
+				response: String,
+			};
+			if (port !== undefined)
+				opts.port = port;
+			request = new Request(opts);
+			// Assign before any turn of the event loop can deliver socket msgs.
+			request.callback = function (message, value) {
+				try {
+					if (message === Request.error) {
+						finish(false, "http err");
+						return;
+					}
+					if (message === Request.status) {
+						trace(`wx status ${value}\n`);
+						return;
+					}
+					if (message !== Request.responseComplete)
+						return;
 
-	timer = Timer.set(() => finish(false, "timeout"), FETCH_TIMEOUT_MS);
-
-	request.callback = function (message, value) {
-		if (message === Request.error) {
-			finish(false, "http err");
-			return;
+					const body = typeof value === "string" ? value : "";
+					const snap = parseWeatherBody(body);
+					if (!snap) {
+						finish(false, "bad json");
+						return;
+					}
+					state.cached = snap;
+					finish(true, weatherLabel());
+				}
+				catch (e) {
+					finish(false, String(e));
+				}
+			};
+			timer = Timer.set(() => finish(false, "timeout"), FETCH_TIMEOUT_MS);
 		}
-		if (message === Request.status) {
-			trace(`wx status ${value}\n`);
-			return;
+		catch (e) {
+			finish(false, String(e));
 		}
-		if (message !== Request.responseComplete)
-			return;
-
-		const body = typeof value === "string" ? value : "";
-		const snap = parseWeatherBody(body);
-		if (!snap) {
-			finish(false, "bad json");
-			return;
-		}
-		state.cached = snap;
-		finish(true, weatherLabel());
-	};
+	}, 0);
 }
