@@ -8,8 +8,8 @@
 
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
-import { drawGlyph, drawProgress } from "draw";
-import { BG, FONT_UI, INK, type Glyph } from "ink";
+import { drawGlyph, drawProgress, glyphWidth } from "draw";
+import { BG, EDGE_PAD, FONT_UI, INK, type Glyph } from "ink";
 
 /** Lazily built — Moddable link rejects top-level `new Style` outside main. */
 let marqueeStyle: /* Style */ object | undefined;
@@ -23,8 +23,7 @@ const MARQUEE_HOLD_MS = 900;
 export const MARQUEE_MS = 50;
 const MARQUEE_PX = 1;
 const TAIL_GAP = 6;
-const TAIL_PAD = 4;
-const MARK_PAD = 4;
+const TAIL_PAD = EDGE_PAD;
 const MARK_GAP = 6;
 
 export function asMarquee(target: unknown): MarqueeBehavior | null {
@@ -124,28 +123,24 @@ export class MarqueeBehavior extends Behavior {
 		port.invalidate();
 	}
 
-	glyphSide(port: PortContent, kind: Glyph): number {
-		if (!kind)
-			return 0;
-		if (kind === "progress")
-			return Math.min(port.width >> 1, 72);
-		const side = Math.min(port.height - MARK_PAD * 2, 22);
-		// Battery outline is wider than tall.
-		if (kind === "batt")
-			return Math.max(side, Math.floor(side * 1.35));
-		return side;
+	markDrawSize(port: PortContent): number {
+		return Math.min(port.height - EDGE_PAD * 2, 22);
 	}
 
 	markReserve(port: PortContent): number {
 		if (!this.mark || !this.string)
 			return 0;
-		return this.glyphSide(port, this.mark) + MARK_GAP;
+		if (this.mark === "progress")
+			return Math.min(port.width >> 1, 72) + MARK_GAP;
+		return EDGE_PAD + glyphWidth(this.mark, this.markDrawSize(port)) + MARK_GAP;
 	}
 
 	rightReserve(port: PortContent): number {
 		if (!this.rightMark)
 			return 0;
-		return this.glyphSide(port, this.rightMark) + MARK_GAP;
+		if (this.rightMark === "progress")
+			return Math.min(port.width >> 1, 72) + MARK_GAP;
+		return EDGE_PAD + glyphWidth(this.rightMark, this.markDrawSize(port)) + MARK_GAP;
 	}
 
 	bodyWidth(port: PortContent): number {
@@ -211,12 +206,13 @@ export class MarqueeBehavior extends Behavior {
 		const mark = this.mark;
 		const rightMark = this.rightMark;
 		if (mark && !text && !tail && !rightMark) {
-			const size = Math.min(width, height) - MARK_PAD * 2;
+			const size = Math.min(width, height) - EDGE_PAD * 2;
 			this.paintMark(port, mark, this.level, Math.floor(width / 2), Math.floor(height / 2), size);
 			return;
 		}
 		const markW = this.markReserve(port);
 		const rightW = this.rightReserve(port);
+		const drawSize = this.markDrawSize(port);
 		const tailFace = this.tailFace ?? getMarqueeStyle();
 		const share = tail.length > 0 && text.length > 0;
 		let tailW = 0;
@@ -244,15 +240,15 @@ export class MarqueeBehavior extends Behavior {
 			? Math.floor((usable - (markW + textW)) / 2) + markW
 			: markW;
 		if (mark && markW > 0) {
-			const side = markW - MARK_GAP;
+			const iconW = glyphWidth(mark, drawSize);
 			const markLeft = cluster ? bodyX - markW : 0;
 			this.paintMark(
 				port,
 				mark,
 				this.level,
-				markLeft + MARK_PAD + Math.floor(side / 2),
+				markLeft + EDGE_PAD + (iconW >> 1),
 				Math.floor(height / 2),
-				side,
+				drawSize,
 			);
 		}
 		if (text) {
@@ -276,14 +272,15 @@ export class MarqueeBehavior extends Behavior {
 			port.drawString(tail, tailFace, this.color, x, y, Math.max(tailW, usable));
 		}
 		if (rightMark && rightW > 0) {
-			const side = rightW - MARK_GAP;
+			const iconW = glyphWidth(rightMark, drawSize);
+			// Pin the ink's right edge at width - EDGE_PAD (works for odd widths).
 			this.paintMark(
 				port,
 				rightMark,
 				this.rightLevel,
-				width - MARK_PAD - Math.floor(side / 2),
+				width - EDGE_PAD - iconW + (iconW >> 1),
 				Math.floor(height / 2),
-				side,
+				drawSize,
 			);
 		}
 	}

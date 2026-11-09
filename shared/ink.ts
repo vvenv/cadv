@@ -23,6 +23,9 @@ export const WELL = "#0E2C10";
 export const FONT_UI = "bold 20px UI";
 export const FONT_WORD = "bold 48px Word";
 
+/** Inset from the panel edge for status glyphs, labels, and chrome. */
+export const EDGE_PAD = 8;
+
 /**
 	Shared status glyph. `level` meaning depends on kind:
 	batt/progress 0..100 (batt drawn as 4 bars); bright 1..4; vol 0..10 (0 = mute look).

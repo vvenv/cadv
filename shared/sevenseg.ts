@@ -7,7 +7,7 @@
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { drawReadout, readoutSpan } from "draw";
-import { BG } from "ink";
+import { BG, EDGE_PAD } from "ink";
 
 /** Digit proportions inside the middle band (clock HH:MM:SS). */
 const DIGIT_W = 24;
@@ -88,8 +88,8 @@ export class SevenSegBehavior extends Behavior {
 		port.fillColor(BG, 0, 0, port.width, port.height);
 		const text = this.string;
 		const digitH = Math.max(12, port.height - 4);
-		// Bleed a couple of pixels so the face kisses the edges without clipping.
-		const maxW = Math.max(8, port.width - 4);
+		// Leave the shared screen inset so digits do not kiss the bezel.
+		const maxW = Math.max(8, port.width - EDGE_PAD * 2);
 		let digitW = DIGIT_W;
 		let colonW = COLON_W;
 		let gap = GAP;

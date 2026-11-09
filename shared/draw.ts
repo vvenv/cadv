@@ -117,18 +117,33 @@ export function drawCross(port: PortContent, cx: number, cy: number, size: numbe
 	fillThickLine(port, cx + r, cy - r, cx - r, cy + r, t, color);
 }
 
+/** Drawn width of a status glyph at `size` (battery includes the +2 tip). */
+export function glyphWidth(kind: Glyph, size: number): number {
+	if (!kind)
+		return 0;
+	if (kind === "progress")
+		return Math.max(24, Math.floor(size * 1.4));
+	if (kind === "batt") {
+		const body = Math.max(16, Math.floor(size * 1.35));
+		return body + 2;
+	}
+	return size < 12 ? 12 : size;
+}
+
 /** Battery outline + 4 bars. `level` is 0..100 (coarse estimate → 0..4 cells). */
 export function drawBattery(port: PortContent, cx: number, cy: number, size: number, level = 50, color: string = ON) {
 	const w = Math.max(16, Math.floor(size * 1.35));
+	const tipW = 2;
 	const h = Math.max(8, Math.floor(size * 0.55));
-	const x = cx - (w >> 1);
+	// Center on body + tip so glyphWidth() matches the ink bounds.
+	const x = cx - ((w + tipW) >> 1);
 	const y = cy - (h >> 1);
 	const tip = Math.max(2, Math.floor(h / 3));
 	port.fillColor(color, x, y, w, 1);
 	port.fillColor(color, x, y + h - 1, w, 1);
 	port.fillColor(color, x, y, 1, h);
 	port.fillColor(color, x + w - 1, y, 1, h);
-	port.fillColor(color, x + w, cy - (tip >> 1), 2, tip);
+	port.fillColor(color, x + w, cy - (tip >> 1), tipW, tip);
 	let pct = level | 0;
 	if (pct < 0)
 		pct = 0;

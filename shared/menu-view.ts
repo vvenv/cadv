@@ -11,7 +11,7 @@
 import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { drawGlyph, drawProgress } from "draw";
-import { BG, DIM, FONT_UI, INK, ON, type Glyph } from "ink";
+import { BG, DIM, EDGE_PAD, FONT_UI, INK, ON, type Glyph } from "ink";
 import { MENU_VISIBLE, ROW_PITCH, rowOrigin, rowTextY, windowStart } from "list";
 
 /**
@@ -29,7 +29,7 @@ export type MenuLine = {
 };
 
 const BAR_H = ROW_PITCH - 1;
-const PAD_X = 8;
+const PAD_X = EDGE_PAD;
 const GUTTER = 6;
 const INSET_X = 4;
 const TITLE_MARK = 18;
