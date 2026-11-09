@@ -10,6 +10,7 @@ const USB_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "退出前", action: "先弹出磁盘" },
 	{ key: "占卡", action: "勿同时开录音" },
 	{ key: "Fn+[/]", action: "暗/亮" },
+	{ key: "Fn+T", action: "主题" },
 	{ key: "BS", action: "关掉本页" },
 	{ key: "Fn+BS", action: "停盘回基座" },
 ], true);

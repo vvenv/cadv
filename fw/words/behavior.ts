@@ -22,6 +22,7 @@ import { ClockSound } from "sound";
 import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from "settings";
 import { asMarquee, MARQUEE_MS, setMarqueeMark, setMarqueeText } from "marquee";
 import { FONT_UI, FONT_WORD, ON, noteGlyph, type Glyph } from "ink";
+import { themeGeneration } from "theme";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
 import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, listWordSources, puzzleCorrect, quizOrder, renderPuzzle, selectWordSource, wordAt, wordCount, wordSourceId } from "words";
 import { SOURCE_FLASH } from "wordbank";
@@ -75,33 +76,44 @@ const WORD_HOLD_MS = 700;
 
 let valueStyleWord: object | undefined;
 let valueStyleFit: object | undefined;
+let valueStyleGen = -1;
+let phoneFaceStyle: object | undefined;
+let phoneFaceGen = -1;
+let glossFaceStyle: object | undefined;
+let glossFaceGen = -1;
+
+function refreshValueStyles(): void {
+	const gen = themeGeneration();
+	if (valueStyleGen === gen && valueStyleWord && valueStyleFit)
+		return;
+	valueStyleFit = new Style({ font: FONT_UI, color: ON, horizontal: "center", vertical: "middle" });
+	valueStyleWord = new Style({ font: FONT_WORD, color: ON, horizontal: "center", vertical: "middle" });
+	valueStyleGen = gen;
+}
 
 /** Bold 48px fits 7 letters in 240px. Longer headwords use 20px. */
 function puzzleStyle(letters: number): object {
-	if (letters > 7) {
-		if (!valueStyleFit)
-			valueStyleFit = new Style({ font: FONT_UI, color: ON, horizontal: "center", vertical: "middle" });
-		return valueStyleFit;
-	}
-	if (!valueStyleWord)
-		valueStyleWord = new Style({ font: FONT_WORD, color: ON, horizontal: "center", vertical: "middle" });
-	return valueStyleWord;
+	refreshValueStyles();
+	return letters > 7 ? valueStyleFit! : valueStyleWord!;
 }
-
-let phoneFaceStyle: object | undefined;
-let glossFaceStyle: object | undefined;
 
 /** Phonetic only. Arial Bold; Source Han has no IPA. */
 function phoneFace(): object {
-	if (!phoneFaceStyle)
+	const gen = themeGeneration();
+	if (!phoneFaceStyle || phoneFaceGen !== gen) {
 		phoneFaceStyle = new Style({ font: "bold 20px Ipa", color: ON, horizontal: "left", vertical: "middle" });
+		phoneFaceGen = gen;
+	}
 	return phoneFaceStyle;
 }
 
 /** Top-line gloss. Same UI face, bright ink for the taller band. */
 function glossFace(): object {
-	if (!glossFaceStyle)
+	const gen = themeGeneration();
+	if (!glossFaceStyle || glossFaceGen !== gen) {
 		glossFaceStyle = new Style({ font: FONT_UI, color: ON, horizontal: "left", vertical: "middle" });
+		glossFaceGen = gen;
+	}
 	return glossFaceStyle;
 }
 

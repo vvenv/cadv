@@ -7,6 +7,7 @@ import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { drawGlyph, drawProgress, fillDisk, strokeDisk } from "draw";
 import { BG, FONT_UI, INK, MID, ON, type Glyph } from "ink";
+import { themeGeneration } from "theme";
 
 const TITLE_MARK = 18;
 const TITLE_MARK_GAP = 6;
@@ -24,9 +25,13 @@ export function gainLabel(gain: Gain): string {
 }
 
 let face: /* Style */ object | undefined;
+let faceGen = -1;
 function style(): /* Style */ any {
-	if (!face)
+	const gen = themeGeneration();
+	if (!face || faceGen !== gen) {
 		face = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "top" });
+		faceGen = gen;
+	}
 	return face;
 }
 

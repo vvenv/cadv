@@ -9,6 +9,7 @@ import type { Port as PortContent } from "piu/MC";
 import { drawGlyph, drawProgress, fillDisk } from "draw";
 import { BG, FONT_UI, INK, ON, RED, type Glyph } from "ink";
 import { ROW_LEAD, ROW_PITCH, rowOrigin, rowTextY } from "list";
+import { themeGeneration } from "theme";
 import { drawFwIcon } from "icons";
 
 /** First index of the page that contains `selected`. */
@@ -42,9 +43,13 @@ const ICON = 28;
 const NAME_MAX = 4;
 
 let face: /* Style */ object | undefined;
+let faceGen = -1;
 function style(): /* Style */ any {
-	if (!face)
+	const gen = themeGeneration();
+	if (!face || faceGen !== gen) {
 		face = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "top" });
+		faceGen = gen;
+	}
 	return face;
 }
 

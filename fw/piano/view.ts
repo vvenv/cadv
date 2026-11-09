@@ -8,6 +8,7 @@ import type { Port as PortContent } from "piu/MC";
 import { drawGlyph } from "draw";
 import { BG, FONT_UI, INK, MID, ON, WELL } from "ink";
 import { rowOrigin, rowTextY, ROW_PITCH } from "list";
+import { themeGeneration } from "theme";
 
 const WHITES = Object.freeze([0, 2, 4, 5, 7, 9, 11]);
 const BLACKS = Object.freeze([
@@ -19,9 +20,13 @@ const BLACKS = Object.freeze([
 ], true);
 
 let face: /* Style */ object | undefined;
+let faceGen = -1;
 function style(): /* Style */ any {
-	if (!face)
+	const gen = themeGeneration();
+	if (!face || faceGen !== gen) {
 		face = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "top" });
+		faceGen = gen;
+	}
 	return face;
 }
 

@@ -217,6 +217,9 @@ export class AppBehavior extends Behavior {
 			this.pollEar(app);
 		const raw = this.kb?.poll() ?? null;
 		const stroke = this.power ? acceptStroke(this.power, raw, true) : raw;
+		const note = this.power?.takeNote() ?? "";
+		if (note)
+			this.paint(app);
 		if (stroke)
 			this.handleStroke(app, stroke);
 		else if (this.mode === "run" && this.sense === "ear" && this.armed)
@@ -253,6 +256,9 @@ export class AppBehavior extends Behavior {
 		}
 		const stroke = hostStroke(key);
 		const use = this.power ? acceptStroke(this.power, stroke, true) : stroke;
+		const note = this.power?.takeNote() ?? "";
+		if (note)
+			this.paint(content as AppHost);
 		if (use)
 			this.handleStroke(content as AppHost, use);
 	}

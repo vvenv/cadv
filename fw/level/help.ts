@@ -10,6 +10,7 @@ const LEVEL_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "R", action: "清除置零" },
 	{ key: "P", action: "清除峰值" },
 	{ key: "Fn+[/]", action: "暗/亮" },
+	{ key: "Fn+T", action: "主题" },
 	{ key: "M", action: "开关告警" },
 	{ key: "-/=", action: "小声/大声" },
 	{ key: "不平", action: "滴声加快" },

@@ -8,6 +8,7 @@ import type { Port as PortContent } from "piu/MC";
 import { drawGlyph } from "draw";
 import { BG, FONT_UI, INK, ON, type Glyph } from "ink";
 import { rowOrigin, rowTextY, ROW_PITCH } from "list";
+import { themeGeneration } from "theme";
 
 const PAD_X = 2;
 const TITLE_MARK = 18;
@@ -16,9 +17,13 @@ const ROW_GLYPH = 16;
 const ROW_GLYPH_GAP = 6;
 
 let face: /* Style */ object | undefined;
+let faceGen = -1;
 function style(): /* Style */ any {
-	if (!face)
+	const gen = themeGeneration();
+	if (!face || faceGen !== gen) {
 		face = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "top" });
+		faceGen = gen;
+	}
 	return face;
 }
 

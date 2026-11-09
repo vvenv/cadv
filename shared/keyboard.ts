@@ -80,6 +80,8 @@ export type KeyStroke = {
 	fn: boolean;
 	/** Fn+[ dims, Fn+] brightens. */
 	bright: -1 | 0 | 1;
+	/** Fn+T cycles the firmware theme. T alone stays a letter. */
+	theme: boolean;
 	/** Fn+Q. The note app draws a short QR. Q alone stays a letter. */
 	qr: boolean;
 };
@@ -281,6 +283,7 @@ export class CardputerKeyboard {
 		let left = false;
 		let right = false;
 		let bright: -1 | 0 | 1 = 0;
+		let theme = false;
 		let qr = false;
 		const fn = mods.has(KEY_FN);
 		const ctrl = mods.has(KEY_LEFT_CTRL);
@@ -326,6 +329,10 @@ export class CardputerKeyboard {
 				bright = 1;
 				continue;
 			}
+			if (fn && code === "t") {
+				theme = true;
+				continue;
+			}
 			if (fn && code === "q") {
 				qr = true;
 				continue;
@@ -334,7 +341,7 @@ export class CardputerKeyboard {
 				continue;
 			chars.push(shift ? String(cell.b) : String(cell.a));
 		}
-		return { chars, enter, del, shift, esc, up, down, left, right, fn, bright, qr };
+		return { chars, enter, del, shift, esc, up, down, left, right, fn, bright, theme, qr };
 	}
 
 	#captureHeld(): HeldState {

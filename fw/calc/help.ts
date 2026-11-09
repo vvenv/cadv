@@ -18,6 +18,7 @@ const ROWS: readonly HelpRow[] = Object.freeze([
 	{ key: "Esc", action: "清除并回十进制" },
 	{ key: "K/J", action: "帮助里上下" },
 	{ key: "Fn+[/]", action: "暗/亮" },
+	{ key: "Fn+T", action: "主题" },
 	{ key: "Fn+BS", action: "回选应用" },
 ], true);
 

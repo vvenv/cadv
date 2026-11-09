@@ -9,6 +9,7 @@
 			"./keys",
 			"./ui",
 			"./ink",
+			"./theme",
 			"./hostkey",
 			"./volume",
 			"./session",
@@ -24,6 +25,7 @@
 		"keys",
 		"ui",
 		"ink",
+		"theme",
 		"hostkey",
 		"volume",
 		"session",
@@ -154,6 +156,9 @@
 			}
 		},
 		"...": {
+			"include": [
+				"$(MODULES)/files/preference"
+			],
 			"modules": {
 				"keyboard": "./keyboard_stub",
 				"sound": "./sound_stub",

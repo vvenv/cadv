@@ -9,7 +9,10 @@ import { AppBehavior } from "behavior";
 import { MarqueeBehavior } from "marquee";
 import { MenuBehavior } from "menu-view";
 import { BG } from "ink";
+import { bindFwTheme } from "theme";
 import { SevenSegBehavior } from "sevenseg";
+
+bindFwTheme("clock");
 
 declare function trace(message: string): void;
 

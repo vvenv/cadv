@@ -30,6 +30,7 @@ import { asMenu } from "menu-view";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { Power } from "power";
 import { openRadio, type KeyboardRadio, type LinkState } from "radio";
+import { cycleFwTheme, themeLabel } from "theme";
 
 type Mode = "type" | "help";
 
@@ -47,6 +48,16 @@ function brightDir(held: HeldState): -1 | 0 | 1 {
 			return 1;
 	}
 	return 0;
+}
+
+function themeHeld(held: HeldState): boolean {
+	if (!held.fn)
+		return false;
+	for (let i = 0; i < held.keys.length; i++) {
+		if (held.keys[i].code === "t")
+			return true;
+	}
+	return false;
 }
 
 function zeroReport(): Uint8Array {
@@ -150,6 +161,14 @@ export class AppBehavior extends Behavior {
 				this.flashUntil = Date.now() + 700;
 				this.paint(app);
 			}
+			return;
+		}
+		if (themeHeld(curr) && !themeHeld(prev)) {
+			const id = cycleFwTheme("kb");
+			const note = this.power?.tell("主题 " + themeLabel(id)) ?? ("主题 " + themeLabel(id));
+			this.flash = note;
+			this.flashUntil = Date.now() + 700;
+			this.paint(app);
 			return;
 		}
 		const action = localAction(prev, curr);

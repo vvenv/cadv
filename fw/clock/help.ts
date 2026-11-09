@@ -23,6 +23,7 @@ const CLOCK_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "详情+T", action: "再刷新" },
 	{ key: "详情+BS", action: "回时钟" },
 	{ key: "Fn+[/]", action: "暗/亮" },
+	{ key: "Fn+T", action: "主题" },
 	{ key: "Fn+BS", action: "回选应用" },
 ], true);
 

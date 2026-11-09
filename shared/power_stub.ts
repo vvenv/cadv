@@ -50,6 +50,11 @@ export class Power {
 		return this.#note;
 	}
 
+	tell(note: string): string {
+		this.#note = note;
+		return this.#note;
+	}
+
 	takeNote(): string {
 		const note = this.#note;
 		this.#note = "";

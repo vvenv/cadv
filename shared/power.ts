@@ -131,6 +131,12 @@ export class Power {
 		return this.#note;
 	}
 
+	/** Queue a short status flash (theme name, etc.). */
+	tell(note: string): string {
+		this.#note = note;
+		return this.#note;
+	}
+
 	takeNote(): string {
 		const note = this.#note;
 		this.#note = "";

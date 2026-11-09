@@ -10,12 +10,17 @@ import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { drawGlyph, drawProgress, glyphWidth } from "draw";
 import { BG, EDGE_PAD, FONT_UI, INK, type Glyph } from "ink";
+import { themeGeneration } from "theme";
 
 /** Lazily built — Moddable link rejects top-level `new Style` outside main. */
 let marqueeStyle: /* Style */ object | undefined;
+let marqueeStyleGen = -1;
 function getMarqueeStyle(): /* Style */ any {
-	if (!marqueeStyle)
+	const gen = themeGeneration();
+	if (!marqueeStyle || marqueeStyleGen !== gen) {
 		marqueeStyle = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "middle" });
+		marqueeStyleGen = gen;
+	}
 	return marqueeStyle;
 }
 
@@ -69,6 +74,8 @@ export class MarqueeBehavior extends Behavior {
 	dir = 1;
 	holdUntil = 0;
 	color = INK;
+	/** True when the caller passed an explicit color (survives theme changes). */
+	colorFixed = false;
 	fontFace: object | undefined;
 	tailFace: object | undefined;
 
@@ -85,6 +92,7 @@ export class MarqueeBehavior extends Behavior {
 		rightLevel?: number,
 	) {
 		const next = face ?? getMarqueeStyle();
+		const fixed = !!color;
 		const ink = color ? color : INK;
 		const nextTail = tail ? tail : "";
 		const nextMark = mark ? mark : "";
@@ -95,6 +103,7 @@ export class MarqueeBehavior extends Behavior {
 			text === this.string
 			&& next === this.fontFace
 			&& ink === this.color
+			&& fixed === this.colorFixed
 			&& nextTail === this.tail
 			&& tailFace === this.tailFace
 			&& nextMark === this.mark
@@ -108,6 +117,7 @@ export class MarqueeBehavior extends Behavior {
 		this.string = text;
 		this.fontFace = next;
 		this.color = ink;
+		this.colorFixed = fixed;
 		this.tail = nextTail;
 		this.tailFace = tailFace;
 		this.mark = nextMark;
@@ -251,25 +261,26 @@ export class MarqueeBehavior extends Behavior {
 				drawSize,
 			);
 		}
+		const ink = this.colorFixed ? this.color : INK;
 		if (text) {
 			const x = bodyX + (maxScroll <= 0
 				? (cluster ? 0 : Math.floor((bodyW - textW) / 2))
 				: -Math.floor(this.offset));
 			const y = Math.max(0, Math.floor((height - textH) / 2));
 			const drawW = Math.max(textW, bodyW);
-			port.drawString(text, face, this.color, x, y, drawW);
+			port.drawString(text, face, ink, x, y, drawW);
 		}
 		if (share) {
 			const shareBodyX = markW;
 			const tailX = width - rightW - TAIL_PAD - tailW;
 			port.fillColor(BG, shareBodyX + bodyW, 0, width - rightW - (shareBodyX + bodyW), height);
 			const y = Math.max(0, Math.floor((height - tailH) / 2));
-			port.drawString(tail, tailFace, this.color, tailX, y, Math.max(tailW, 1));
+			port.drawString(tail, tailFace, ink, tailX, y, Math.max(tailW, 1));
 		}
 		else if (tail) {
 			const x = tailW >= usable ? 0 : Math.floor((usable - tailW) / 2);
 			const y = Math.max(0, Math.floor((height - tailH) / 2));
-			port.drawString(tail, tailFace, this.color, x, y, Math.max(tailW, usable));
+			port.drawString(tail, tailFace, ink, x, y, Math.max(tailW, usable));
 		}
 		if (rightMark && rightW > 0) {
 			const iconW = glyphWidth(rightMark, drawSize);

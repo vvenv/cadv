@@ -1,24 +1,48 @@
 /*
-	Phosphor colors and face names shared by every firmware.
+	Palette slots and face names shared by every firmware.
+	Default is phosphor; shared/theme mutates these at runtime per firmware.
 
 	Status glyphs: prefer drawGlyph over bare Chinese / English status words.
 	OK → green check, BAD → red cross; battery / brightness / volume / link / media
 	use the matching Glyph.
 */
 
-export const BG = "black";
-export const INK = "white";
-export const ON = "#39FF14";
+export type Palette = {
+	BG: string;
+	INK: string;
+	ON: string;
+	RED: string;
+	DIM: string;
+	MID: string;
+	AMBER: string;
+	WELL: string;
+};
+
+export let BG = "black";
+export let INK = "white";
+export let ON = "#39FF14";
 /** Fail / reject. Pair with drawCross. */
-export const RED = "#FF2A2A";
+export let RED = "#FF2A2A";
 /** Unlit 7-segment ghosts. Too dark for text. */
-export const DIM = "#143214";
+export let DIM = "#143214";
 /** Vial rings and ticks. Visible, quieter than ON. */
-export const MID = "#208F18";
+export let MID = "#208F18";
 /** Off-pitch, hot meter, tilted bubble. */
-export const AMBER = "#FFB000";
+export let AMBER = "#FFB000";
 /** Vial liquid and unpressed key faces. */
-export const WELL = "#0E2C10";
+export let WELL = "#0E2C10";
+
+/** Rewrite every palette slot (theme presets). */
+export function setPalette(p: Palette): void {
+	BG = p.BG;
+	INK = p.INK;
+	ON = p.ON;
+	RED = p.RED;
+	DIM = p.DIM;
+	MID = p.MID;
+	AMBER = p.AMBER;
+	WELL = p.WELL;
+}
 
 export const FONT_UI = "bold 20px UI";
 export const FONT_WORD = "bold 48px Word";
@@ -67,6 +91,8 @@ export function noteGlyph(note: string): GlyphSpec {
 		const n = parseInt(note.slice(3), 10);
 		return { kind: "bright", level: n === n && n > 0 ? n : 1 };
 	}
+	if (note.indexOf("主题 ") === 0)
+		return { kind: "ok" };
 	if (note.indexOf("音量 ") === 0) {
 		const n = parseInt(note.slice(3), 10);
 		return { kind: n === 0 ? "mute" : "vol", level: n === n ? n : 0 };

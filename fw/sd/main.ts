@@ -7,6 +7,9 @@ import { AppBehavior } from "behavior";
 import { MenuBehavior } from "menu-view";
 import { HomeBehavior } from "view";
 import { BG } from "ink";
+import { bindFwTheme } from "theme";
+
+bindFwTheme("sd");
 
 const SdApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

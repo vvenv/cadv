@@ -18,6 +18,7 @@ const PLAY_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "错题", action: "列表里只练错的" },
 	{ key: "-/=", action: "小声/大声" },
 	{ key: "Fn+[/]", action: "暗/亮" },
+	{ key: "Fn+T", action: "主题" },
 	{ key: "Fn+BS", action: "回选应用" },
 ], true);
 

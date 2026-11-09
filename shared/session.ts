@@ -7,9 +7,10 @@ import type { KeyStroke } from "keyboard";
 import type { Power } from "power";
 import { batteryLow, batteryPercent } from "battery";
 import { type GlyphSpec, noteGlyph } from "ink";
+import { boundFirmware, cycleFwTheme, themeLabel } from "theme";
 
 /**
-	Idle check plus brightness. Returns the stroke the app should handle.
+	Idle check plus brightness and theme. Returns the stroke the app should handle.
 	A key that only wakes a blank or dimmed panel is consumed.
 */
 export function acceptStroke(power: Power, stroke: KeyStroke | null, swallowWake = true): KeyStroke | null {
@@ -18,6 +19,12 @@ export function acceptStroke(power: Power, stroke: KeyStroke | null, swallowWake
 		return null;
 	if (stroke.bright) {
 		power.bump(stroke.bright);
+		power.activity();
+		return null;
+	}
+	if (stroke.theme) {
+		const id = cycleFwTheme(boundFirmware());
+		power.tell("主题 " + themeLabel(id));
 		power.activity();
 		return null;
 	}

@@ -7,7 +7,10 @@ import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { MarqueeBehavior } from "marquee";
 import { BG, FONT_UI, ON } from "ink";
+import { bindFwTheme } from "theme";
 import { MenuBehavior } from "menu-view";
+
+bindFwTheme("dict");
 
 const DictApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

@@ -7,11 +7,16 @@ import {} from "piu/MC";
 import type { Port as PortContent } from "piu/MC";
 import { AMBER, BG, FONT_UI, INK, MID, ON } from "ink";
 import { rowTextY } from "list";
+import { themeGeneration } from "theme";
 
 let face: /* Style */ object | undefined;
+let faceGen = -1;
 function style(): /* Style */ any {
-	if (!face)
+	const gen = themeGeneration();
+	if (!face || faceGen !== gen) {
 		face = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "top" });
+		faceGen = gen;
+	}
 	return face;
 }
 

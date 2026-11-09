@@ -6,7 +6,10 @@ import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { MarqueeBehavior } from "marquee";
 import { BG, FONT_WORD, ON } from "ink";
+import { bindFwTheme } from "theme";
 import { MenuBehavior } from "menu-view";
+
+bindFwTheme("words");
 
 const WordApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

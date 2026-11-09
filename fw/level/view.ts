@@ -8,6 +8,7 @@ import type { Port as PortContent } from "piu/MC";
 import { drawCheck, fillDisk, strokeDisk } from "draw";
 import { AMBER, BG, FONT_UI, INK, MID, ON, WELL } from "ink";
 import { ROW_LEAD, ROW_PITCH, rowOrigin, rowTextY } from "list";
+import { themeGeneration } from "theme";
 
 export type LevelMode = "flat" | "edgeY" | "edgeX" | "none";
 
@@ -28,9 +29,13 @@ const TOLERANCE = 0.5;
 const MAX_DEG = 12;
 
 let faceStyle: /* Style */ object | undefined;
+let faceGen = -1;
 function style(): /* Style */ any {
-	if (!faceStyle)
+	const gen = themeGeneration();
+	if (!faceStyle || faceGen !== gen) {
 		faceStyle = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "top" });
+		faceGen = gen;
+	}
 	return faceStyle;
 }
 

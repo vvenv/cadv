@@ -11,7 +11,7 @@ import { bootLauncher } from "boot";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
-import { INK } from "ink";
+import { FONT_UI, INK, ON } from "ink";
 import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir } from "keys";
 import { lexCount, lexGloss, lexLower, lexPhone, lexPrefixEnd, lexWord } from "lex";
 import { MENU_VISIBLE, menuStep } from "list";
@@ -19,6 +19,7 @@ import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
 import { asMenu } from "menu-view";
 import { Power } from "power";
 import { acceptStroke } from "session";
+import { themeGeneration } from "theme";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
 
 type Mode = "look" | "help";
@@ -42,11 +43,30 @@ function listDir(stroke: KeyStroke): -1 | 0 | 1 {
 }
 
 let phoneFaceStyle: object | undefined;
+let phoneFaceGen = -1;
+let wordFaceStyle: object | undefined;
+let wordFaceGen = -1;
 
 function phoneFace(): object {
-	if (!phoneFaceStyle)
+	const gen = themeGeneration();
+	if (!phoneFaceStyle || phoneFaceGen !== gen) {
 		phoneFaceStyle = new Style({ font: "bold 20px Ipa", color: INK, horizontal: "left", vertical: "middle" });
+		phoneFaceGen = gen;
+	}
 	return phoneFaceStyle;
+}
+
+function wordFace(): object {
+	const gen = themeGeneration();
+	if (!wordFaceStyle || wordFaceGen !== gen) {
+		wordFaceStyle = new Style({ font: FONT_UI, color: ON, horizontal: "center", vertical: "middle" });
+		wordFaceGen = gen;
+	}
+	return wordFaceStyle;
+}
+
+function hasStyle(target: unknown): target is { style: object } {
+	return !!target && typeof target === "object" && "style" in target;
 }
 
 export class AppBehavior extends Behavior {
@@ -227,7 +247,10 @@ export class AppBehavior extends Behavior {
 		else if (n > 0)
 			base = (this.query || "查词") + " " + (this.cursor - this.lo + 1) + "/" + n;
 		setMarqueeText(contentByName(app, "queryLabel"), base);
-		setStringProp(contentByName(app, "wordLabel"), word);
+		const wordLabel = contentByName(app, "wordLabel");
+		if (hasStyle(wordLabel))
+			wordLabel.style = wordFace();
+		setStringProp(wordLabel, word);
 		setMarqueeText(contentByName(app, "glossLabel"), gloss);
 		setMarqueeText(contentByName(app, "phoneLabel"), phone, phone ? phoneFace() : undefined);
 	}

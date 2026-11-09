@@ -8,6 +8,7 @@ const ROWS: readonly HelpRow[] = Object.freeze([
 	{ key: "Fn+Q", action: "短文本二维码" },
 	{ key: "BS", action: "保存并返回" },
 	{ key: "Fn+[/]", action: "暗/亮" },
+	{ key: "Fn+T", action: "主题" },
 	{ key: "Fn+BS", action: "回选应用" },
 ], true);
 

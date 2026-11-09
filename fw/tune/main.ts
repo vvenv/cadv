@@ -1,8 +1,11 @@
 import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { BG } from "ink";
+import { bindFwTheme } from "theme";
 import { MenuBehavior } from "menu-view";
 import { TuneBehavior } from "view";
+
+bindFwTheme("tune");
 
 const TuneApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

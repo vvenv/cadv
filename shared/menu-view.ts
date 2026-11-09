@@ -13,6 +13,7 @@ import type { Port as PortContent } from "piu/MC";
 import { drawGlyph, drawProgress } from "draw";
 import { BG, DIM, EDGE_PAD, FONT_UI, INK, ON, type Glyph } from "ink";
 import { MENU_VISIBLE, ROW_PITCH, rowOrigin, rowTextY, windowStart } from "list";
+import { themeGeneration } from "theme";
 
 /**
 	`right` draws flush-right (help: key left, action right).
@@ -38,9 +39,13 @@ const ROW_GLYPH = 16;
 const ROW_GLYPH_GAP = 6;
 
 let menuStyle: /* Style */ object | undefined;
+let menuStyleGen = -1;
 function getMenuStyle(): /* Style */ any {
-	if (!menuStyle)
+	const gen = themeGeneration();
+	if (!menuStyle || menuStyleGen !== gen) {
 		menuStyle = new Style({ font: FONT_UI, color: INK, horizontal: "left", vertical: "top" });
+		menuStyleGen = gen;
+	}
 	return menuStyle;
 }
 
