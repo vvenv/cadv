@@ -5,8 +5,8 @@
 		"$(MODDABLE)/examples/manifest_piu.json",
 		"../../shared/manifest.json"
 	],
-	"modules": { "*": ["./main", "./behavior", "./synth", "./help"] },
-	"preload": ["behavior", "synth", "help"],
+	"modules": { "*": ["./main", "./behavior", "./synth", "./help", "./pcm"] },
+	"preload": ["behavior", "synth", "help", "pcm"],
 	"platforms": {
 		"esp32": {},
 		"mac": { "modules": { "pins/audioout": "../../shared/audioout_stub" } },
