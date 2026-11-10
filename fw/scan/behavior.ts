@@ -52,8 +52,6 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 		if (stroke)
 			this.handleStroke(app, stroke);
-		else if (this.mode === "list")
-			this.paint(app);
 	}
 
 	onKeyDown(content: unknown, key: string) {

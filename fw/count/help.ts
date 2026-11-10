@@ -7,7 +7,7 @@ const ROWS: readonly HelpRow[] = Object.freeze([
 	{ key: "Enter", action: "加 / 开听" },
 	{ key: "BS", action: "− 减" },
 	{ key: "K/J", action: "步长灯" },
-	{ key: "R", action: "清零" },
+	{ key: "R R", action: "清零(按两次)" },
 	{ key: "-/=", action: "音量" },
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "Fn+T", action: "主题" },

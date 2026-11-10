@@ -118,6 +118,10 @@ function readKbConfig(): KbConfig | null {
 	return { sda: o.sda, scl: o.scl, address: o.address };
 }
 
+function isModifier(code: string | number): boolean {
+	return code === KEY_FN || code === KEY_LEFT_SHIFT || code === KEY_LEFT_CTRL || code === KEY_LEFT_ALT || code === KEY_OPT;
+}
+
 function pointKey(x: number, y: number): string {
 	return `${x},${y}`;
 }
@@ -125,7 +129,8 @@ function pointKey(x: number, y: number): string {
 export class CardputerKeyboard {
 	#bus: SMBus | undefined;
 	#pressed = new Map<string, { x: number; y: number }>();
-	#lastSig = "";
+	/** Keys down at the previous poll(); a stroke carries only keys not in here. */
+	#prevDown = new Set<string>();
 	#heldSig = "";
 	#lastHeld: HeldState = HELD_EMPTY;
 	#ok = false;
@@ -177,11 +182,24 @@ export class CardputerKeyboard {
 		catch {
 			return null;
 		}
-		const sig = [...this.#pressed.keys()].sort().join("|");
-		if (sig === this.#lastSig)
+		/*
+			One stroke per key press. Building from every key still down made
+			rollover typing repeat letters (press b while a is down -> "a","b";
+			release a -> "b" again) and re-sent Enter. Releases and lone
+			modifiers produce nothing; modifiers still come from the full set.
+		*/
+		const fresh: { x: number; y: number }[] = [];
+		for (const [key, at] of this.#pressed) {
+			if (this.#prevDown.has(key))
+				continue;
+			const cell = KEY_MAP[at.y]?.[at.x];
+			if (cell && !isModifier(cell.a))
+				fresh.push(at);
+		}
+		this.#prevDown = new Set(this.#pressed.keys());
+		if (!fresh.length)
 			return null;
-		this.#lastSig = sig;
-		return this.#buildStroke();
+		return this.#buildStroke(fresh);
 	}
 
 	/**
@@ -260,7 +278,7 @@ export class CardputerKeyboard {
 		bus.writeUint8(REG_INT_STAT, 0x03);
 	}
 
-	#buildStroke(): KeyStroke {
+	#buildStroke(fresh: { x: number; y: number }[]): KeyStroke {
 		let shift = false;
 		const mods = new Set<number>();
 		for (const { x, y } of this.#pressed.values()) {
@@ -287,7 +305,7 @@ export class CardputerKeyboard {
 		let qr = false;
 		const fn = mods.has(KEY_FN);
 		const ctrl = mods.has(KEY_LEFT_CTRL);
-		for (const { x, y } of this.#pressed.values()) {
+		for (const { x, y } of fresh) {
 			const cell = KEY_MAP[y]?.[x];
 			if (!cell)
 				continue;

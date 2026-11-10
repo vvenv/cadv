@@ -477,10 +477,18 @@ function isQuestion(stroke: KeyStroke): boolean {
 	return false;
 }
 
+/*
+	Integer part for hex. `n | 0` wrapped at 2^31: FFFFFFFF showed -0x1.
+	Entry allows 12 hex digits (2^48), well inside the exact range.
+*/
+function hexInt(n: number): number {
+	return Math.trunc(n);
+}
+
 function hexDigits(n: number): string {
-	if (n !== n || n === Infinity || n === -Infinity)
+	if (n !== n || n === Infinity || n === -Infinity || Math.abs(n) > Number.MAX_SAFE_INTEGER)
 		return "0";
-	const i = n | 0;
+	const i = hexInt(n);
 	const body = Math.abs(i).toString(16);
 	return i < 0 ? "-" + body : body;
 }
@@ -488,9 +496,9 @@ function hexDigits(n: number): string {
 function hexText(n: number): string {
 	if (n !== n)
 		return "不能除";
-	if (n === Infinity || n === -Infinity)
+	if (n === Infinity || n === -Infinity || Math.abs(n) > 0xffffffffffff)
 		return "太大";
-	const i = n | 0;
+	const i = hexInt(n);
 	const body = Math.abs(i).toString(16).toUpperCase();
 	return i < 0 ? "-0x" + body : "0x" + body;
 }

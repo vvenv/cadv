@@ -137,6 +137,8 @@ export class AppBehavior extends Behavior {
 	pickIndex = 0;
 	helpIndex = 0;
 	note = "";
+	/** First R arms the reset; a second R clears the count. Other keys disarm. */
+	resetArmed = false;
 	hostEnterDown = false;
 
 	onDisplaying(content: unknown) {
@@ -378,8 +380,17 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 
+		const wantsReset = stroke.chars.some(ch => ch === "r" || ch === "R");
+		if (!wantsReset)
+			this.resetArmed = false;
 		for (const ch of stroke.chars) {
 			if (ch === "r" || ch === "R") {
+				if (!this.resetArmed) {
+					this.resetArmed = true;
+					this.paint(app);
+					return;
+				}
+				this.resetArmed = false;
 				this.count = 0;
 				this.pulse(app, 2);
 				if (this.sense === "hand")
@@ -472,7 +483,7 @@ export class AppBehavior extends Behavior {
 		setVisibleProp(titlePort, true);
 		setVisibleProp(face, true);
 		setVisibleProp(footer, true);
-		const heading = this.sense === "ear" ? "听声" : "计数";
+		const heading = this.resetArmed ? "再按R清零" : (this.sense === "ear" ? "听声" : "计数");
 		const status =
 			this.flash > 0 && this.flash !== 2
 				? { kind: "ok" as const }

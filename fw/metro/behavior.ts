@@ -108,8 +108,11 @@ export class AppBehavior extends Behavior {
 			if (this.on)
 				this.arm();
 		}
-		if (stroke.chars.some(ch => ch === "b" || ch === "B"))
+		if (stroke.chars.some(ch => ch === "b" || ch === "B")) {
 			this.beats = this.beats >= 6 ? 2 : this.beats + 1;
+			if (this.beat >= this.beats)
+				this.beat = 0;
+		}
 		if (isConfirm(stroke)) {
 			this.on = !this.on;
 			if (this.on)

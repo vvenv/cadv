@@ -3,8 +3,10 @@
 	so lazy Styles rebuild. Preference key is Preference.get(fw, "theme").
 */
 
+import {} from "piu/MC";
 import Preference from "preference";
 import {
+	BG,
 	setPalette,
 	type Palette,
 } from "ink";
@@ -162,5 +164,22 @@ export function cycleFwTheme(fw?: string): ThemeId {
 	if (name)
 		saveTheme(name, next.id);
 	applyTheme(next.id);
+	syncAppSkin();
 	return next.id;
+}
+
+/*
+	Every main.ts builds the application Skin once from BG. Ports repaint
+	with the new palette, but bare Labels sit on that Skin, so swap it too;
+	otherwise Fn+T leaves the old background until a reboot.
+*/
+function syncAppSkin(): void {
+	try {
+		const app = (globalThis as { application?: { skin: unknown } }).application;
+		if (app)
+			app.skin = new Skin({ fill: BG });
+	}
+	catch {
+		/* no application yet (link time) */
+	}
 }

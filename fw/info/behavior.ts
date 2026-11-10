@@ -45,6 +45,8 @@ function errorText(e: unknown): string {
 	return "读取失败";
 }
 
+const SD_REFRESH_MS = 30_000;
+
 export class AppBehavior extends Behavior {
 	mode: Mode = "info";
 	kb: CardputerKeyboard | null = null;
@@ -62,6 +64,7 @@ export class AppBehavior extends Behavior {
 	note = "";
 	noteUntil = 0;
 	hostEnterDown = false;
+	sdAt = 0;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
@@ -75,12 +78,20 @@ export class AppBehavior extends Behavior {
 		this.paint(app);
 	}
 
+	/*
+		statvfs on FAT counts free clusters, which can walk the whole FAT on a
+		large card. The per-second refresh skips it; R and every 30 s redo it.
+	*/
 	reload(mark: boolean) {
 		try {
 			this.snap = readBoard();
-			const space = cardSpace();
-			this.sdFree = space ? space.free : -1;
-			this.sdTotal = space ? space.total : -1;
+			const now = Date.now();
+			if (mark || !this.sdAt || now - this.sdAt >= SD_REFRESH_MS) {
+				this.sdAt = now;
+				const space = cardSpace();
+				this.sdFree = space ? space.free : -1;
+				this.sdTotal = space ? space.total : -1;
+			}
 			this.error = "";
 			if (mark) {
 				this.note = "已刷新";

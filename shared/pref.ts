@@ -103,6 +103,13 @@ export function pref(domain: string): Pref {
 			each action, and every Preference.set is an NVS write + commit.
 		*/
 		set(name, value) {
+			/*
+				ESP32 Preference stores i32 only and throws "float unsupported"
+				for any non-integer number (the simulator accepts it). Keep
+				fractions as strings; getFloat / getNum parse them back.
+			*/
+			if (typeof value === "number" && !Number.isInteger(value))
+				value = String(value);
 			try {
 				if (Preference.get(domain, name) === value)
 					return;

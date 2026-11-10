@@ -26,6 +26,8 @@ export class AppBehavior extends Behavior {
 	mic: MicFeed | null = null;
 	kbTimer: ReturnType<typeof Timer.repeat> | null = null;
 	buf = new Int16Array(N);
+	/** buf in time order; the ring's write point would splice the waveform. */
+	lin = new Int16Array(N);
 	filled = 0;
 	name = "听";
 	cents: number | null = null;
@@ -69,7 +71,10 @@ export class AppBehavior extends Behavior {
 	}
 
 	measure() {
-		const freq = fundamental(this.buf, RATE);
+		const at = this.filled % N;
+		this.lin.set(this.buf.subarray(at), 0);
+		this.lin.set(this.buf.subarray(0, at), N - at);
+		const freq = fundamental(this.lin, RATE);
 		const note = noteName(freq);
 		if (!note) {
 			this.name = "无声";
