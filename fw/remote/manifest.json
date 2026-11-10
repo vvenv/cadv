@@ -1,0 +1,19 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json"
+	],
+	"modules": { "*": ["./main", "./behavior", "./view", "./codes", "./help"] },
+	"preload": ["behavior", "view", "codes", "help", "ir"],
+	"platforms": {
+		"esp32": {
+			"modules": { "ir": "./ir" },
+			"dependency": [{ "idf": "esp_driver_rmt" }]
+		},
+		"mac": { "modules": { "ir": "./ir_stub" } },
+		"lin": { "modules": { "ir": "./ir_stub" } },
+		"...": { "modules": { "ir": "./ir_stub" } }
+	}
+}

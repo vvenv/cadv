@@ -6,7 +6,7 @@
 import { batteryLow, batteryShort } from "battery";
 
 export type IdleKind = "dim" | "blank";
-export type LampMark = "off" | "rec" | "scan";
+export type LampMark = "off" | "rec" | "scan" | "flash";
 
 const IDLE_MS = 30_000;
 const FAKE_MV = 3900;

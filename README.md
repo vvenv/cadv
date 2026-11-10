@@ -58,6 +58,7 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 - 多数界面：`BS` / `Esc` / `←` 返回，`Enter` / 空格确认，`?`（Shift+/）帮助，`-` `=` 音量
 - 上下移动：`K`/`J`，或照键帽上印的箭头按 `;`（↑）`.`（↓）；网格里 `,`（←）`/`（→）左右移动
 - `Fn`+`H`/`J`/`K`/`L` 当作 ←↓↑→
+- 打字、摩斯这类每个字母都是输入的程序，用 **Tab** 切换模式
 
 ## 现在有哪些程序
 
@@ -80,6 +81,13 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 | `fw/step` | 计步 | BMI270 计步 |
 | `fw/count` | 计数 | 手动或听响声计数 |
 | `fw/piano` | 钢琴 | 键盘弹一个八度 |
+| `fw/remote` | 遥控 | 红外发射管当电视遥控（三星、LG、索尼、飞利浦） |
+| `fw/type` | 打字 | 打字练习，算速度、正确率和易错键 |
+| `fw/morse` | 摩斯 | 发报，或按 Koch 法练抄收；喇叭和板载灯同步 |
+| `fw/dice` | 骰子 | 摇一摇掷骰子、抛硬币、抽 1–100 |
+| `fw/db` | 分贝 | 麦克风测声级，带走势图（未校准，可手调） |
+| `fw/game` | 游戏 | 贪吃蛇、2048、方块 |
+| `fw/noise` | 助眠 | 白噪音、粉红、褐噪音、雨声、海浪，带定时 |
 
 每个目录里通常有自己的 `README.md`。
 

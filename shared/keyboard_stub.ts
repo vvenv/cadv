@@ -19,6 +19,7 @@ export type KeyStroke = {
 	theme: boolean;
 	/** Fn+Q. Desktop keys never set this. */
 	qr: boolean;
+	tab: boolean;
 };
 
 export type HeldState = {

@@ -17,8 +17,11 @@ import Timer from "timer";
 import { batteryLow, batteryShort } from "battery";
 import { Lamp } from "lamp";
 
-/** App status. "off" falls back to amber when the cell is low and the rail is on. */
-export type LampMark = "off" | "rec" | "scan";
+/**
+	App status. "off" falls back to amber when the cell is low and the rail is on.
+	"flash" is a short white pulse: a Morse key-down or an IR send.
+*/
+export type LampMark = "off" | "rec" | "scan" | "flash";
 
 const PREF = "power";
 const LEVELS = Object.freeze([180, 420, 720, 1023]);
@@ -93,7 +96,7 @@ export class Power {
 		this.#paintLamp();
 	}
 
-	/** Recording is red, a running scan is blue. "off" returns to the low-battery amber. */
+	/** Recording is red, a running scan is blue, flash is white. "off" returns to the low-battery amber. */
 	lamp(mark: LampMark) {
 		if (mark === this.#mark)
 			return;
@@ -207,6 +210,8 @@ export class Power {
 				key = 1;
 			else if (this.#mark === "scan")
 				key = 2;
+			else if (this.#mark === "flash")
+				key = 4;
 			else if (batteryLow(this.#mv))
 				key = 3;
 		}
@@ -219,6 +224,8 @@ export class Power {
 			lamp.show(0, 40, 255, force);
 		else if (key === 3)
 			lamp.show(255, 80, 0, force);
+		else if (key === 4)
+			lamp.show(255, 255, 255, force);
 		else
 			lamp.show(0, 0, 0, force);
 	}

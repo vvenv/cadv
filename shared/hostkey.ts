@@ -9,14 +9,17 @@ function stroke(
 	down: boolean,
 	left: boolean,
 	right: boolean,
+	tab = false,
 ): KeyStroke {
-	return { chars, enter, del, shift: false, esc, up, down, left, right, fn: false, bright: 0, theme: false, qr: false };
+	return { chars, enter, del, shift: false, esc, up, down, left, right, fn: false, bright: 0, theme: false, qr: false, tab };
 }
 
 /** Desktop simulator keys. Hardware polling owns the keypad when it is up. */
 export function hostStroke(key: string): KeyStroke | null {
 	if (key === "\r" || key === "\n")
 		return stroke([], true, false, false, false, false, false, false);
+	if (key === "\t")
+		return stroke([], false, false, false, false, false, false, false, true);
 	if (key === "\u001b")
 		return stroke([], false, false, true, false, false, false, false);
 	if (key === "\u007f" || key === "\b")

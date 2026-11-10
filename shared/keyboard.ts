@@ -27,6 +27,7 @@ const REG_GPIO_INT_EN_3 = 0x1c;
 
 const KEY_BACKSPACE = 0x2a;
 const KEY_ENTER = 0x28;
+const KEY_TAB = 0x2b;
 const KEY_FN = 0xff;
 const KEY_OPT = 0x00;
 const KEY_LEFT_CTRL = 0x80;
@@ -43,7 +44,7 @@ const KEY_MAP: KeyCell[][] = Object.freeze([
 		{ a: "=", b: "+" }, { a: KEY_BACKSPACE, b: KEY_BACKSPACE },
 	],
 	[
-		{ a: 0x2b, b: 0x2b }, { a: "q", b: "Q" }, { a: "w", b: "W" }, { a: "e", b: "E" },
+		{ a: KEY_TAB, b: KEY_TAB }, { a: "q", b: "Q" }, { a: "w", b: "W" }, { a: "e", b: "E" },
 		{ a: "r", b: "R" }, { a: "t", b: "T" }, { a: "y", b: "Y" }, { a: "u", b: "U" },
 		{ a: "i", b: "I" }, { a: "o", b: "O" }, { a: "p", b: "P" }, { a: "[", b: "{" },
 		{ a: "]", b: "}" }, { a: "\\", b: "|" },
@@ -84,6 +85,8 @@ export type KeyStroke = {
 	theme: boolean;
 	/** Fn+Q. The note app draws a short QR. Q alone stays a letter. */
 	qr: boolean;
+	/** Tab. Typing apps use it to switch modes, since every letter is input. */
+	tab: boolean;
 };
 
 /** Physical keys currently down. Modifiers are flags, not entries in `keys`. */
@@ -303,6 +306,7 @@ export class CardputerKeyboard {
 		let bright: -1 | 0 | 1 = 0;
 		let theme = false;
 		let qr = false;
+		let tab = false;
 		const fn = mods.has(KEY_FN);
 		const ctrl = mods.has(KEY_LEFT_CTRL);
 		for (const { x, y } of fresh) {
@@ -315,6 +319,8 @@ export class CardputerKeyboard {
 					enter = true;
 				else if (code === KEY_BACKSPACE)
 					del = true;
+				else if (code === KEY_TAB && !fn)
+					tab = true;
 				continue;
 			}
 			// Esc: Fn+` (silk Esc) or Ctrl+[
@@ -359,7 +365,7 @@ export class CardputerKeyboard {
 				continue;
 			chars.push(shift ? String(cell.b) : String(cell.a));
 		}
-		return { chars, enter, del, shift, esc, up, down, left, right, fn, bright, theme, qr };
+		return { chars, enter, del, shift, esc, up, down, left, right, fn, bright, theme, qr, tab };
 	}
 
 	#captureHeld(): HeldState {

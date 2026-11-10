@@ -15,6 +15,9 @@
 	fw/kb is the exception: it forwards keys over BLE and only keeps
 	Fn+BS (launcher), Fn+Space (help), and Fn+Tab (forget bonds) local.
 
+	Tab switches modes in apps where every letter is input (type, morse)
+	and changes the brand in the remote; KeyStroke.tab carries it.
+
 	Wi-Fi fields keep Space as a character; Enter still confirms.
 	In a field, BS deletes first. Esc and ← leave the page.
 	Calc keeps / as divide, = as equals, and - as minus. ? still opens help.

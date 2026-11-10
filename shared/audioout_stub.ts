@@ -2,6 +2,7 @@
 	Desktop stand-in for pins/audioout (the ESP32 I2S mixer). The simulator
 	has no speaker: sound_stub's writeCodec() already reports 「无喇叭」
 	before playback gets here, and opening one throws into the same path.
+	Shared by rec and noise.
 */
 
 export default class AudioOut {
@@ -10,6 +11,7 @@ export default class AudioOut {
 	static Volume = 4;
 	static RawSamples = 5;
 	static Tone = 6;
+	static Silence = 7;
 
 	callback: () => void = () => {};
 

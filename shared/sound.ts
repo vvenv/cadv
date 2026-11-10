@@ -89,6 +89,7 @@ export function writeCodec(mic: boolean): boolean {
 	return withCodec(bus => writeTable(bus, mic ? ES8311_MIC : ES8311_ON));
 }
 
+/** hz <= 0 is a rest. AudioOut queues at most 8 elements per stream. */
 type Tone = { hz: number; ms: number };
 
 function readI2cPins(): { sda: number; scl: number } | null {
@@ -227,7 +228,10 @@ export class ClockSound {
 			audio.enqueue(0, AudioOut.Volume, audioVolume(this.#level));
 			for (const t of tones) {
 				const samples = Math.max(1, Math.floor((SAMPLE_RATE * t.ms) / 1000));
-				audio.enqueue(0, AudioOut.Tone, t.hz, samples);
+				if (t.hz > 0)
+					audio.enqueue(0, AudioOut.Tone, t.hz, samples);
+				else
+					audio.enqueue(0, AudioOut.Silence, samples);
 			}
 			audio.start();
 		}

@@ -1,0 +1,16 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json"
+	],
+	"modules": { "*": ["./main", "./behavior", "./synth", "./help"] },
+	"preload": ["behavior", "synth", "help"],
+	"platforms": {
+		"esp32": {},
+		"mac": { "modules": { "pins/audioout": "../../shared/audioout_stub" } },
+		"lin": { "modules": { "pins/audioout": "../../shared/audioout_stub" } },
+		"...": { "modules": { "pins/audioout": "../../shared/audioout_stub" } }
+	}
+}
