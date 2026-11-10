@@ -34,6 +34,8 @@ export type HomeTile = {
 };
 
 const COLS = 4;
+/** Columns in the grid; the behavior steps rows by this. */
+export const HOME_COLS = COLS;
 const ROWS = 2;
 const VISIBLE = COLS * ROWS;
 const PAD_X = 4;

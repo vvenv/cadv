@@ -1,9 +1,13 @@
 /*
 	Lists firmware images in cadv/ as a horizontal icon grid.
-	Enter twice writes the chosen image into the other flash slot and reboots.
+	Enter writes the chosen image into the other flash slot and reboots;
+	BS while the bar is filling cancels. The last app loaded is selected
+	again on the next visit. Arrows move in the grid; a letter jumps to the
+	next app whose id starts with it (H/J/K/L stay movement keys).
 */
 
 import {} from "piu/MC";
+import Preference from "preference";
 import Timer from "timer";
 import { openInstaller, type Installer } from "boot";
 import { loadCatalog, openRead, type SdCatalog, type SdEntry } from "catalog";
@@ -15,16 +19,65 @@ import { pollLink, setLinkBusy, type LinkEvent } from "link";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
-import { isBack, isConfirm, isHelp, navDir } from "keys";
+import { isBack, isConfirm, isHelp, navDir, sideDir } from "keys";
 import { clampHelpIndex, helpList } from "help-ui";
 import { menuStep } from "list";
 import { asMenu } from "menu-view";
-import { asHome, type HomeTile } from "view";
+import { asHome, HOME_COLS, type HomeTile } from "view";
 import { noteGlyph } from "ink";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import type { File } from "embedded:storage/files";
 
-type Mode = "list" | "help" | "arm" | "load" | "recv";
+type Mode = "list" | "help" | "load" | "recv";
+
+const PREF = "sd";
+const PREF_LAST = "last";
+
+function loadLast(): string {
+	try {
+		const v = Preference.get(PREF, PREF_LAST);
+		return typeof v === "string" ? v : "";
+	}
+	catch {
+		return "";
+	}
+}
+
+function saveLast(id: string) {
+	try {
+		if (loadLast() !== id)
+			Preference.set(PREF, PREF_LAST, id);
+	}
+	catch {
+		/* */
+	}
+}
+
+/** Grid move: ←/→ step one tile (wrapping), ↑/↓ step one row (clamped to the ends). */
+function gridStep(index: number, count: number, dx: -1 | 0 | 1, dy: -1 | 0 | 1): number {
+	if (count <= 0)
+		return 0;
+	if (dx !== 0)
+		return menuStep(index, count, dx);
+	if (dy === 0)
+		return index;
+	const n = index + dy * HOME_COLS;
+	if (n < 0)
+		return index === 0 ? count - 1 : 0;
+	if (n >= count)
+		return index === count - 1 ? 0 : count - 1;
+	return n;
+}
+
+/** Lowercase a-z typed in this stroke, except the H/J/K/L movement keys. */
+function jumpLetter(stroke: KeyStroke): string {
+	for (let i = 0; i < stroke.chars.length; i++) {
+		const c = stroke.chars[i].toLowerCase();
+		if (c >= "a" && c <= "z" && c !== "h" && c !== "j" && c !== "k" && c !== "l")
+			return c;
+	}
+	return "";
+}
 
 const ROW_CHARS = 18;
 const ERROR_CHARS = 16;
@@ -239,6 +292,16 @@ export class AppBehavior extends Behavior {
 		const space = cardSpace();
 		this.freeBytes = space ? space.free : -1;
 		this.index = 0;
+		const last = loadLast();
+		if (last) {
+			const entries = this.catalog.entries;
+			for (let i = 0; i < entries.length; i++) {
+				if (entryId(entries[i]) === last) {
+					this.index = i;
+					break;
+				}
+			}
+		}
 		this.scanning = false;
 		this.paint(app);
 		if (!this.rescan || this.mode === "load")
@@ -248,8 +311,13 @@ export class AppBehavior extends Behavior {
 	}
 
 	handleStroke(app: AppHost, stroke: KeyStroke) {
-		if (this.scanning || this.mode === "load")
+		if (this.scanning)
 			return;
+		if (this.mode === "load") {
+			if (isBack(stroke))
+				this.cancelLoad(app);
+			return;
+		}
 		if (this.mode === "recv") {
 			if (isBack(stroke)) {
 				this.mode = "list";
@@ -274,29 +342,54 @@ export class AppBehavior extends Behavior {
 				this.stepHelp(app, dir);
 			return;
 		}
-		if (isBack(stroke)) {
-			if (this.mode === "arm") {
-				this.mode = "list";
-				this.note = "";
-				this.paint(app);
-				return;
-			}
+		// ← moves in the grid here, so only BS / Esc rescan.
+		if (stroke.del || stroke.esc) {
 			this.startScan(app);
 			return;
 		}
-		const dir = stroke.right ? 1 : navDir(stroke);
-		if (dir !== 0) {
-			const n = this.catalog.entries.length;
-			if (n > 0) {
-				this.mode = "list";
-				this.note = "";
-				this.index = menuStep(this.index, n, dir);
-				this.paint(app);
-			}
+		const n = this.catalog.entries.length;
+		const dx = sideDir(stroke);
+		const dy = dx === 0 ? navDir(stroke) : 0;
+		if (dx !== 0 || dy !== 0) {
+			if (n > 0)
+				this.select(app, gridStep(this.index, n, dx, dy));
 			return;
 		}
-		if (isConfirm(stroke))
+		if (isConfirm(stroke)) {
 			this.confirm(app);
+			return;
+		}
+		const letter = jumpLetter(stroke);
+		if (letter && n > 0) {
+			const entries = this.catalog.entries;
+			for (let k = 1; k <= n; k++) {
+				const i = (this.index + k) % n;
+				if (entryId(entries[i]).toLowerCase().charAt(0) === letter) {
+					this.select(app, i);
+					return;
+				}
+			}
+		}
+	}
+
+	select(app: AppHost, index: number) {
+		this.mode = "list";
+		this.note = "";
+		this.index = index;
+		this.paint(app);
+	}
+
+	/** BS while the bar fills. Too late once the last chunk is written. */
+	cancelLoad(app: AppHost) {
+		if (!this.installer || this.offset >= this.loadSize)
+			return;
+		setLinkBusy(false);
+		try { this.installer.abort(); } catch { /* */ }
+		this.installer = null;
+		this.closeFile();
+		this.mode = "list";
+		this.note = "已取消";
+		this.paint(app);
 	}
 
 	stepHelp(app: AppHost, dir: -1 | 1) {
@@ -322,12 +415,7 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 			return;
 		}
-		if (this.mode !== "arm") {
-			this.mode = "arm";
-			this.note = "再按载入";
-			this.paint(app);
-			return;
-		}
+		saveLast(entryId(entry));
 		this.beginLoad(app, entry);
 	}
 
@@ -365,6 +453,8 @@ export class AppBehavior extends Behavior {
 	}
 
 	loadChunk(app: AppHost) {
+		if (this.mode !== "load")
+			return; // cancelled while this chunk was queued
 		const file = this.file;
 		const installer = this.installer;
 		if (!file || !installer) {

@@ -83,6 +83,8 @@ export type GlyphSpec = { kind: Glyph; level?: number };
 /**
 	Map a short status note to a glyph. Progress / neutral notes may still
 	carry a level (brightness, volume, load percent).
+	Fallback only: new call sites should pass the Glyph alongside the text
+	(e.g. clock flashStatus(..., mark)) so rewording a note cannot drop its icon.
 */
 export function noteGlyph(note: string): GlyphSpec {
 	if (!note)
@@ -97,10 +99,6 @@ export function noteGlyph(note: string): GlyphSpec {
 		const n = parseInt(note.slice(3), 10);
 		return { kind: n === 0 ? "mute" : "vol", level: n === n ? n : 0 };
 	}
-	if (note.indexOf("Vol ") === 0) {
-		const n = parseInt(note.slice(4), 10);
-		return { kind: n === 0 ? "mute" : "vol", level: n === n ? n : 0 };
-	}
 	if (note.indexOf("载入 ") === 0 && note.charAt(note.length - 1) === "%") {
 		const n = parseInt(note.slice(3), 10);
 		return { kind: "progress", level: n === n ? n : 0 };
@@ -111,9 +109,7 @@ export function noteGlyph(note: string): GlyphSpec {
 	}
 	if (note === "低电")
 		return { kind: "batt", level: 12 };
-	if (note === "Sound")
-		return { kind: "on" };
-	if (note === "Hourly")
+	if (note === "整点报时")
 		return { kind: "on" };
 	if (note === "闹钟关")
 		return { kind: "off" };
@@ -142,8 +138,7 @@ export function noteGlyph(note: string): GlyphSpec {
 	if (
 		note === "已设"
 		|| note === "已刷新"
-		|| note === "saved"
-		|| note === "Weather"
+		|| note === "天气已更新"
 		|| note.indexOf("已存") === 0
 		|| note.indexOf("成功") >= 0
 	)
@@ -151,7 +146,7 @@ export function noteGlyph(note: string): GlyphSpec {
 	if (
 		note.indexOf("失败") >= 0
 		|| note === "读断了"
-		|| note === "Wx fail"
+		|| note.indexOf("超时") >= 0
 		|| note === "无法播放"
 		|| note === "键盘失败"
 		|| note === "蓝牙失败"
@@ -161,7 +156,7 @@ export function noteGlyph(note: string): GlyphSpec {
 		|| note.indexOf("错误") >= 0
 	)
 		return { kind: "bad" };
-	if (note === "Wi-Fi" || note === "无线" || note.indexOf("WiFi") === 0 || note === "正在连接" || note === "正在对时")
+	if (note === "Wi-Fi" || note === "无线" || note.indexOf("Wi-Fi") === 0 || note === "正在连接" || note === "正在对时")
 		return { kind: "wifi" };
 	if (note === "蓝牙" || note === "无蓝牙" || note === "无无线")
 		return { kind: note.indexOf("无") === 0 ? "bad" : "bt" };

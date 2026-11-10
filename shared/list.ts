@@ -17,14 +17,29 @@ export function rowTextY(index: number): number {
 	return rowOrigin(index) - ROW_LEAD;
 }
 
-/** -1 up, +1 down, 0 neither. Later key in the chord wins. */
+/**
+	-1 up, +1 down, 0 neither. Later key in the chord wins.
+	K/J, plus the keycap arrows: `;` is printed ↑ and `.` is printed ↓.
+*/
 export function menuDirFromChars(chars: string[]): -1 | 0 | 1 {
 	let dir: -1 | 0 | 1 = 0;
 	for (const ch of chars) {
 		const c = ch.toLowerCase();
-		if (c === "k" || c === ";" || c === ",")
+		if (c === "k" || c === ";")
 			dir = -1;
-		else if (c === "j" || c === "'" || c === ".")
+		else if (c === "j" || c === ".")
+			dir = 1;
+	}
+	return dir;
+}
+
+/** -1 left, +1 right, 0 neither. Keycap arrows: `,` is printed ←, `/` is printed →. */
+export function sideDirFromChars(chars: string[]): -1 | 0 | 1 {
+	let dir: -1 | 0 | 1 = 0;
+	for (const ch of chars) {
+		if (ch === ",")
+			dir = -1;
+		else if (ch === "/")
 			dir = 1;
 	}
 	return dir;

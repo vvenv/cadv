@@ -645,7 +645,7 @@ export class AppBehavior extends Behavior {
 			this.maybeBeep();
 			return;
 		}
-		if (stroke.up || chars.some(ch => ch === ",")) {
+		if (stroke.up || chars.some(ch => ch === ";")) {
 			this.stepWord(app, -1);
 			return;
 		}

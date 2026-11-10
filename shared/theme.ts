@@ -1,6 +1,9 @@
 /*
-	Per-firmware theme presets. Mutates ink palette slots and bumps themeGen
-	so lazy Styles rebuild. Preference key is Preference.get(fw, "theme").
+	Theme presets. Mutates ink palette slots and bumps themeGen so lazy
+	Styles rebuild. One theme for the whole device: Preference ("ui", "theme"),
+	so Fn+T in any app carries over to the launcher and every other app.
+	Older builds saved per firmware under (fw, "theme"); that is still read
+	as a fallback until the first Fn+T writes the shared key.
 */
 
 import {} from "piu/MC";
@@ -109,11 +112,12 @@ export function applyTheme(id: ThemeId): void {
 	themeGen += 1;
 }
 
-function readSaved(fw: string): ThemeId {
-	if (!fw)
-		return "phosphor";
+const PREF = "ui";
+const PREF_KEY = "theme";
+
+function readId(domain: string): ThemeId | "" {
 	try {
-		const v = Preference.get(fw, "theme");
+		const v = Preference.get(domain, PREF_KEY);
 		if (typeof v === "string" && v) {
 			const def = findTheme(v);
 			if (def.id === v)
@@ -123,21 +127,27 @@ function readSaved(fw: string): ThemeId {
 	catch {
 		/* */
 	}
-	return "phosphor";
+	return "";
 }
 
-function saveTheme(fw: string, id: ThemeId): void {
-	if (!fw)
-		return;
+function readSaved(fw: string): ThemeId {
+	const shared = readId(PREF);
+	if (shared)
+		return shared;
+	const legacy = fw ? readId(fw) : "";
+	return legacy || "phosphor";
+}
+
+function saveTheme(id: ThemeId): void {
 	try {
-		Preference.set(fw, "theme", id);
+		Preference.set(PREF, PREF_KEY, id);
 	}
 	catch {
 		/* */
 	}
 }
 
-/** Load this firmware's saved theme and remember fw for Fn+T cycling. */
+/** Load the device theme (legacy per-fw value as fallback) and remember fw. */
 export function bindFwTheme(fw: string): ThemeId {
 	boundFw = fw;
 	const id = readSaved(fw);
@@ -149,10 +159,10 @@ export function boundFirmware(): string {
 	return boundFw;
 }
 
-/** Cycle to the next preset for the bound firmware (or `fw` if given). */
+/** Cycle to the next preset and save it for every firmware. */
 export function cycleFwTheme(fw?: string): ThemeId {
 	const name = fw || boundFw;
-	const cur = name ? readSaved(name) : currentId;
+	const cur = readSaved(name);
 	let idx = 0;
 	for (let i = 0; i < THEMES.length; i++) {
 		if (THEMES[i].id === cur) {
@@ -161,8 +171,7 @@ export function cycleFwTheme(fw?: string): ThemeId {
 		}
 	}
 	const next = THEMES[(idx + 1) % THEMES.length];
-	if (name)
-		saveTheme(name, next.id);
+	saveTheme(next.id);
 	applyTheme(next.id);
 	syncAppSkin();
 	return next.id;

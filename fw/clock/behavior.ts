@@ -214,8 +214,20 @@ export class AppBehavior extends Behavior {
 			this.sound?.click();
 	}
 
-	flashStatus(app: AppHost, top: string, bottom: string) {
-		const g = noteGlyph(top).kind ? noteGlyph(top) : noteGlyph(bottom);
+	/**
+		While an alarm rings or a countdown has ended, the first key must act
+		(snooze / stop), even if the panel had dimmed again.
+	*/
+	swallowWake(): boolean {
+		const m = this.mode === "help" ? this.helpFrom : this.mode;
+		return m !== "al_ring" && m !== "cd_done";
+	}
+
+	/** `mark` names the glyph outright; without it the text is matched by noteGlyph. */
+	flashStatus(app: AppHost, top: string, bottom: string, mark?: Glyph) {
+		const g = mark
+			? { kind: mark, level: undefined }
+			: (noteGlyph(top).kind ? noteGlyph(top) : noteGlyph(bottom));
 		this.setLabels(app, top, bottom, g.kind, g.level);
 		this.statusUntil = Date.now() + 1500;
 	}
@@ -266,7 +278,7 @@ export class AppBehavior extends Behavior {
 		}
 		const power = this.power;
 		if (power)
-			stroke = acceptStroke(power, stroke, true);
+			stroke = acceptStroke(power, stroke, this.swallowWake());
 		const note = power?.takeNote() ?? "";
 		if (note && (this.mode === "clock" || this.mode === "desk"))
 			this.flashStatus(app, note, "");
@@ -290,7 +302,7 @@ export class AppBehavior extends Behavior {
 		if (!stroke)
 			return;
 		const power = this.power;
-		const use = power ? acceptStroke(power, stroke, true) : stroke;
+		const use = power ? acceptStroke(power, stroke, this.swallowWake()) : stroke;
 		const note = power?.takeNote() ?? "";
 		const app = content as AppHost;
 		if (note && (this.mode === "clock" || this.mode === "desk"))
@@ -427,14 +439,9 @@ export class AppBehavior extends Behavior {
 						this.prompt = "";
 				}
 				else {
-					const alarm = this.settings.alarms[this.alarmIndex];
-					if (alarm) {
-						alarm.on = false;
-						alarm.days = 0;
-					}
-					saveSettings(this.settings);
+					// Leave without changes. Turning an alarm off is D in the
+					// list, not one BS too many while clearing digits.
 					this.enterAlarms(app);
-					this.flashStatus(app, "闹钟关", "");
 					this.maybeBeep();
 					return;
 				}
@@ -540,7 +547,7 @@ export class AppBehavior extends Behavior {
 				this.settings.volume = v;
 				saveSettings(this.settings);
 				this.sound?.setVolume(v);
-				this.flashStatus(app, `Vol ${v}`, formatSettings(this.settings));
+				this.flashStatus(app, `音量 ${v}`, formatSettings(this.settings));
 				this.maybeBeep();
 				return;
 			}
@@ -638,7 +645,7 @@ export class AppBehavior extends Behavior {
 		const max = this.alStep === 0 ? 23 : 59;
 		const n = parseFieldDigits(this.prompt, max);
 		if (n === null) {
-			this.paintAlarmPrompt(app, "Bad");
+			this.paintAlarmPrompt(app, "时间不对");
 			return;
 		}
 		if (this.alStep === 0) {
@@ -657,13 +664,13 @@ export class AppBehavior extends Behavior {
 			alarm.days = 0x7f;
 		saveSettings(this.settings);
 		this.enterAlarms(app);
-		this.flashStatus(app, formatAlarm(this.settings), "saved");
+		this.flashStatus(app, formatAlarm(this.settings), "已存", "ok");
 		this.maybeBeep();
 	}
 
 	paintAlarmPrompt(app: AppHost, err?: string) {
 		const top = err ?? ("闹钟 " + (this.alarmIndex + 1));
-		this.setLabels(app, top, "");
+		this.setLabels(app, top, this.alStep === 0 ? "Enter 下一格 · Esc 退出" : "Enter 保存 · Esc 退出", err ? "bad" : "");
 	}
 
 	/** Active slot: digits + trailing `_`, empty → `__`. */
@@ -690,7 +697,7 @@ export class AppBehavior extends Behavior {
 		const max = this.cdStep === 0 ? 99 : 59;
 		const n = parseFieldDigits(this.prompt, max);
 		if (n === null) {
-			this.paintCountdownPrompt(app, "Bad");
+			this.paintCountdownPrompt(app, "时间不对");
 			return;
 		}
 		if (this.cdStep === 0) {
@@ -711,7 +718,7 @@ export class AppBehavior extends Behavior {
 		}
 		const total = this.cdHours * 3600 + this.cdMinutes * 60 + n;
 		if (total <= 0) {
-			this.paintCountdownPrompt(app, "Need >0");
+			this.paintCountdownPrompt(app, "至少 1 秒");
 			return;
 		}
 		this.startCountdown(app, total > 359999 ? 359999 : total);
@@ -719,7 +726,13 @@ export class AppBehavior extends Behavior {
 
 	paintCountdownPrompt(app: AppHost, err?: string) {
 		const top = err ?? "时 分 秒";
-		this.setLabels(app, top, "");
+		this.setLabels(app, top, this.cdStep < 2 ? "Enter 下一格 · Esc 退出" : "Enter 开始 · Esc 退出", err ? "bad" : "");
+	}
+
+	/** Bottom-band key hint while a countdown runs or has ended. */
+	cdHint(): string {
+		const m = this.mode === "help" ? this.helpFrom : this.mode;
+		return m === "cd_done" || this.cdRemainSec <= 0 ? "Enter 返回" : "BS 停止";
 	}
 
 	startCountdown(app: AppHost, totalSec: number) {
@@ -729,7 +742,7 @@ export class AppBehavior extends Behavior {
 		this.mode = "cd_run";
 		this.prompt = "";
 		this.showClock(app, true);
-		this.setLabels(app, "倒计时", "");
+		this.setLabels(app, "倒计时", this.cdHint());
 		this.maybeBeep();
 	}
 
@@ -748,15 +761,15 @@ export class AppBehavior extends Behavior {
 		this.ssidDraft = "";
 		this.dateKey = "";
 		this.showClock(app, true);
-		this.flashStatus(app, "WiFi cancel", "");
+		this.flashStatus(app, "Wi-Fi 未改", "", "wifi");
 		this.maybeBeep();
 	}
 
 	paintPrompt(app: AppHost) {
-		const title = this.mode === "ssid" ? "SSID" : "Password";
+		const title = this.mode === "ssid" ? "Wi-Fi 名称" : "Wi-Fi 密码";
 		const shown = this.maskPass ? "*".repeat(this.prompt.length) : this.prompt;
 		const line = `${shown}_`;
-		this.setLabels(app, title, "");
+		this.setLabels(app, title, this.mode === "ssid" ? "Enter 下一步 · Esc 取消" : "Enter 连接 · Esc 取消");
 		setMarqueeText(contentByName(app, "valueLabel"), line, undefined, ON);
 	}
 
@@ -838,7 +851,7 @@ export class AppBehavior extends Behavior {
 			if (this.mode !== "clock")
 				return;
 			if (force) {
-				this.flashStatus(app, ok ? "Weather" : "Wx fail", detail);
+				this.flashStatus(app, ok ? "天气已更新" : "天气失败", detail, ok ? "ok" : "bad");
 				if (ok)
 					this.dateKey = "";
 				return;
@@ -1011,7 +1024,7 @@ export class AppBehavior extends Behavior {
 		}
 		if (from === "cd_run" || from === "cd_done") {
 			this.showClock(app, true);
-			this.setLabels(app, "倒计时", "");
+			this.setLabels(app, "倒计时", this.cdHint());
 			return;
 		}
 		if (from === "al_ring") {
@@ -1084,7 +1097,7 @@ export class AppBehavior extends Behavior {
 			return;
 		this.cdLastSec = left;
 		if (paint)
-			this.setLabels(app, "倒计时", "");
+			this.setLabels(app, "倒计时", this.cdHint());
 		if (this.settings.sound && left > 0)
 			this.sound?.tick();
 		if (left <= 0) {
@@ -1092,6 +1105,9 @@ export class AppBehavior extends Behavior {
 				this.helpFrom = "cd_done";
 			else
 				this.mode = "cd_done";
+			// Light the panel: a dark screen at the deadline hides it, and the
+			// first key would only wake the panel instead of dismissing.
+			this.power?.activity();
 			if (this.settings.sound)
 				this.sound?.hourlyChime();
 		}
@@ -1138,7 +1154,7 @@ export class AppBehavior extends Behavior {
 						this.lastChimeKey = chimeKey;
 						this.sound?.hourlyChime();
 						if (this.mode !== "help")
-							this.flashStatus(app, `${pad2(p.hh)}:00`, "Hourly");
+							this.flashStatus(app, `${pad2(p.hh)}:00`, "整点报时", "on");
 					}
 				}
 				else {
@@ -1219,7 +1235,7 @@ export class AppBehavior extends Behavior {
 			this.statusUntil = 0;
 			this.cdLastSec = -1;
 			this.showClock(app, true);
-			this.setLabels(app, "倒计时", "");
+			this.setLabels(app, "倒计时", this.cdHint());
 			this.redrawClock(app);
 			return true;
 		}
@@ -1236,8 +1252,9 @@ export class AppBehavior extends Behavior {
 			this.mode = "al_ring";
 			this.statusUntil = 0;
 			this.showClock(app, true);
-			this.setLabels(app, formatAlarm(this.settings), "Enter 贪睡");
+			this.setLabels(app, formatAlarm(this.settings), "Enter 贪睡 · BS 停");
 		}
+		this.power?.activity();
 		this.sound?.alarmChime();
 	}
 

@@ -6,13 +6,14 @@
 
 	Back (primary BS): also Esc, ←. ← is the simulator left arrow, or Fn+H.
 	Confirm (primary Enter): also Space.
-	Move (primary K/J): also Fn+K/J, ↑↓, ,/.
-	Help (primary ?): also /. Volume: - and =.
+	Move (primary K/J): also Fn+K/J, ↑↓, and the keycap arrows ; (↑) . (↓).
+	Sideways (grids): ← → (Fn+H/L) and the keycap arrows , (←) / (→).
+	Help: ? (Shift+/). Bare / is the → keycap, not help. Volume: - and =.
 	Brightness: Fn+[ / Fn+].
 	Note QR: Fn+Q. Q alone is a letter.
 	Launcher: Fn+BS, from an app that was loaded off the card.
 	fw/kb is the exception: it forwards keys over BLE and only keeps
-	Fn+BS (launcher), Fn+/ (help), and Fn+Tab (forget bonds) local.
+	Fn+BS (launcher), Fn+Space (help), and Fn+Tab (forget bonds) local.
 
 	Wi-Fi fields keep Space as a character; Enter still confirms.
 	In a field, BS deletes first. Esc and ← leave the page.
@@ -20,7 +21,7 @@
 */
 
 import type { KeyStroke } from "keyboard";
-import { menuDirFromChars } from "list";
+import { menuDirFromChars, sideDirFromChars } from "list";
 
 /** Fn+BS. The SD launcher writes apps into the other flash slot. */
 export function isLauncher(stroke: KeyStroke): boolean {
@@ -48,10 +49,10 @@ export function isConfirm(stroke: KeyStroke): boolean {
 	return false;
 }
 
+/** ? only. Bare / is the → keycap. */
 export function isHelp(stroke: KeyStroke): boolean {
 	for (let i = 0; i < stroke.chars.length; i++) {
-		const ch = stroke.chars[i];
-		if (ch === "?" || ch === "/")
+		if (stroke.chars[i] === "?")
 			return true;
 	}
 	return false;
@@ -64,6 +65,18 @@ export function navDir(stroke: KeyStroke): -1 | 0 | 1 {
 	if (stroke.down)
 		return 1;
 	return menuDirFromChars(stroke.chars);
+}
+
+/**
+	-1 left, +1 right, 0 neither: ← → (Fn+H/L) or the , / keycaps.
+	Only for screens with a horizontal layout; ← elsewhere still means back.
+*/
+export function sideDir(stroke: KeyStroke): -1 | 0 | 1 {
+	if (stroke.left)
+		return -1;
+	if (stroke.right)
+		return 1;
+	return sideDirFromChars(stroke.chars);
 }
 
 /** Last -/= in the chord wins. */

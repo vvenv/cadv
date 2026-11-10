@@ -135,7 +135,7 @@ export function connectWifi(creds: WifiCreds, done: (ok: boolean, detail: string
 				if (c >= 500)
 					finish(true, this.address ?? "ok");
 				else if (c <= 200)
-					finish(false, "WiFi fail");
+					finish(false, "Wi-Fi 连不上");
 			},
 		});
 		// Already up (host left STA associated): onChanged will not re-fire.
@@ -143,7 +143,7 @@ export function connectWifi(creds: WifiCreds, done: (ok: boolean, detail: string
 			finish(true, w.address ?? "ok");
 			return;
 		}
-		timer = Timer.set(() => finish(false, "WiFi timeout"), WIFI_TIMEOUT_MS);
+		timer = Timer.set(() => finish(false, "Wi-Fi 超时"), WIFI_TIMEOUT_MS);
 		if (creds.password)
 			w.connect({ SSID: creds.ssid, password: creds.password });
 		else
@@ -169,7 +169,7 @@ export function syncNtp(done: (ok: boolean, detail: string) => void) {
 	};
 	const client = g.device?.network?.ntp?.client;
 	if (!client?.io) {
-		done(false, "no NTP");
+		done(false, "没有对时服务器");
 		return;
 	}
 
@@ -213,13 +213,13 @@ export function syncNtp(done: (ok: boolean, detail: string) => void) {
 		return;
 	}
 
-	timer = Timer.set(() => finish(false, "NTP timeout"), NTP_TIMEOUT_MS);
+	timer = Timer.set(() => finish(false, "对时超时"), NTP_TIMEOUT_MS);
 
 	try {
 		ntp.getTime((error, value) => {
 			try {
 				if (error || value === undefined || typeof value !== "number" || value !== value) {
-					finish(false, "NTP fail");
+					finish(false, "对时失败");
 					return;
 				}
 				Time.set(value / 1000);

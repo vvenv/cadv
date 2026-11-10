@@ -14,7 +14,7 @@ const PLAY_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "空位填满", action: "自动判" },
 	{ key: "[/]", action: "更易/更难" },
 	{ key: "\\", action: "换词库" },
-	{ key: ",/.", action: "换词" },
+	{ key: "; .", action: "换词" },
 	{ key: "-/=", action: "小声/大声" },
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "Fn+T", action: "主题" },

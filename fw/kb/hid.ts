@@ -64,7 +64,12 @@ const FN: Record<string, number | "help"> = Object.freeze({
 	o: HID_END,
 	p: HID_DELETE,
 	n: HID_PAGE_DOWN,
-	"/": "help",
+	// Keycap arrows, as printed: ; ↑  . ↓  , ←  / →
+	";": HID_UP,
+	".": HID_DOWN,
+	",": HID_LEFT,
+	"/": HID_RIGHT,
+	" ": "help",
 }) as Record<string, number | "help">;
 
 const SYMBOL: Record<string, number> = Object.freeze({
@@ -188,14 +193,14 @@ export function helpBack(prev: HeldState, curr: HeldState): boolean {
 	return false;
 }
 
-/** Rising K/J (and the comma/period aliases). Fn+K/J are the arrow keys, same letters. */
+/** Rising K/J (and the ; . keycap arrows). Fn+K/J are the arrow keys, same letters. */
 export function helpDir(prev: HeldState, curr: HeldState): -1 | 0 | 1 {
 	let dir: -1 | 0 | 1 = 0;
 	for (let i = 0; i < curr.keys.length; i++) {
 		const code = curr.keys[i].code;
 		if (heldCode(prev, code))
 			continue;
-		if (code === "k" || code === ",")
+		if (code === "k" || code === ";")
 			dir = -1;
 		else if (code === "j" || code === ".")
 			dir = 1;

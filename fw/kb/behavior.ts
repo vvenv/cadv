@@ -1,6 +1,6 @@
 /*
 	Forward the matrix as a BLE HID keyboard.
-	Fn+BS returns to the launcher. Fn+/ opens help. Fn+Tab forgets bonds.
+	Fn+BS returns to the launcher. Fn+Space opens help. Fn+Tab forgets bonds.
 	Every other key is sent. The simulator has no radio; it only echoes.
 */
 
@@ -374,7 +374,7 @@ export class AppBehavior extends Behavior {
 
 	hintLine(): string {
 		if (this.link === "ready")
-			return "Fn+/ 帮助";
+			return "Fn+空格 帮助";
 		if (this.link === "sim")
 			return "? 帮助";
 		return `蓝牙里选 ${DEVICE_NAME}`;

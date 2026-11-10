@@ -1,6 +1,6 @@
 /*
 	Type an English prefix. The screen shows one matching headword,
-	part of speech then gloss, and its phonetic. ,/. or Fn+K/J move inside that prefix.
+	part of speech then gloss, and its phonetic. ; . (keycap ↑↓) or Fn+K/J move inside that prefix.
 	j and k are letters.
 */
 
@@ -35,7 +35,7 @@ function listDir(stroke: KeyStroke): -1 | 0 | 1 {
 	let dir: -1 | 0 | 1 = 0;
 	for (let i = 0; i < stroke.chars.length; i++) {
 		const ch = stroke.chars[i];
-		if (ch === "," || ch === "<")
+		if (ch === ";" || ch === ":")
 			dir = -1;
 		else if (ch === "." || ch === ">")
 			dir = 1;
