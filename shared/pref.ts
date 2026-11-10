@@ -98,7 +98,18 @@ export function pref(domain: string): Pref {
 			}
 			return fallback;
 		},
+		/*
+			Skip unchanged values: apps save their whole settings object after
+			each action, and every Preference.set is an NVS write + commit.
+		*/
 		set(name, value) {
+			try {
+				if (Preference.get(domain, name) === value)
+					return;
+			}
+			catch {
+				/* missing key: write it */
+			}
 			Preference.set(domain, name, value);
 		},
 	});

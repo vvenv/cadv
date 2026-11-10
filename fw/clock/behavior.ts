@@ -115,6 +115,8 @@ export class AppBehavior extends Behavior {
 	alHours = 0;
 	alMinutes = 0;
 	lastAlarmKey = "";
+	/** Screen to go back to after the alarm is dismissed or snoozed. */
+	ringReturn: Mode = "clock";
 	weatherTimer: unknown = null;
 	weatherKey = "";
 	menuIndex = 0;
@@ -389,14 +391,14 @@ export class AppBehavior extends Behavior {
 			if (isConfirm(stroke)) {
 				this.snoozeAt = Date.now() + 5 * 60_000;
 				this.snoozeIndex = this.alarmIndex;
-				this.resumeClock(app);
-				this.flashStatus(app, "贪睡 5 分", "");
+				if (!this.afterRing(app))
+					this.flashStatus(app, "贪睡 5 分", "");
 				this.maybeBeep();
 				return;
 			}
 			if (isBack(stroke) || chars.some(ch => ch === "a" || ch === "A")) {
 				this.snoozeAt = 0;
-				this.resumeClock(app);
+				this.afterRing(app);
 				this.maybeBeep();
 			}
 			return;
@@ -1100,6 +1102,8 @@ export class AppBehavior extends Behavior {
 			this.sound?.alarmChime();
 			this.paintDesk(app);
 		}
+		if (this.checkAlarms(app))
+			return;
 		if (this.mode === "menu" || (this.mode === "help" && this.helpFrom === "menu"))
 			return;
 
@@ -1122,26 +1126,12 @@ export class AppBehavior extends Behavior {
 
 		const p = beijingParts();
 
-		// Per-second edge (alarm fires even if Snd off; ticks still need Snd).
+		// Per-second edge for ticks and the hourly chime (alarms: checkAlarms).
 		if (p.ss !== this.lastTickSec) {
 			this.lastTickSec = p.ss;
-			const alarmKey = `${p.y}-${p.m}-${p.d}-${p.hh}-${p.mm}`;
 			const minute = p.hh * 60 + p.mm;
 			const quiet = inQuiet(minute, this.settings.quietStart, this.settings.quietEnd);
-			const hitIndex = dueAlarm(this.settings.alarms, p.w, p.hh, p.mm, p.ss);
-			const snoozeDue = this.snoozeAt > 0 && Date.now() >= this.snoozeAt;
-			const hitAlarm = timeSynced() && !quiet && hitIndex >= 0 && alarmKey !== this.lastAlarmKey;
-			if (snoozeDue && !quiet) {
-				this.snoozeAt = 0;
-				this.alarmIndex = this.snoozeIndex >= 0 ? this.snoozeIndex : 0;
-				this.ring(app);
-			}
-			else if (hitAlarm) {
-				this.lastAlarmKey = alarmKey;
-				this.alarmIndex = hitIndex;
-				this.ring(app);
-			}
-			else if (this.settings.sound && !quiet) {
+			if (this.settings.sound && !quiet) {
 				if (timeSynced() && this.settings.hourly && p.mm === 0 && p.ss === 0) {
 					const chimeKey = `${p.y}-${p.m}-${p.d}-${p.hh}`;
 					if (chimeKey !== this.lastChimeKey) {
@@ -1187,7 +1177,59 @@ export class AppBehavior extends Behavior {
 		app.rotation = rot;
 	}
 
+	/*
+		Alarms and snooze ring from every screen (fires even if Snd is off).
+		Skipped while ringing and while a WiFi connect owns the screen; with
+		no :00 requirement it still rings once that finishes inside the minute.
+	*/
+	checkAlarms(app: AppHost): boolean {
+		const under = this.mode === "help" ? this.helpFrom : this.mode;
+		if (under === "al_ring" || under === "busy")
+			return false;
+		const p = beijingParts();
+		const quiet = inQuiet(p.hh * 60 + p.mm, this.settings.quietStart, this.settings.quietEnd);
+		if (quiet)
+			return false;
+		if (this.snoozeAt > 0 && Date.now() >= this.snoozeAt) {
+			this.snoozeAt = 0;
+			this.alarmIndex = this.snoozeIndex >= 0 ? this.snoozeIndex : 0;
+			this.ring(app);
+			return true;
+		}
+		if (!timeSynced())
+			return false;
+		const key = `${p.y}-${p.m}-${p.d}-${p.hh}-${p.mm}`;
+		if (key === this.lastAlarmKey)
+			return false;
+		const hit = dueAlarm(this.settings.alarms, p.w, p.hh, p.mm);
+		if (hit < 0)
+			return false;
+		this.lastAlarmKey = key;
+		this.alarmIndex = hit;
+		this.ring(app);
+		return true;
+	}
+
+	/** Leave the ring screen: back to a running countdown, else the clock. */
+	afterRing(app: AppHost): boolean {
+		const back = this.ringReturn;
+		this.ringReturn = "clock";
+		if (back === "cd_run" || back === "cd_done") {
+			this.mode = back;
+			this.statusUntil = 0;
+			this.cdLastSec = -1;
+			this.showClock(app, true);
+			this.setLabels(app, "倒计时", "");
+			this.redrawClock(app);
+			return true;
+		}
+		this.resumeClock(app);
+		return false;
+	}
+
 	ring(app: AppHost) {
+		const under = this.mode === "help" ? this.helpFrom : this.mode;
+		this.ringReturn = under === "cd_run" || under === "cd_done" ? under : "clock";
 		if (this.mode === "help")
 			this.helpFrom = "al_ring";
 		else {

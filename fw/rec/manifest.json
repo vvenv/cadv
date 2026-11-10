@@ -15,7 +15,8 @@
 			"./view",
 			"./clips",
 			"./wav",
-			"./help"
+			"./help",
+			"../../shared/cardfs"
 		]
 	},
 	"preload": [
@@ -24,7 +25,8 @@
 		"clips",
 		"wav",
 		"help",
-		"mic"
+		"mic",
+		"cardfs"
 	],
 	"platforms": {
 		"esp32": {

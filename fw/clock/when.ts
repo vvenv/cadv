@@ -57,9 +57,11 @@ export function inQuiet(minute: number, start: number, end: number): boolean {
 }
 
 /** Index of the alarm that should ring this second, or -1. */
-export function dueAlarm(alarms: Alarm[], wday: number, hh: number, mm: number, ss: number): number {
-	if (ss !== 0)
-		return -1;
+/*
+	Any second of the minute matches: a tick stalled past :00 (WiFi, NTP,
+	weather) must not skip the alarm. Callers dedupe per minute.
+*/
+export function dueAlarm(alarms: Alarm[], wday: number, hh: number, mm: number): number {
 	const bit = 1 << (wday & 7);
 	for (let i = 0; i < alarms.length; i++) {
 		const alarm = alarms[i];

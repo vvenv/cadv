@@ -6,8 +6,8 @@
 	A file whose count or signature differs is ignored (pack regenerated).
 */
 
-import Modules from "modules";
 import type { Directory, File } from "embedded:storage/files";
+import { closeQuiet, openCardDir, u16, u32 } from "cardfs";
 
 const SD_HOME = "cadv";
 const SD_WORDS = "words";
@@ -26,68 +26,8 @@ type ProgressState = {
 
 let state: ProgressState | null = null;
 
-function volume(): Directory | null {
-	try {
-		return Modules.importNow<Directory>("embedded:storage/files");
-	}
-	catch {
-		return null;
-	}
-}
-
-function closeQuiet(dir: Directory | File | null): void {
-	if (!dir)
-		return;
-	try {
-		dir.close();
-	}
-	catch {
-		/* */
-	}
-}
-
-/* Missing names do not throw from status(); mode is 0. Create them. */
-function ensureDir(parent: Directory, name: string): Directory | null {
-	let isDir = false;
-	let isFile = false;
-	try {
-		const st = parent.status(name);
-		isDir = st.isDirectory();
-		isFile = st.isFile();
-	}
-	catch {
-		isDir = false;
-	}
-	if (isFile)
-		return null;
-	if (!isDir)
-		parent.createDirectory(name);
-	return parent.openDirectory({ path: name });
-}
-
 function openProgressDir(create: boolean): Directory | null {
-	const root = volume();
-	if (!root)
-		return null;
-	let home: Directory | null = null;
-	let words: Directory | null = null;
-	try {
-		home = create ? ensureDir(root, SD_HOME) : root.openDirectory({ path: SD_HOME });
-		if (!home)
-			return null;
-		words = create ? ensureDir(home, SD_WORDS) : home.openDirectory({ path: SD_WORDS });
-		if (!words)
-			return null;
-		const progress = create ? ensureDir(words, SD_PROGRESS) : words.openDirectory({ path: SD_PROGRESS });
-		return progress;
-	}
-	catch {
-		return null;
-	}
-	finally {
-		closeQuiet(words);
-		closeQuiet(home);
-	}
+	return openCardDir([SD_HOME, SD_WORDS, SD_PROGRESS], create);
 }
 
 function safeId(id: string): string {
@@ -114,17 +54,9 @@ function emptyBits(count: number): Uint8Array {
 	return new Uint8Array(bitBytes(count));
 }
 
-function u16(b: Uint8Array, at: number): number {
-	return b[at] | (b[at + 1] << 8);
-}
-
 function putU16(b: Uint8Array, at: number, v: number): void {
 	b[at] = v & 0xff;
 	b[at + 1] = (v >> 8) & 0xff;
-}
-
-function u32(b: Uint8Array, at: number): number {
-	return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0;
 }
 
 function putU32(b: Uint8Array, at: number, v: number): void {

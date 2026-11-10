@@ -6,10 +6,9 @@
 	by scripts/gen-wordbank.mjs. Do not edit the binary.
 */
 
-import Modules from "modules";
 import Preference from "preference";
 import Resource from "Resource";
-import type { Directory, File } from "embedded:storage/files";
+import { CardReader, closeQuiet, openCardDir, u16, u32, type ByteSource } from "cardfs";
 
 const BANK_STRIDE = 12;
 const LEX_STRIDE = 20;
@@ -25,9 +24,7 @@ export const SOURCE_FLASH = "flash";
 
 export type WordSource = { id: string; label: string };
 
-type Src = {
-	readBytes(off: number, len: number): ArrayBuffer;
-};
+type Src = ByteSource;
 
 type BankFile = {
 	src: Src;
@@ -39,16 +36,9 @@ type BankFile = {
 type OpenState = {
 	id: string;
 	bank: BankFile;
-	file: File | null;
+	/** SD packs only. Its `failed` flag drops the pack back to flash. */
+	reader: CardReader | null;
 };
-
-function u16(b: Uint8Array): number {
-	return b[0] | (b[1] << 8);
-}
-
-function u32(b: Uint8Array): number {
-	return (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0;
-}
 
 function read(src: Src, off: number, len: number): Uint8Array {
 	return new Uint8Array(src.readBytes(off, len));
@@ -58,30 +48,6 @@ function fromResource(res: InstanceType<typeof Resource>): Src {
 	return {
 		readBytes(off: number, len: number): ArrayBuffer {
 			return res.slice(off, off + len);
-		},
-	};
-}
-
-/*
-	SD reads can fail mid-session (card pulled). Never throw into the UI
-	timers: hand back zeros (empty strings / counts downstream) and flag the
-	pack so the next openBank() falls back to flash.
-*/
-function fromFile(file: File): Src {
-	return {
-		readBytes(off: number, len: number): ArrayBuffer {
-			if (!readFailed) {
-				try {
-					const got = file.read(len, off);
-					if (got && got.byteLength === len)
-						return got;
-				}
-				catch {
-					/* */
-				}
-				readFailed = true;
-			}
-			return new ArrayBuffer(len);
 		},
 	};
 }
@@ -96,17 +62,6 @@ function parse(src: Src): BankFile | null {
 		lex: u16(head.subarray(6, 8)),
 		lexAt: u32(head.subarray(8, 12)),
 	};
-}
-
-function closeQuiet(dir: Directory | File | null): void {
-	if (!dir)
-		return;
-	try {
-		dir.close();
-	}
-	catch {
-		/* */
-	}
 }
 
 function labelFor(id: string): string {
@@ -146,21 +101,12 @@ function byName(a: string, b: string): number {
 	return 0;
 }
 
-function openVolume(): Directory | null {
-	try {
-		return Modules.importNow<Directory>("embedded:storage/files");
-	}
-	catch {
-		return null;
-	}
-}
-
 function tryOpenFlash(): OpenState | null {
 	try {
 		const bank = parse(fromResource(new Resource("wordbank.bin")));
 		if (!bank)
 			return null;
-		return { id: SOURCE_FLASH, bank, file: null };
+		return { id: SOURCE_FLASH, bank, reader: null };
 	}
 	catch {
 		return null;
@@ -170,33 +116,26 @@ function tryOpenFlash(): OpenState | null {
 function tryOpenSd(id: string): OpenState | null {
 	if (!id || id === SOURCE_FLASH)
 		return null;
-	const volume = openVolume();
-	if (!volume)
+	const words = openCardDir([SD_HOME, SD_WORDS]);
+	if (!words)
 		return null;
-	let home: Directory | null = null;
-	let words: Directory | null = null;
-	let file: File | null = null;
+	let reader: CardReader | null = null;
 	try {
-		home = volume.openDirectory({ path: SD_HOME });
-		words = home.openDirectory({ path: SD_WORDS });
-		file = words.openFile({ path: id + ".bin", mode: "r" });
-		const bank = parse(fromFile(file));
-		if (!bank) {
-			closeQuiet(file);
+		// Keep the file open for slice reads; directory fds are independent.
+		reader = new CardReader(words.openFile({ path: id + ".bin", mode: "r" }));
+		const bank = parse(reader);
+		if (!bank || reader.failed) {
+			reader.close();
 			return null;
 		}
-		// Keep the file open for slice reads; directory fds are independent.
-		const kept = file;
-		file = null;
-		return { id, bank, file: kept };
+		return { id, bank, reader };
 	}
 	catch {
-		closeQuiet(file);
+		reader?.close();
 		return null;
 	}
 	finally {
 		closeQuiet(words);
-		closeQuiet(home);
 	}
 }
 
@@ -214,17 +153,15 @@ function tryOpen(id: string): OpenState | null {
 	reopen the Preference wordSource then.
 */
 let state: OpenState | null | undefined;
-let readFailed = false;
 /** Bumps when the open pack changes without the user picking it (SD read failed). */
 let lostGeneration = 0;
 
 function adopt(next: OpenState | null): boolean {
 	if (!next)
 		return false;
-	if (state && state.file)
-		closeQuiet(state.file);
+	if (state && state.reader)
+		state.reader.close();
 	state = next;
-	readFailed = false;
 	return true;
 }
 
@@ -242,7 +179,7 @@ function ensureOpen(): void {
 
 function openBank(): BankFile | null {
 	ensureOpen();
-	if (readFailed && state && state.id !== SOURCE_FLASH) {
+	if (state && state.reader && state.reader.failed) {
 		if (!adopt(tryOpenFlash()))
 			state = null;
 		lostGeneration += 1;
@@ -269,15 +206,11 @@ export function wordSourceLabel(id?: string): string {
 /** 内置 first, then each cadv/words/*.bin (basename without .bin). */
 export function listWordSources(): WordSource[] {
 	const out: WordSource[] = [{ id: SOURCE_FLASH, label: labelFor(SOURCE_FLASH) }];
-	const volume = openVolume();
-	if (!volume)
+	const words = openCardDir([SD_HOME, SD_WORDS]);
+	if (!words)
 		return out;
-	let home: Directory | null = null;
-	let words: Directory | null = null;
 	try {
-		home = volume.openDirectory({ path: SD_HOME });
-		words = home.openDirectory({ path: SD_WORDS });
-		if (!words || typeof words.scan !== "function")
+		if (typeof words.scan !== "function")
 			return out;
 		const names: string[] = [];
 		for (const name of words.scan()) {
@@ -293,7 +226,6 @@ export function listWordSources(): WordSource[] {
 	}
 	finally {
 		closeQuiet(words);
-		closeQuiet(home);
 	}
 	return out;
 }
@@ -302,7 +234,7 @@ export function listWordSources(): WordSource[] {
 export function selectWordSource(id: string, persist = true): boolean {
 	ensureOpen();
 	const want = !id ? SOURCE_FLASH : id;
-	if (state && state.id === want && !readFailed)
+	if (state && state.id === want && !(state.reader && state.reader.failed))
 		return true;
 	const next = tryOpen(want);
 	if (!adopt(next))

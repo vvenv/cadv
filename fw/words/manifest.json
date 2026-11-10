@@ -17,7 +17,8 @@
 			"./help",
 			"./progress",
 			"./wordbank",
-			"./words"
+			"./words",
+			"../../shared/cardfs"
 		]
 	},
 	"preload": [
@@ -27,7 +28,8 @@
 		"help",
 		"progress",
 		"wordbank",
-		"words"
+		"words",
+		"cardfs"
 	],
 	"resources": {
 		"*-mask": [

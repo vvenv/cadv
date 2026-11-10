@@ -4,7 +4,7 @@ const ROWS: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "N", action: "新建" },
 	{ key: "Enter", action: "打开文本" },
-	{ key: "D", action: "删除" },
+	{ key: "D D", action: "删除(按两次)" },
 	{ key: "Fn+Q", action: "短文本二维码" },
 	{ key: "BS", action: "保存并返回" },
 	{ key: "Fn+[/]", action: "暗/亮" },

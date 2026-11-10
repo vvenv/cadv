@@ -12,13 +12,15 @@
 			"./main",
 			"./behavior",
 			"./help",
-			"./lex"
+			"./lex",
+			"../../shared/cardfs"
 		]
 	},
 	"preload": [
 		"behavior",
 		"help",
-		"lex"
+		"lex",
+		"cardfs"
 	],
 	"resources": {
 		"*-mask": [

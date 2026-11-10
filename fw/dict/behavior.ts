@@ -13,7 +13,7 @@ import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
 import { FONT_UI, INK, ON } from "ink";
 import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir } from "keys";
-import { lexCount, lexGloss, lexLower, lexPhone, lexPrefixEnd, lexWord } from "lex";
+import { lexCount, lexGloss, lexLost, lexLower, lexPhone, lexPrefixEnd, lexWord } from "lex";
 import { helpList } from "help-ui";
 import { menuStep } from "list";
 import { asMarquee, MARQUEE_MS, setMarqueeText } from "marquee";
@@ -85,6 +85,8 @@ export class AppBehavior extends Behavior {
 	note = "";
 	noteUntil = 0;
 	hostEnterDown = false;
+	/** lexLost() seen last; a change means lex.bin stopped reading. */
+	lexLostSeen = 0;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
@@ -94,6 +96,7 @@ export class AppBehavior extends Behavior {
 		this.tickTimer = Timer.repeat(() => this.onTick(app), 250);
 		this.marqueeTimer = Timer.repeat(() => this.tickMarquees(app), MARQUEE_MS);
 		this.retarget();
+		this.lexLostSeen = lexLost();
 		this.paintLook(app);
 	}
 
@@ -135,6 +138,16 @@ export class AppBehavior extends Behavior {
 	}
 
 	onTick(app: AppHost) {
+		const lost = lexLost();
+		if (lost !== this.lexLostSeen) {
+			this.lexLostSeen = lost;
+			this.retarget();
+			this.note = "读卡失败";
+			this.noteUntil = Date.now() + 2000;
+			if (this.mode === "look")
+				this.paintLook(app);
+			return;
+		}
 		if (this.mode !== "look" || !this.note || Date.now() < this.noteUntil)
 			return;
 		this.note = "";

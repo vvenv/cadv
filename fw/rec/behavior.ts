@@ -54,6 +54,8 @@ export class AppBehavior extends Behavior {
 	endingPlay = false;
 	volume = VOL_DEFAULT;
 	note = "";
+	/** Clip armed by a first D press; a second D on it deletes. */
+	armedDelete = "";
 	hostEnterDown = false;
 
 	onDisplaying(content: unknown) {
@@ -148,12 +150,15 @@ export class AppBehavior extends Behavior {
 				this.paint(app);
 				return;
 			}
+			const wantsDelete = stroke.chars.some(ch => ch === "d" || ch === "D");
+			if (!wantsDelete)
+				this.armedDelete = "";
 			const dir = navDir(stroke);
 			if (dir !== 0 && this.names.length)
 				this.index = menuStep(this.index, this.names.length, dir);
 			if (isConfirm(stroke))
 				this.startPlay(app);
-			if (stroke.chars.some(ch => ch === "d" || ch === "D"))
+			if (wantsDelete)
 				this.removeClip(app);
 			this.paint(app);
 			return;
@@ -292,6 +297,13 @@ export class AppBehavior extends Behavior {
 		const name = this.names[this.index];
 		if (!name || !this.dir)
 			return;
+		if (this.armedDelete !== name) {
+			this.armedDelete = name;
+			this.note = "再按 D 删除";
+			this.paint(app);
+			return;
+		}
+		this.armedDelete = "";
 		try {
 			this.dir.delete(name);
 		}

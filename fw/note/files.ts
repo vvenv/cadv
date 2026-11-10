@@ -1,33 +1,14 @@
 /*
-	Import the volume inside the call. Its body uses device natives, and the
-	image link runs this module on the host.
+	cadv/*.txt on the card. Volume access lives in shared/cardfs.
 */
 
-import Modules from "modules";
 import type { Directory, File } from "embedded:storage/files";
-
-function volume(): Directory {
-	return Modules.importNow<Directory>("embedded:storage/files");
-}
+import { openCardDir } from "cardfs";
 
 export type NoteFile = { name: string; size: number; text: boolean };
 
 export function openHome(): Directory | null {
-	try {
-		const root = volume();
-		try {
-			const st = root.status("cadv");
-			if (!st.isDirectory())
-				return null;
-		}
-		catch {
-			root.createDirectory("cadv");
-		}
-		return root.openDirectory({ path: "cadv" });
-	}
-	catch {
-		return null;
-	}
+	return openCardDir(["cadv"], true);
 }
 
 export function listFiles(dir: Directory): NoteFile[] {
@@ -54,18 +35,34 @@ export function listFiles(dir: Directory): NoteFile[] {
 	return out;
 }
 
-export function readText(dir: Directory, name: string): string {
-	const file = dir.openFile({ path: name, mode: "r" });
+/** Largest .txt the editor opens. */
+export const MAX_TEXT_BYTES = 4000;
+
+/*
+	Text for the editor, or null when it cannot round-trip: too large,
+	unreadable, or bytes this decoder drops (4-byte UTF-8, stray bytes, NUL).
+	Saving a null-read file would destroy it, so the caller must not edit it.
+*/
+export function readText(dir: Directory, name: string): string | null {
+	let file: File | null = null;
 	try {
+		file = dir.openFile({ path: name, mode: "r" });
 		const size = file.status().size;
+		if (typeof size !== "number" || size > MAX_TEXT_BYTES)
+			return null;
 		if (size <= 0)
 			return "";
-		if (size > 4000)
-			return "";
-		return utf8(file.read(size, 0));
+		const buf = file.read(size, 0);
+		if (!buf || buf.byteLength !== size)
+			return null;
+		const text = utf8(buf);
+		return utf8Length(text) === size ? text : null;
+	}
+	catch {
+		return null;
 	}
 	finally {
-		file.close();
+		try { file?.close(); } catch { /* */ }
 	}
 }
 

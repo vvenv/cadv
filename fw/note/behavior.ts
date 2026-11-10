@@ -5,7 +5,7 @@
 import {} from "piu/MC";
 import Timer from "timer";
 import { bootLauncher } from "boot";
-import { listFiles, nextName, openHome, readText, utf8Length, writeText, type NoteFile } from "files";
+import { listFiles, MAX_TEXT_BYTES, nextName, openHome, readText, utf8Length, writeText, type NoteFile } from "files";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
@@ -36,6 +36,10 @@ export class AppBehavior extends Behavior {
 	helpIndex = 0;
 	name = "";
 	text = "";
+	/** Text changed since open; only then is it written back. */
+	dirty = false;
+	/** File name armed by a first D press; a second D on it deletes. */
+	armedDelete = "";
 	hostEnterDown = false;
 	note = "";
 
@@ -111,6 +115,9 @@ export class AppBehavior extends Behavior {
 			this.onEdit(app, stroke);
 			return;
 		}
+		const wantsDelete = stroke.chars.some(ch => ch === "d" || ch === "D");
+		if (!wantsDelete)
+			this.armedDelete = "";
 		if (stroke.chars.some(ch => ch === "n" || ch === "N")) {
 			this.create(app);
 			return;
@@ -120,7 +127,7 @@ export class AppBehavior extends Behavior {
 			this.index = menuStep(this.index, this.files.length, dir);
 		if (isConfirm(stroke))
 			this.open(app);
-		if (stroke.chars.some(ch => ch === "d" || ch === "D"))
+		if (wantsDelete)
 			this.remove();
 		this.paint(app);
 	}
@@ -153,6 +160,7 @@ export class AppBehavior extends Behavior {
 			asQr(port)?.setBits(port, bits);
 			return;
 		}
+		const before = this.text;
 		if (stroke.del && this.text.length)
 			this.text = this.text.slice(0, -1);
 		else if (stroke.enter)
@@ -163,6 +171,8 @@ export class AppBehavior extends Behavior {
 					this.text += ch;
 			}
 		}
+		if (this.text !== before)
+			this.dirty = true;
 		this.paint(app);
 	}
 
@@ -174,6 +184,7 @@ export class AppBehavior extends Behavior {
 		}
 		this.name = nextName(this.files);
 		this.text = "";
+		this.dirty = false;
 		this.mode = "edit";
 		this.paint(app);
 	}
@@ -187,12 +198,14 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 			return;
 		}
-		try {
-			this.text = readText(this.dir, file.name);
+		const text = readText(this.dir, file.name);
+		if (text === null) {
+			this.note = file.size > MAX_TEXT_BYTES ? "太大 不能编辑" : "读不全 不能编辑";
+			this.paint(app);
+			return;
 		}
-		catch {
-			this.text = "";
-		}
+		this.text = text;
+		this.dirty = false;
 		this.name = file.name;
 		this.mode = "edit";
 		this.paint(app);
@@ -202,6 +215,12 @@ export class AppBehavior extends Behavior {
 		const file = this.files[this.index];
 		if (!file || !this.dir)
 			return;
+		if (this.armedDelete !== file.name) {
+			this.armedDelete = file.name;
+			this.note = "再按 D 删除";
+			return;
+		}
+		this.armedDelete = "";
 		try {
 			this.dir.delete(file.name);
 		}
@@ -212,10 +231,11 @@ export class AppBehavior extends Behavior {
 	}
 
 	save() {
-		if (!this.dir || !this.name || this.mode === "list")
+		if (!this.dir || !this.name || this.mode === "list" || !this.dirty)
 			return;
 		try {
 			writeText(this.dir, this.name, this.text);
+			this.dirty = false;
 		}
 		catch {
 			this.note = "写失败";

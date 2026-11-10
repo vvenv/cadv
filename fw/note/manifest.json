@@ -14,10 +14,11 @@
 			"./view",
 			"./files",
 			"./qr",
-			"./help"
+			"./help",
+			"../../shared/cardfs"
 		]
 	},
-	"preload": ["behavior", "view", "files", "qr", "help"],
+	"preload": ["behavior", "view", "files", "qr", "help", "cardfs"],
 	"platforms": {
 		"esp32": {
 			"defines": {

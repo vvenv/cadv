@@ -11,43 +11,24 @@
 	only z has no successor; the end is count. Same rules as verifyLex.
 */
 
-import Modules from "modules";
-import type { Directory, File } from "embedded:storage/files";
+import { CardReader, closeQuiet, openCardDir, u16, u32, type ByteSource } from "cardfs";
 
 const STRIDE = 32;
 const HEADER = 16;
 const MAGIC = 0x584c4457;
 const VERSION = 1;
 
-type Src = {
-	readBytes(off: number, len: number): ArrayBuffer;
-};
+type Src = ByteSource;
 
 type LexFile = {
 	src: Src;
 	count: number;
 	indexAt: number;
-	file: File;
+	reader: CardReader;
 };
-
-function u16(b: Uint8Array): number {
-	return b[0] | (b[1] << 8);
-}
-
-function u32(b: Uint8Array): number {
-	return (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0;
-}
 
 function read(src: Src, off: number, len: number): Uint8Array {
 	return new Uint8Array(src.readBytes(off, len));
-}
-
-function fromFile(file: File): Src {
-	return {
-		readBytes(off: number, len: number): ArrayBuffer {
-			return file.read(len, off);
-		},
-	};
 }
 
 function ascii(bytes: Uint8Array, len: number): string {
@@ -73,26 +54,6 @@ function successor(prefix: string): string | null {
 	return null;
 }
 
-function closeQuiet(dir: Directory | File | null): void {
-	if (!dir)
-		return;
-	try {
-		dir.close();
-	}
-	catch {
-		/* */
-	}
-}
-
-function openVolume(): Directory | null {
-	try {
-		return Modules.importNow<Directory>("embedded:storage/files");
-	}
-	catch {
-		return null;
-	}
-}
-
 function parse(src: Src): { count: number; indexAt: number } | null {
 	const head = read(src, 0, HEADER);
 	if (u32(head) !== MAGIC)
@@ -107,42 +68,53 @@ function parse(src: Src): { count: number; indexAt: number } | null {
 }
 
 function tryOpen(): LexFile | null {
-	const volume = openVolume();
-	if (!volume)
+	const dir = openCardDir(["cadv", "dict"]);
+	if (!dir)
 		return null;
-	let home: Directory | null = null;
-	let dir: Directory | null = null;
-	let file: File | null = null;
+	let reader: CardReader | null = null;
 	try {
-		home = volume.openDirectory({ path: "cadv" });
-		dir = home.openDirectory({ path: "dict" });
-		file = dir.openFile({ path: "lex.bin", mode: "r" });
-		const header = parse(fromFile(file));
-		if (!header) {
-			closeQuiet(file);
+		reader = new CardReader(dir.openFile({ path: "lex.bin", mode: "r" }));
+		const header = parse(reader);
+		if (!header || reader.failed) {
+			reader.close();
 			return null;
 		}
-		const kept = file;
-		file = null;
-		return { src: fromFile(kept), count: header.count, indexAt: header.indexAt, file: kept };
+		return { src: reader, count: header.count, indexAt: header.indexAt, reader };
 	}
 	catch {
-		closeQuiet(file);
+		reader?.close();
 		return null;
 	}
 	finally {
 		closeQuiet(dir);
-		closeQuiet(home);
 	}
 }
 
 let state: LexFile | null | undefined;
+/** Bumps when an open lex.bin stops reading (card pulled). */
+let lostGeneration = 0;
 
+/*
+	A failed read (card pulled) drops the lexicon: counts become 0 and the
+	screen shows the no-dictionary state. The next call tries to reopen it
+	once, so a reseated card keeps working.
+*/
 function ensure(): LexFile | null {
+	if (state && state.reader.failed) {
+		state.reader.close();
+		state = undefined;
+		lostGeneration += 1;
+	}
 	if (state !== undefined)
 		return state;
 	state = tryOpen();
 	return state;
+}
+
+/** Changes when the lexicon was dropped after a read failure. */
+export function lexLost(): number {
+	ensure();
+	return lostGeneration;
 }
 
 export function lexCount(): number {

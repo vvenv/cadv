@@ -1,48 +1,15 @@
 /*
 	cadv/rec/*.wav on the card. The launcher ignores this subdirectory.
-	Import the volume inside the call. Its body uses device natives, and the
-	image link runs this module on the host.
+	Volume access lives in shared/cardfs.
 */
 
-import Modules from "modules";
 import type { Directory, File } from "embedded:storage/files";
+import { openCardDir } from "cardfs";
 
 const DIR = "rec";
 
-function volume(): Directory {
-	return Modules.importNow<Directory>("embedded:storage/files");
-}
-
-/* Missing names do not throw from status(); mode is 0. Create them. */
-function ensureDir(parent: Directory, name: string): Directory | null {
-	let isDir = false;
-	let isFile = false;
-	try {
-		const st = parent.status(name);
-		isDir = st.isDirectory();
-		isFile = st.isFile();
-	}
-	catch {
-		isDir = false;
-	}
-	if (isFile)
-		return null;
-	if (!isDir)
-		parent.createDirectory(name);
-	return parent.openDirectory({ path: name });
-}
-
 export function openClips(): Directory | null {
-	try {
-		const root = volume();
-		const home = ensureDir(root, "cadv");
-		if (!home)
-			return null;
-		return ensureDir(home, DIR);
-	}
-	catch {
-		return null;
-	}
+	return openCardDir(["cadv", DIR], true);
 }
 
 export function clipNames(dir: Directory): string[] {
