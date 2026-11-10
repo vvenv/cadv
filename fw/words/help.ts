@@ -15,7 +15,6 @@ const PLAY_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "[/]", action: "更易/更难" },
 	{ key: "\\", action: "换词库" },
 	{ key: ",/.", action: "换词" },
-	{ key: "错题", action: "列表里只练错的" },
 	{ key: "-/=", action: "小声/大声" },
 	{ key: "Fn+[/]", action: "暗/亮" },
 	{ key: "Fn+T", action: "主题" },
@@ -25,6 +24,7 @@ const PLAY_HELP: readonly HelpRow[] = Object.freeze([
 const MENU_HELP: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
 	{ key: "来源", action: "内置/卡上词包" },
+	{ key: "全部词", action: "改为只练错题" },
 	{ key: "K/J", action: "上下移动" },
 	{ key: "Enter", action: "确认选中" },
 	{ key: "BS", action: "回拼写" },

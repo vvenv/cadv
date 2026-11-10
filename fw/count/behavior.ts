@@ -425,11 +425,11 @@ export class AppBehavior extends Behavior {
 
 	save() {
 		try {
-			Preference.set(PREF, "value", this.count);
-			Preference.set(PREF, "step", this.step);
-			Preference.set(PREF, "volume", this.volume);
-			Preference.set(PREF, "sense", this.sense);
-			Preference.set(PREF, "gain", this.gain);
+			store.set("value", this.count);
+			store.set("step", this.step);
+			store.set("volume", this.volume);
+			store.set("sense", this.sense);
+			store.set("gain", this.gain);
 		}
 		catch {
 			/* */

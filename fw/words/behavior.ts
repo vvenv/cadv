@@ -570,7 +570,8 @@ export class AppBehavior extends Behavior {
 
 	paintWord(app: AppHost) {
 		if (!this.wordOrder.length) {
-			const top = wordCount(this.settings.wordBank) <= 0 ? "无词库" : "无错题";
+			/* Misses are kept per headword across packs; say when they live elsewhere. */
+			const top = wordCount(this.settings.wordBank) <= 0 ? "无词库" : (missSet(this.settings.misses).size > 0 ? "本词库无错题" : "无错题");
 			this.setTopLine(app, top, glossFace());
 			setStringProp(contentByName(app, "puzzleLabel"), "");
 			return;
@@ -599,6 +600,15 @@ export class AppBehavior extends Behavior {
 	advanceSolved(app: AppHost) {
 		this.wordAdvance = false;
 		this.wordNote = "";
+		/* Miss drill: a solved word left the miss list, so drop it from this round too. */
+		if (this.settings.onlyMiss && this.wordIndex >= 0 && this.wordIndex < this.wordOrder.length) {
+			this.wordOrder.splice(this.wordIndex, 1);
+			if (this.wordIndex >= this.wordOrder.length)
+				this.wordIndex = 0;
+			this.loadWord();
+			this.paintWord(app);
+			return;
+		}
 		const n = this.wordOrder.length;
 		this.wordIndex = n > 0 ? (this.wordIndex + 1) % n : 0;
 		this.loadWord();
@@ -670,6 +680,12 @@ export class AppBehavior extends Behavior {
 		else if ((stroke.del || isPageBack(stroke)) && this.wordTyped.length > 0) {
 			this.wordTyped = this.wordTyped.slice(0, -1);
 			typed = true;
+		}
+		/* Enter right after a miss would re-judge the same letters (and log another miss). */
+		if (isEnter(stroke) && this.wordWrong && !typed) {
+			this.settleWrong(entry.word);
+			this.paintWord(app);
+			return;
 		}
 		const filled = typed && this.wordTyped.length === this.wordHidden.length && this.wordHidden.length > 0;
 		if (isEnter(stroke) || filled) {

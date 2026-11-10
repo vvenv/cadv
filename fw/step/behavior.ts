@@ -23,6 +23,8 @@ import { asStepFooter, asStepTop } from "view";
 
 const PREF = "step";
 const store = pref(PREF);
+/* Walking changes the count every sample; NVS gets it at most this often. */
+const STEP_SAVE_MS = 30_000;
 
 type Mode = "step" | "help";
 
@@ -47,6 +49,7 @@ export class AppBehavior extends Behavior {
 	note = "";
 	helpIndex = 0;
 	hostEnterDown = false;
+	lastSaveMs = 0;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
@@ -126,6 +129,8 @@ export class AppBehavior extends Behavior {
 			this.day = now;
 			this.saved = 0;
 			this.base = -1;
+			this.steps = 0;
+			this.saveSteps(true);
 		}
 		const raw = this.imu?.sample()?.steps;
 		if (typeof raw !== "number")
@@ -136,10 +141,18 @@ export class AppBehavior extends Behavior {
 		if (next === this.steps)
 			return;
 		this.steps = next;
+		this.saveSteps(false);
+	}
+
+	/** Day + count. Throttled unless forced (day change, reset, leaving). */
+	saveSteps(force: boolean) {
+		const now = Date.now();
+		if (!force && now - this.lastSaveMs < STEP_SAVE_MS)
+			return;
+		this.lastSaveMs = now;
 		try {
-			Preference.set(PREF, "day", this.day);
-			Preference.set(PREF, "count", this.steps);
-			Preference.set(PREF, "stride", this.stride);
+			store.set("day", this.day);
+			store.set("count", this.steps);
 		}
 		catch {
 			/* */
@@ -148,6 +161,7 @@ export class AppBehavior extends Behavior {
 
 	handleStroke(app: AppHost, stroke: KeyStroke) {
 		if (isLauncher(stroke)) {
+			this.saveSteps(true);
 			bootLauncher();
 			return;
 		}
@@ -171,19 +185,13 @@ export class AppBehavior extends Behavior {
 		const dir = navDir(stroke);
 		if (dir !== 0) {
 			this.stride = Math.max(30, Math.min(120, this.stride + dir * 5));
-			try { Preference.set(PREF, "stride", this.stride); } catch { /* */ }
+			try { store.set("stride", this.stride); } catch { /* */ }
 		}
 		if (stroke.chars.some(ch => ch === "r" || ch === "R")) {
 			this.saved = 0;
 			this.base = this.imu?.sample()?.steps ?? 0;
 			this.steps = 0;
-			try {
-				Preference.set(PREF, "count", 0);
-				Preference.set(PREF, "day", this.day);
-			}
-			catch {
-				/* */
-			}
+			this.saveSteps(true);
 		}
 		this.paint(app);
 	}
