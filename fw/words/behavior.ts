@@ -25,7 +25,8 @@ import { asMarquee, MARQUEE_MS, setMarqueeMark, setMarqueeText } from "marquee";
 import { FONT_UI, FONT_WORD, ON, noteGlyph, type Glyph } from "ink";
 import { themeGeneration } from "theme";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
-import { WORD_LEVEL_NAME, bankCount, clampWordLevel, hiddenIndices, listWordSources, puzzleCorrect, quizOrder, renderPuzzle, selectWordSource, wordAt, wordCount, wordSourceId } from "words";
+import { flushProgress, loadProgress, setDone, unfinishedFirst } from "progress";
+import { WORD_LEVEL_NAME, bankCount, bankSignature, clampBank, clampWordLevel, hiddenIndices, listWordSources, puzzleCorrect, quizOrder, renderPuzzle, selectWordSource, wordAt, wordCount, wordSourceId, wordSourceLost } from "words";
 import { SOURCE_FLASH } from "wordbank";
 
 type Mode = "play" | "menu" | "help";
@@ -163,18 +164,21 @@ export class AppBehavior extends Behavior {
 	/** Play screen: false = gloss, true = phonetic. */
 	showPhone = false;
 	hostEnterDown = false;
+	/** Last check failed; the wrong tail is cleared on the next letter or when the flash ends. */
+	wordWrong = false;
+	/** wordSourceLost() seen last; a change means the SD pack was dropped. */
+	sourceLost = 0;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
 		this.settings = loadSettings();
-		const wantSource = this.settings.wordSource;
-		if (!selectWordSource(wantSource))
-			selectWordSource(SOURCE_FLASH);
-		this.settings.wordSource = wordSourceId();
-		if (this.settings.wordSource !== wantSource) {
-			this.settings.wordBank = 0;
-			saveSettings(this.settings);
-		}
+		/*
+			Card pack missing this boot: run on flash without touching the saved
+			wordSource / wordBank, so the next boot with the card goes back to it.
+		*/
+		if (!selectWordSource(this.settings.wordSource, false))
+			selectWordSource(SOURCE_FLASH, false);
+		this.sourceLost = wordSourceLost();
 		this.power = new Power("blank");
 		this.kb = new CardputerKeyboard();
 		this.sound = new ClockSound();
@@ -189,7 +193,7 @@ export class AppBehavior extends Behavior {
 
 	menuList() {
 		const s = this.settings;
-		return menuItems(s.sound, s.wordLevel, s.wordBank, s.wordSource, s.shuffle, s.phone, s.onlyMiss);
+		return menuItems(s.sound, s.wordLevel, s.wordBank, wordSourceId(), s.shuffle, s.phone, s.onlyMiss);
 	}
 
 	lexIndex(): number {
@@ -201,13 +205,14 @@ export class AppBehavior extends Behavior {
 
 	rebuildOrder(keepLex = -1) {
 		const n = wordCount(this.settings.wordBank);
+		loadProgress(wordSourceId(), clampBank(this.settings.wordBank), n, () => bankSignature(this.settings.wordBank));
 		const salt = Date.now() + this.settings.wordBank * 131 + (this.settings.shuffle ? 1 : 0);
 		let order = quizOrder(n, this.settings.shuffle, salt);
 		if (this.settings.onlyMiss) {
 			const miss = missSet(this.settings.misses);
 			order = order.filter(index => miss.has(wordAt(this.settings.wordBank, index).word.toLowerCase()));
 		}
-		this.wordOrder = order;
+		this.wordOrder = unfinishedFirst(order);
 		if (keepLex >= 0 && n > 0) {
 			for (let i = 0; i < this.wordOrder.length; i++) {
 				if (this.wordOrder[i] === keepLex) {
@@ -497,6 +502,7 @@ export class AppBehavior extends Behavior {
 		if (n <= 0) {
 			this.wordHidden = [];
 			this.wordTyped = "";
+			this.wordWrong = false;
 			this.showPhone = false;
 			return;
 		}
@@ -507,6 +513,7 @@ export class AppBehavior extends Behavior {
 		this.wordMaskLevel = clampWordLevel(this.settings.wordLevel);
 		this.wordHidden = hiddenIndices(entry.word, lex, this.wordMaskLevel);
 		this.wordTyped = "";
+		this.wordWrong = false;
 		this.showPhone = false;
 	}
 
@@ -647,12 +654,20 @@ export class AppBehavior extends Behavior {
 			const c = ch.toLowerCase();
 			if (c < "a" || c > "z")
 				continue;
+			if (this.wordWrong) {
+				this.settleWrong(entry.word);
+				typed = true;
+			}
 			if (this.wordTyped.length >= this.wordHidden.length)
 				break;
 			this.wordTyped += c;
 			typed = true;
 		}
-		if ((stroke.del || isPageBack(stroke)) && this.wordTyped.length > 0) {
+		if ((stroke.del || isPageBack(stroke)) && this.wordWrong) {
+			this.settleWrong(entry.word);
+			typed = true;
+		}
+		else if ((stroke.del || isPageBack(stroke)) && this.wordTyped.length > 0) {
 			this.wordTyped = this.wordTyped.slice(0, -1);
 			typed = true;
 		}
@@ -673,6 +688,7 @@ export class AppBehavior extends Behavior {
 			else {
 				this.wordNote = "bad";
 				this.wordNoteUntil = Date.now() + WORD_HOLD_MS;
+				this.wordWrong = true;
 				this.noteResult(entry.word, false);
 				this.paintWord(app);
 			}
@@ -696,16 +712,25 @@ export class AppBehavior extends Behavior {
 			this.sessionOk += 1;
 			this.settings.streak += 1;
 			this.settings.misses = dropMiss(this.settings.misses, key);
+			setDone(this.lexIndex(), true);
 		}
 		else {
 			this.sessionBad += 1;
 			this.settings.streak = 0;
 			this.settings.misses = addMiss(this.settings.misses, key);
+			setDone(this.lexIndex(), false);
 		}
+		flushProgress();
 		saveSettings(this.settings);
 	}
 
 	onTick(app: AppHost) {
+		const lost = wordSourceLost();
+		if (lost !== this.sourceLost) {
+			this.sourceLost = lost;
+			this.onSourceLost(app);
+			return;
+		}
 		if (this.mode !== "play")
 			return;
 		if (!this.wordNote || Date.now() < this.wordNoteUntil)
@@ -715,6 +740,34 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		this.wordNote = "";
+		if (this.wordWrong)
+			this.settleWrong(wordAt(this.settings.wordBank, this.lexIndex()).word);
 		this.paintWord(app);
+	}
+
+	/** Keep the correct leading letters of a wrong answer; retype from the first mistake. */
+	settleWrong(word: string) {
+		this.wordWrong = false;
+		let keep = 0;
+		while (keep < this.wordTyped.length && keep < this.wordHidden.length && this.wordTyped.charAt(keep) === word.charAt(this.wordHidden[keep]))
+			keep += 1;
+		this.wordTyped = this.wordTyped.slice(0, keep);
+		if (this.wordNote === "bad")
+			this.wordNote = "";
+	}
+
+	/* SD pack failed mid-session; wordbank already fell back to flash. Saved choice is kept. */
+	onSourceLost(app: AppHost) {
+		this.rebuildOrder();
+		this.wordAdvance = false;
+		this.loadWord();
+		this.wordNote = "读卡失败 已用内置";
+		this.wordNoteUntil = Date.now() + 2000;
+		if (this.mode === "play") {
+			this.paintWord(app);
+			return;
+		}
+		if (this.mode === "menu")
+			this.paintMenu(app);
 	}
 }

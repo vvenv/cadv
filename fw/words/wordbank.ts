@@ -62,10 +62,26 @@ function fromResource(res: InstanceType<typeof Resource>): Src {
 	};
 }
 
+/*
+	SD reads can fail mid-session (card pulled). Never throw into the UI
+	timers: hand back zeros (empty strings / counts downstream) and flag the
+	pack so the next openBank() falls back to flash.
+*/
 function fromFile(file: File): Src {
 	return {
 		readBytes(off: number, len: number): ArrayBuffer {
-			return file.read(len, off);
+			if (!readFailed) {
+				try {
+					const got = file.read(len, off);
+					if (got && got.byteLength === len)
+						return got;
+				}
+				catch {
+					/* */
+				}
+				readFailed = true;
+			}
+			return new ArrayBuffer(len);
 		},
 	};
 }
@@ -198,6 +214,9 @@ function tryOpen(id: string): OpenState | null {
 	reopen the Preference wordSource then.
 */
 let state: OpenState | null | undefined;
+let readFailed = false;
+/** Bumps when the open pack changes without the user picking it (SD read failed). */
+let lostGeneration = 0;
 
 function adopt(next: OpenState | null): boolean {
 	if (!next)
@@ -205,6 +224,7 @@ function adopt(next: OpenState | null): boolean {
 	if (state && state.file)
 		closeQuiet(state.file);
 	state = next;
+	readFailed = false;
 	return true;
 }
 
@@ -215,15 +235,24 @@ function ensureOpen(): void {
 	const want = readPrefSource();
 	if (adopt(tryOpen(want)))
 		return;
-	if (want !== SOURCE_FLASH && adopt(tryOpen(SOURCE_FLASH))) {
-		writePrefSource(SOURCE_FLASH);
-		return;
-	}
+	/* Card missing this boot: run on flash, keep the saved choice for next time. */
+	if (want !== SOURCE_FLASH)
+		adopt(tryOpen(SOURCE_FLASH));
 }
 
 function openBank(): BankFile | null {
 	ensureOpen();
+	if (readFailed && state && state.id !== SOURCE_FLASH) {
+		if (!adopt(tryOpenFlash()))
+			state = null;
+		lostGeneration += 1;
+	}
 	return state ? state.bank : null;
+}
+
+/** Changes when an SD pack was dropped for flash mid-session. */
+export function wordSourceLost(): number {
+	return lostGeneration;
 }
 
 export function wordSourceId(): string {
@@ -269,16 +298,17 @@ export function listWordSources(): WordSource[] {
 	return out;
 }
 
-/** Switch pack. Closes the previous SD File. Persists wordSource. */
-export function selectWordSource(id: string): boolean {
+/** Switch pack. Closes the previous SD File. Persists wordSource unless `persist` is false. */
+export function selectWordSource(id: string, persist = true): boolean {
 	ensureOpen();
 	const want = !id ? SOURCE_FLASH : id;
-	if (state && state.id === want)
+	if (state && state.id === want && !readFailed)
 		return true;
 	const next = tryOpen(want);
 	if (!adopt(next))
 		return false;
-	writePrefSource(want);
+	if (persist)
+		writePrefSource(want);
 	return true;
 }
 
@@ -333,6 +363,39 @@ function storedLexField(id: number, atOff: number, lenOff: number): string {
 		return "";
 	const rec = read(file.src, file.lexAt + id * LEX_STRIDE, LEX_STRIDE);
 	return text(u32(rec.subarray(atOff, atOff + 4)), u16(rec.subarray(lenOff, lenOff + 2)));
+}
+
+/*
+	16-bit FNV-1a over the bank's headwords in quiz index order, never 0.
+	Progress files store it so a regenerated pack with the same size does not
+	inherit marks meant for other words. Reads raw bytes; no strings built.
+*/
+export function storedBankSignature(bank: number): number {
+	const file = openBank();
+	if (!file || bank < 0 || bank >= file.banks)
+		return 0;
+	const rec = read(file.src, HEADER + bank * BANK_STRIDE, 8);
+	const idsAt = u32(rec.subarray(0, 4));
+	const n = u16(rec.subarray(4, 6));
+	let h = 0x811c9dc5;
+	const CHUNK = 64;
+	for (let start = 0; start < n; start += CHUNK) {
+		const take = Math.min(CHUNK, n - start);
+		const ids = read(file.src, idsAt + start * 2, take * 2);
+		for (let k = 0; k < take; k++) {
+			const id = ids[k * 2] | (ids[k * 2 + 1] << 8);
+			if (id >= file.lex)
+				continue;
+			const lex = read(file.src, file.lexAt + id * LEX_STRIDE, 6);
+			const len = u16(lex.subarray(4, 6));
+			const word = len > 0 ? read(file.src, u32(lex.subarray(0, 4)), len) : lex.subarray(0, 0);
+			for (let i = 0; i < word.length; i++)
+				h = Math.imul(h ^ word[i], 0x01000193);
+			h = Math.imul(h ^ 0x0a, 0x01000193);
+		}
+	}
+	const sig = ((h >>> 16) ^ h) & 0xffff;
+	return sig || 1;
 }
 
 export function storedLexWord(id: number): string {

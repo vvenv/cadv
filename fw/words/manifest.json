@@ -15,6 +15,7 @@
 			"./menu",
 			"./settings",
 			"./help",
+			"./progress",
 			"./wordbank",
 			"./words"
 		]
@@ -24,6 +25,7 @@
 		"menu",
 		"settings",
 		"help",
+		"progress",
 		"wordbank",
 		"words"
 	],

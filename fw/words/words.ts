@@ -11,6 +11,7 @@ import {
 	selectWordSource,
 	storedBankCount,
 	storedBankName,
+	storedBankSignature,
 	storedBankSize,
 	storedLexGloss,
 	storedLexId,
@@ -18,9 +19,10 @@ import {
 	storedLexWord,
 	wordSourceId,
 	wordSourceLabel,
+	wordSourceLost,
 } from "wordbank";
 
-export { listWordSources, selectWordSource, wordSourceId, wordSourceLabel };
+export { listWordSources, selectWordSource, wordSourceId, wordSourceLabel, wordSourceLost };
 
 export type WordEntry = { word: string; gloss: string; phone: string };
 
@@ -46,6 +48,11 @@ export function bankName(bank: number): string {
 
 export function wordCount(bank: number): number {
 	return storedBankSize(clampBank(bank));
+}
+
+/** Content check for progress files; 0 when the bank is empty. */
+export function bankSignature(bank: number): number {
+	return storedBankSignature(clampBank(bank));
 }
 
 export function wordAt(bank: number, index: number): WordEntry {
