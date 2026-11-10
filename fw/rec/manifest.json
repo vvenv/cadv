@@ -55,17 +55,20 @@
 		},
 		"mac": {
 			"modules": {
-				"mic": "../../shared/mic_stub"
+				"mic": "../../shared/mic_stub",
+				"pins/audioout": "./audioout_stub"
 			}
 		},
 		"lin": {
 			"modules": {
-				"mic": "../../shared/mic_stub"
+				"mic": "../../shared/mic_stub",
+				"pins/audioout": "./audioout_stub"
 			}
 		},
 		"...": {
 			"modules": {
-				"mic": "../../shared/mic_stub"
+				"mic": "../../shared/mic_stub",
+				"pins/audioout": "./audioout_stub"
 			}
 		}
 	}

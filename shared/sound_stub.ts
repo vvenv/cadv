@@ -2,7 +2,10 @@
 	Desktop stub: no speaker.
 */
 
-export function writeCodec(_mic: boolean) {}
+/** No codec on the desktop; callers treat false as 「无喇叭」. */
+export function writeCodec(_mic: boolean): boolean {
+	return false;
+}
 
 export function releaseMic(): boolean {
 	return false;
