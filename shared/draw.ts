@@ -1,5 +1,5 @@
 /*
-	Phosphor primitives: upright 7-segment readouts (thick hex bars, 45° tips),
+	Phosphor primitives: upright 7-segment readouts (thick hex bars, mitered 45° tips),
 	disks, and binary marks (green check / red cross). Lit segments get one
 	pixel of MID halo. One fillColor per scanline — not per-pixel loops — so
 	HH:MM:SS stays inside commandListLength.
@@ -28,7 +28,8 @@ const SEG = Object.freeze([
 function fillHTrap(port: PortContent, x: number, y: number, w: number, t: number, color: string) {
 	if (w <= 1 || t <= 0)
 		return;
-	const c = Math.max(1, Math.min(t >> 1, (w - 1) >> 1));
+	// (t - 1) >> 1 so the middle row reaches inset 0: a true point, not a flat stub.
+	const c = Math.max(1, Math.min((t - 1) >> 1, (w - 1) >> 1));
 	for (let i = 0; i < t; i++) {
 		const inset = Math.max(0, c - Math.min(i, t - 1 - i));
 		const rw = w - (inset << 1);
@@ -41,7 +42,8 @@ function fillHTrap(port: PortContent, x: number, y: number, w: number, t: number
 function fillVTrap(port: PortContent, x: number, y: number, h: number, t: number, color: string) {
 	if (h <= 1 || t <= 0)
 		return;
-	const c = Math.max(1, Math.min(t >> 1, (h - 1) >> 1));
+	// (t - 1) >> 1 so the middle row reaches inset 0: a true point, not a flat stub.
+	const c = Math.max(1, Math.min((t - 1) >> 1, (h - 1) >> 1));
 	for (let i = 0; i < h; i++) {
 		const inset = Math.max(0, c - Math.min(i, h - 1 - i));
 		const rw = t - (inset << 1);
@@ -453,27 +455,27 @@ export function strokeDisk(port: PortContent, cx: number, cy: number, r: number,
 }
 
 /**
-	One digit box — chunky bars (~w/4.5), 45° tips, upright.
-	V tips bite into H bands while H stays out of V columns (corner notch,
-	no welded overlap). `mask` bit 6 is the top bar, bit 0 the middle bar.
+	One digit box — chunky bars (~w/4.5), mitered 45° tips, upright.
+	Bars are laid out on the stroke centerlines: every tip points at the corner
+	where two centerlines cross, pulled back by `g`, so neighbours meet along a
+	thin diagonal gap (2g − 1 px) instead of leaving a hole. `t` is forced odd
+	so each tip ends in a single-pixel point. `mask` bit 6 is the top bar,
+	bit 0 the middle bar.
 */
 export function drawSegMask(port: PortContent, x: number, y: number, w: number, h: number, mask: number) {
-	const t = Math.max(4, Math.min(10, Math.floor(w / 4.5)));
+	const t = Math.max(4, Math.min(10, Math.floor(w / 4.5))) | 1;
 	const g = 2;
-	const bite = Math.min(t >> 1, g + 1);
-	let v = Math.floor((h - 3 * t - 4 * g + 2 * bite) / 2);
-	if (v < 3)
-		v = 3;
-	const block = 3 * t + 2 * v + 4 * g - 2 * bite;
-	const y0 = y + Math.max(0, Math.floor((h - block) / 2));
-	const yMid = y0 + t + g + v + g - bite;
-	const yBot = yMid + t + g + v + g - bite;
-	const yU = y0 + t + g - bite;
-	const yL = yMid + t + g - bite;
+	const c = t >> 1;
+	const L = Math.max(2 * g + 2, (h - t) >> 1);
+	const y0 = y + Math.max(0, (h - (2 * L + t)) >> 1);
+	const yMid = y0 + L;
+	const yBot = yMid + L;
+	const v = L - 2 * g + 1;
+	const yU = y0 + c + g;
+	const yL = yMid + c + g;
 	const m = mask | 0;
-	// H between V columns; V may share the H y-band via bite, never the x-band.
-	const hx = x + t + g;
-	const hw = Math.max(t, w - 2 * (t + g));
+	const hx = x + c + g;
+	const hw = Math.max(t, w - 2 * (c + g));
 	paintH(port, hx, y0, hw, t, !!(m & 0b1000000));
 	paintV(port, x + w - t, yU, v, t, !!(m & 0b0100000));
 	paintV(port, x + w - t, yL, v, t, !!(m & 0b0010000));

@@ -251,7 +251,7 @@ main() {
   local ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"
   local ipa_stem="Ipa-Bold-20" ipa_family="Ipa"
   local phone_chars="$ROOT/fw/words/phone-chars.txt"
-  [ -f "$ipa_src" ] || log_die "IPA 字体不存在：$ipa_src（可设置 IPA_FONT）"
+  [ -f "$ipa_src" ] || log_die "IPA 字体不存在：${ipa_src}（可设置 IPA_FONT）"
   if [ -s "$phone_chars" ] && command -v hb-shape >/dev/null 2>&1; then
     local miss
     miss="$(IPA_FONT="$ipa_src" PHONE_CHARS="$phone_chars" python3 - <<'PY'

@@ -193,7 +193,7 @@ require_fw() {
       log_die "要指定固件 id：$(fw_ids | tr '\n' ' ')"
     fi
   fi
-  fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
+  fw_exists "$id" || log_die "没有固件：${id}（可选：$(fw_ids | tr '\n' ' ')）"
   printf '%s\n' "$id"
 }
 
@@ -448,7 +448,7 @@ sd_mount_ejected_usb() {
   while IFS= read -r id; do
     [ -n "$id" ] || continue
     mount="$(sd_mount_node "$id")" || continue
-    log_success "已挂上 $mount（$id）"
+    log_success "已挂上 ${mount}（${id}）"
     printf '%s\n' "$mount"
     n=$((n + 1))
   done < <(sd_unmounted_usb_fat msc)
@@ -657,7 +657,7 @@ sd_put_dict_host() {
   local home="$1" src dest
   src="$(dict_lex_src)"
   if [ ! -f "$src" ]; then
-    log_warn "没有查词库 $src，跳过 ${SD_DIR}/dict/lex.bin"
+    log_warn "没有查词库 ${src}，跳过 ${SD_DIR}/dict/lex.bin"
     return 0
   fi
   mkdir -p "$home/dict"
@@ -740,7 +740,7 @@ sd_put_words_packs_host() {
   for id in "$@"; do
     src="$(words_pack_src "$id")"
     if [ ! -f "$src" ]; then
-      log_warn "没有词库 $src，跳过 ${WORDS_BANK_DIR}/${id}.bin"
+      log_warn "没有词库 ${src}，跳过 ${WORDS_BANK_DIR}/${id}.bin"
       continue
     fi
     dest="$home/words/${id}.bin"
@@ -1275,7 +1275,7 @@ cmd_sd_fw_device() {
         put_dict=1
         args+=("$lexsrc" "dict/lex.bin")
       else
-        log_warn "没有查词库 $lexsrc，跳过 ${SD_DIR}/dict/lex.bin"
+        log_warn "没有查词库 ${lexsrc}，跳过 ${SD_DIR}/dict/lex.bin"
       fi
     fi
   done
@@ -1315,7 +1315,7 @@ cmd_sd_fw() {
         log_warn "跳过基座 sd，它留在芯片里"
         continue
       fi
-      fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
+      fw_exists "$id" || log_die "没有固件：${id}（可选：$(fw_ids | tr '\n' ' ')）"
       ids+=("$id")
     done
     if [ "${#ids[@]}" -gt 1 ]; then
@@ -1374,7 +1374,7 @@ cmd_sd_mount() {
     [ -n "$id" ] || continue
     any=1
     mount="$(sd_mount_node "$id")" || continue
-    log_success "已挂上 $mount（$id）"
+    log_success "已挂上 ${mount}（${id}）"
     n=$((n + 1))
   done < <(sd_unmounted_usb_fat msc)
   if [ "$n" -gt 0 ]; then
@@ -1385,7 +1385,7 @@ cmd_sd_mount() {
       [ -n "$id" ] || continue
       any=1
       mount="$(sd_mount_node "$id")" || continue
-      log_success "已挂上 $mount（$id）"
+      log_success "已挂上 ${mount}（${id}）"
       n=$((n + 1))
     done < <(sd_unmounted_usb_fat all)
   fi
@@ -1555,7 +1555,7 @@ cmd_ts_check() {
   local id found=0
   while IFS= read -r id; do
     [ -n "$id" ] || continue
-    log_success "固件 $id（$(fw_label "$id")）"
+    log_success "固件 ${id}（$(fw_label "$id")）"
     found=1
   done < <(fw_ids)
   [ "$found" -eq 1 ] || log_error "fw/ 下没有固件"
@@ -1741,7 +1741,7 @@ cmd_ts_flash() {
   local id want=0
   # The chip only holds the launcher. Other firmware is chosen on the device.
   id="${1:-sd}"
-  fw_exists "$id" || log_die "没有固件：$id（可选：$(fw_ids | tr '\n' ' ')）"
+  fw_exists "$id" || log_die "没有固件：${id}（可选：$(fw_ids | tr '\n' ' ')）"
   if fw_needs_bank "$id"; then
     want=1
   fi
