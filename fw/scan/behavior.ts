@@ -99,7 +99,7 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 			return;
 		}
-		if (stroke.chars.some(ch => ch === "t" || ch === "T")) {
+		if (stroke.chars.some(ch => ch === "m" || ch === "M")) {
 			this.band = this.band === "wifi" ? "ble" : "wifi";
 			this.rows = [];
 			this.index = 0;

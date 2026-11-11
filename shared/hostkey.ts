@@ -11,7 +11,7 @@ function stroke(
 	right: boolean,
 	tab = false,
 ): KeyStroke {
-	return { chars, enter, del, shift: false, esc, up, down, left, right, fn: false, bright: 0, theme: false, qr: false, tab };
+	return { chars, enter, del, shift: false, esc, up, down, left, right, fn: false, bright: 0, theme: false, qr: false, tab, help: false };
 }
 
 /** Desktop simulator keys. Hardware polling owns the keypad when it is up. */

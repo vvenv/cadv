@@ -123,6 +123,7 @@ function homeTiles(entries: SdEntry[]): HomeTile[] {
 		tiles.push({
 			id: entryId(entry),
 			label: entry.label,
+			icon: entry.icon,
 			big: entry.size > 0 && !fitsSlot(entry.size),
 			bad: !!entry.error,
 		});

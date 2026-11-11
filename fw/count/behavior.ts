@@ -1,6 +1,8 @@
 /*
 	Manual tally or listen-for-sound tally.
 	Speaker and mic share I2S1, so listen mode closes the click tones.
+	Listening runs a native hit detector (onset.c) on every PCM chunk;
+	this side only collects the hit count and a level for the bar.
 */
 
 import {} from "piu/MC";
@@ -20,6 +22,7 @@ import { acceptStroke, titleGlyph } from "session";
 import { ClockSound, releaseMic } from "sound";
 import { VOL_DEFAULT, VOL_MAX, VOL_MIN } from "volume";
 import { asSevenSeg } from "sevenseg";
+import { onsetFeed, onsetLevel, onsetReset } from "onset";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
 import { asCountFooter, asCountTop, type Gain, type Sense } from "view";
 
@@ -27,18 +30,27 @@ const PREF = "count";
 const store = pref(PREF);
 const STEPS = Object.freeze([1, 2, 5, 10, 20, 50, 100]);
 const COUNT_MAX = 999999;
-/** Hit when peak clearly rises above a slow ambient floor. */
-const FLOOR_ALPHA = 0.06;
-const HIT_GAP_MS = 280;
+/** Shortest spacing between two hits. */
+const HIT_GAP_MS = 180;
+/** A hit's level must fall this far before the next can count. */
+const RELEASE_DB = 8;
+/** Start-up spent only learning the noise floor (codec pop, filters). */
+const SETTLE_MS = 300;
+/** Level bar range, high-passed dBFS. */
+const BAR_LO_DB = -70;
+const BAR_HI_DB = -10;
+/** Persist the count at most this often while listening (flash writes stall audio). */
+const SAVE_DELAY_MS = 1500;
 
 type Mode = "run" | "pick" | "help";
 
-type GainTune = { id: Gain; rise: number; mult: number; minOn: number };
+/** thr: dB over the noise floor; rise: dB jump within 8 ms; minDb: absolute floor. */
+type GainTune = { id: Gain; thr: number; rise: number; minDb: number };
 
 const GAINS = Object.freeze([
-	{ id: "high" as Gain, rise: 5, mult: 1.5, minOn: 3 },
-	{ id: "mid" as Gain, rise: 8, mult: 1.8, minOn: 5 },
-	{ id: "low" as Gain, rise: 14, mult: 2.5, minOn: 12 },
+	{ id: "high" as Gain, thr: 8, rise: 6, minDb: -65 },
+	{ id: "mid" as Gain, thr: 11, rise: 6, minDb: -55 },
+	{ id: "low" as Gain, thr: 16, rise: 7, minDb: -45 },
 ], true);
 
 const PICK_ROWS = Object.freeze([
@@ -130,10 +142,11 @@ export class AppBehavior extends Behavior {
 	sense: Sense = "hand";
 	gain: Gain = "mid";
 	armed = false;
+	/** Level bar, 0..100. */
 	peak = 0;
-	floor = 0;
-	loud = false;
-	lastHit = 0;
+	/** Hits found in the mic callback, not yet added. */
+	hits = 0;
+	saveTimer: ReturnType<typeof Timer.set> | null = null;
 	pickIndex = 0;
 	helpIndex = 0;
 	note = "";
@@ -166,20 +179,13 @@ export class AppBehavior extends Behavior {
 		this.closeSound();
 		this.armed = false;
 		this.peak = 0;
-		this.floor = 0;
-		this.loud = false;
+		this.hits = 0;
 		this.note = "";
 		if (this.sense === "ear") {
-			this.mic = openMic();
+			this.mic = openMic(pcm => this.onPcm(pcm), { peak: false });
 			if (!this.mic)
 				this.note = micFault() || "无麦克风";
-			this.armed = armDefault && !!this.mic;
-			if (this.armed && this.mic) {
-				this.mic.takePeak();
-				this.floor = this.mic.peak();
-				this.peak = this.floor;
-				this.loud = false;
-			}
+			this.setArmed(armDefault && !!this.mic);
 		}
 		else {
 			releaseMic();
@@ -187,6 +193,26 @@ export class AppBehavior extends Behavior {
 			this.sound.setVolume(this.volume);
 		}
 		this.paint(app);
+	}
+
+	/** Start or stop listening; starting restarts the detector. */
+	setArmed(on: boolean) {
+		this.armed = on;
+		this.hits = 0;
+		this.peak = 0;
+		if (on)
+			this.restartDetector();
+	}
+
+	restartDetector() {
+		const tune = tuneFor(this.gain);
+		onsetReset(tune.thr, tune.rise, tune.minDb, RELEASE_DB, HIT_GAP_MS, SETTLE_MS);
+	}
+
+	onPcm(pcm: Int16Array) {
+		if (!this.armed)
+			return;
+		this.hits += onsetFeed(pcm.buffer, pcm.byteOffset, pcm.length);
 	}
 
 	closeMic() {
@@ -214,25 +240,13 @@ export class AppBehavior extends Behavior {
 	}
 
 	pollEar(app: AppHost) {
-		const peak = this.mic?.takePeak() ?? 0;
-		this.peak = peak;
-		const tune = tuneFor(this.gain);
-		if (this.loud) {
-			const off = Math.max(3, this.floor + tune.rise * 0.4, this.floor * 1.25);
-			if (peak < off)
-				this.loud = false;
-			return;
+		const level = onsetLevel()[0];
+		this.peak = Math.round((level - BAR_LO_DB) * 100 / (BAR_HI_DB - BAR_LO_DB));
+		const hits = this.hits;
+		if (hits > 0) {
+			this.hits = 0;
+			this.add(app, this.step * hits, true);
 		}
-		this.floor += (peak - this.floor) * FLOOR_ALPHA;
-		const on = Math.max(tune.minOn, this.floor + tune.rise, Math.ceil(this.floor * tune.mult));
-		if (peak < on)
-			return;
-		this.loud = true;
-		const now = Date.now();
-		if (now - this.lastHit < HIT_GAP_MS)
-			return;
-		this.lastHit = now;
-		this.add(app, this.step, true);
 	}
 
 	onKeyDown(content: unknown, key: string) {
@@ -257,6 +271,7 @@ export class AppBehavior extends Behavior {
 
 	handleStroke(app: AppHost, stroke: KeyStroke) {
 		if (isLauncher(stroke)) {
+			this.flushSave();
 			this.closeMic();
 			this.closeSound();
 			bootLauncher();
@@ -304,8 +319,11 @@ export class AppBehavior extends Behavior {
 					this.save();
 				if (senseChanged)
 					this.applySense(app, row.sense === "ear");
-				else
+				else {
+					if (gainChanged && this.armed)
+						this.restartDetector();
 					this.paint(app);
+				}
 				return;
 			}
 			this.paint(app);
@@ -330,6 +348,8 @@ export class AppBehavior extends Behavior {
 					}
 				}
 				this.gain = GAINS[(at + 1) % GAINS.length].id;
+				if (this.armed)
+					this.restartDetector();
 				this.save();
 				this.paint(app);
 				return;
@@ -352,12 +372,8 @@ export class AppBehavior extends Behavior {
 					this.paint(app);
 					return;
 				}
-				this.armed = !this.armed;
-				if (this.armed)
-					this.mic.takePeak();
-				this.peak = this.mic.peak();
-				this.floor = this.peak;
-				this.loud = false;
+				this.setArmed(!this.armed);
+				this.save();
 				this.note = "";
 				this.paint(app);
 				return;
@@ -419,7 +435,10 @@ export class AppBehavior extends Behavior {
 			else if (delta < 0)
 				this.sound?.play([{ hz: 880, ms: 22 }]);
 		}
-		this.save();
+		if (this.armed)
+			this.saveSoon();
+		else
+			this.save();
 		this.paint(app);
 	}
 
@@ -432,6 +451,24 @@ export class AppBehavior extends Behavior {
 			this.flash = 0;
 			this.paint(app);
 		}, 120);
+	}
+
+	/** While listening, batch writes so a flash write can't stall the mic. */
+	saveSoon() {
+		if (this.saveTimer)
+			return;
+		this.saveTimer = Timer.set(() => {
+			this.saveTimer = null;
+			this.save();
+		}, SAVE_DELAY_MS);
+	}
+
+	flushSave() {
+		if (!this.saveTimer)
+			return;
+		Timer.clear(this.saveTimer);
+		this.saveTimer = null;
+		this.save();
 	}
 
 	save() {

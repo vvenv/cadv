@@ -1,5 +1,6 @@
 /*
-	Launcher icons for the SD grid, one per firmware id.
+	Launcher icons for the SD grid. Each firmware ships its own as
+	cadv/<id>.icon (source fw/<id>/icon); this module parses and draws them.
 
 	Every icon is drawn on a 28-unit grid centred on (cx, cy) and scaled to
 	`size`, with one stroke weight so the grid reads as a set. Shapes are
@@ -193,226 +194,134 @@ function crescent(p: Pen, x: number, y: number, r: number, bx: number, by: numbe
 	}
 }
 
-/* ---------------------------------------------------------------- icons -- */
+/* ------------------------------------------------------------ icon file -- */
 
-function clock(p: Pen) {
-	ring(p, 0, 0, 11);
-	line(p, 0, 0, 0, -7);
-	line(p, 0, 0, 5, 3);
-}
+/*
+	An icon is the text file fw/<id>/icon, copied to cadv/<id>.icon next to
+	the image. One shape per line, grid units, `#` starts a comment:
 
-/** 拼写: a letter and the blank after it. */
-function words(p: Pen) {
-	line(p, -10, 8, -4, -9);
-	line(p, -4, -9, 2, 8);
-	line(p, -7, 2, -1, 2);
-	rect(p, 5, 7, 6, 2);
-}
+		rect x y w h          filled rectangle, (x, y) top-left
+		frame x y w h         stroked rectangle
+		line x0 y0 x1 y1      stroke
+		disc x y r            filled circle
+		oval x y rx ry        filled ellipse
+		ring x y r [top|bottom] [wedge]
+		crescent x y r bx by br
 
-/** 查词: open book. */
-function dict(p: Pen) {
-	line(p, 0, -6, -11, -9);
-	line(p, -11, -9, -11, 7);
-	line(p, -11, 7, 0, 10);
-	line(p, 0, -6, 11, -9);
-	line(p, 11, -9, 11, 7);
-	line(p, 11, 7, 0, 10);
-	line(p, 0, -6, 0, 10);
-}
+	A trailing `red` paints that shape red on an unselected tile.
+	Parsed once into a flat number list: opcode (| RED_BIT), then its args.
+*/
 
-/** 键盘 */
-function kb(p: Pen) {
-	frame(p, -12.5, -8.5, 25, 17);
-	for (let i = 0; i < 5; i++) {
-		rect(p, -9.5 + i * 4, -4.5, 3, 2);
-		rect(p, -9.5 + i * 4, -0.5, 3, 2);
+export type Icon = number[];
+
+const OP_RECT = 1;
+const OP_FRAME = 2;
+const OP_LINE = 3;
+const OP_DISC = 4;
+const OP_OVAL = 5;
+const OP_RING = 6;
+const OP_CRESCENT = 7;
+const RED_BIT = 8;
+
+/** Number of args after the opcode. */
+const ARGS = [0, 4, 4, 4, 3, 4, 5, 6];
+
+const NAMES: Record<string, number> = {
+	rect: OP_RECT,
+	frame: OP_FRAME,
+	line: OP_LINE,
+	disc: OP_DISC,
+	oval: OP_OVAL,
+	ring: OP_RING,
+	crescent: OP_CRESCENT,
+};
+
+/** Upper bound on shapes, so a stray file cannot overrun the command list. */
+const MAX_SHAPES = 32;
+
+function parseLine(line: string, out: number[]): boolean {
+	const hash = line.indexOf("#");
+	const body = hash >= 0 ? line.slice(0, hash) : line;
+	const words = body.split(/\s+/).filter(w => w.length > 0);
+	if (!words.length)
+		return true;
+	const op = NAMES[words[0]];
+	if (!op)
+		return false;
+	let red = false;
+	if (words[words.length - 1] === "red") {
+		red = true;
+		words.pop();
 	}
-	rect(p, -5.5, 3.5, 11, 2);
-}
-
-/** 水平: spirit level with the bubble between the marks. */
-function level(p: Pen) {
-	frame(p, -12.5, -5.5, 25, 11);
-	rect(p, -6.5, -3.5, 1, 7);
-	rect(p, 5.5, -3.5, 1, 7);
-	disc(p, 0, 0, 2.5);
-}
-
-/** 设备 and the fallback: a chip with pins on four sides. */
-function chip(p: Pen) {
-	frame(p, -7.5, -7.5, 15, 15);
-	rect(p, -2.5, -2.5, 5, 5);
-	for (let i = -1; i <= 1; i++) {
-		const o = i * 4 - 1;
-		rect(p, -11.5, o, 4, 2);
-		rect(p, 7.5, o, 4, 2);
-		rect(p, o, -11.5, 2, 4);
-		rect(p, o, 7.5, 2, 4);
+	const args: number[] = [];
+	let part = 0;
+	let wedge = 0;
+	for (let i = 1; i < words.length; i++) {
+		const w = words[i];
+		if (op === OP_RING && args.length === 3) {
+			if (w === "top" || w === "bottom" || w === "all") {
+				part = w === "top" ? 1 : w === "bottom" ? 2 : 0;
+				continue;
+			}
+		}
+		const v = Number(w);
+		if (!isFinite(v))
+			return false;
+		if (op === OP_RING && args.length === 3)
+			wedge = v;
+		else
+			args.push(v);
 	}
-}
-
-/** 优盘: USB stick. */
-function usb(p: Pen) {
-	frame(p, -4.5, -11.5, 9, 9);
-	rect(p, -2.5, -8.5, 2, 2);
-	rect(p, 0.5, -8.5, 2, 2);
-	frame(p, -6.5, -3.5, 13, 15);
-}
-
-/** 录音: record button. */
-function rec(p: Pen, dot: string) {
-	ring(p, 0, 0, 11);
-	disc(p, 0, 0, 5.5, dot);
-}
-
-/** 记事: page with a folded corner and lines. */
-function note(p: Pen) {
-	rect(p, -8.5, -11.5, 12, 2);
-	rect(p, -8.5, -11.5, 2, 23);
-	rect(p, -8.5, 9.5, 17, 2);
-	rect(p, 6.5, -5.5, 2, 17);
-	line(p, 3, -11, 8, -6);
-	rect(p, -4.5, -3.5, 9, 2);
-	rect(p, -4.5, 0.5, 9, 2);
-	rect(p, -4.5, 4.5, 6, 2);
-}
-
-/** 计算 */
-function calc(p: Pen) {
-	frame(p, -8.5, -11.5, 17, 23);
-	rect(p, -5.5, -8.5, 11, 3);
-	for (let r = 0; r < 3; r++)
-		for (let c = 0; c < 3; c++)
-			rect(p, -5.5 + c * 4, -2.5 + r * 4, 3, 3);
-}
-
-/** 扫描: radio arcs. */
-function scan(p: Pen) {
-	disc(p, 0, 8, 2);
-	ring(p, 0, 8, 8, "top", 0.9);
-	ring(p, 0, 8, 14, "top", 0.9);
-	ring(p, 0, 8, 20, "top", 0.9);
-}
-
-/** 节拍: metronome. */
-function metro(p: Pen) {
-	line(p, -3, -10, 3, -10);
-	line(p, -3, -10, -8, 10);
-	line(p, 3, -10, 8, 10);
-	rect(p, -10.5, 9.5, 21, 2);
-	line(p, 0, 6, 2, -6);
-	rect(p, -0.5, -2.5, 4, 2);
-}
-
-/** 调音: tuning fork. */
-function tune(p: Pen) {
-	rect(p, -6.5, -11.5, 2, 9);
-	rect(p, 4.5, -11.5, 2, 9);
-	ring(p, 0, -3, 6.5, "bottom");
-	rect(p, -1, 3, 2, 9);
-}
-
-/** 计步: two footprints. */
-function step(p: Pen) {
-	oval(p, -5, 0, 3.5, 5);
-	oval(p, -5, 8.5, 2.5, 2);
-	oval(p, 5, -7.5, 3.5, 5);
-	oval(p, 5, 1, 2.5, 2);
-}
-
-/** 计数: tally of five. */
-function count(p: Pen) {
-	for (let i = 0; i < 4; i++)
-		rect(p, -8 + i * 4.5, -9.5, 2, 19);
-	line(p, -11, 6, 11, -6);
-}
-
-/** 钢琴: three white keys, two black. */
-function piano(p: Pen) {
-	frame(p, -11.5, -10.5, 23, 21);
-	rect(p, -4.5, -10.5, 2, 21);
-	rect(p, 2.5, -10.5, 2, 21);
-	rect(p, -6, -9, 5, 11);
-	rect(p, 1, -9, 5, 11);
-}
-
-/** 基座: SD card. */
-function sd(p: Pen) {
-	rect(p, -2.5, -11.5, 10, 2);
-	rect(p, 5.5, -11.5, 2, 23);
-	rect(p, -7.5, 9.5, 15, 2);
-	rect(p, -7.5, -6.5, 2, 18);
-	line(p, -7, -6, -2, -11);
-	for (let i = 0; i < 3; i++)
-		rect(p, -2.5 + i * 3, -7.5, 2, 4);
-}
-
-/** 分贝: level bars. */
-function db(p: Pen) {
-	for (let i = 0; i < 5; i++) {
-		const h = 4 + i * 4;
-		rect(p, -11.5 + i * 5, 10.5 - h, 3, h);
+	if (op === OP_RING) {
+		if (args.length !== 3)
+			return false;
+		args.push(part, wedge);
 	}
+	if (args.length !== ARGS[op])
+		return false;
+	out.push(red ? op | RED_BIT : op);
+	for (let i = 0; i < args.length; i++)
+		out.push(args[i]);
+	return true;
 }
 
-/** 骰子: five. */
-function dice(p: Pen) {
-	frame(p, -10.5, -10.5, 21, 21);
-	disc(p, -5, -5, 1.5);
-	disc(p, 5, -5, 1.5);
-	disc(p, 0, 0, 1.5);
-	disc(p, -5, 5, 1.5);
-	disc(p, 5, 5, 1.5);
+/** Parse icon text. Bad lines are skipped; null when nothing usable is left. */
+export function parseIcon(text: string, name = "icon"): Icon | null {
+	const out: number[] = [];
+	const lines = text.split("\n");
+	let shapes = 0;
+	for (let i = 0; i < lines.length && shapes < MAX_SHAPES; i++) {
+		const before = out.length;
+		if (!parseLine(lines[i], out))
+			trace(`${name}:${i + 1} skipped\n`);
+		else if (out.length > before)
+			shapes++;
+	}
+	return out.length ? out : null;
 }
 
-/** 游戏: gamepad. */
-function game(p: Pen) {
-	frame(p, -12.5, -6.5, 25, 13);
-	rect(p, -9.5, -1, 7, 2);
-	rect(p, -7, -3.5, 2, 7);
-	disc(p, 4, 1.5, 1);
-	disc(p, 8, -1.5, 1);
-}
+/** Fallback for an image without an icon file: a chip with pins on four sides. */
+const CHIP = parseIcon(`
+	frame -7.5 -7.5 15 15
+	rect -2.5 -2.5 5 5
+	rect -11.5 -5 4 2
+	rect 7.5 -5 4 2
+	rect -5 -11.5 2 4
+	rect -5 7.5 2 4
+	rect -11.5 -1 4 2
+	rect 7.5 -1 4 2
+	rect -1 -11.5 2 4
+	rect -1 7.5 2 4
+	rect -11.5 3 4 2
+	rect 7.5 3 4 2
+	rect 3 -11.5 2 4
+	rect 3 7.5 2 4
+`) as Icon;
 
-/** 摩斯: · — · over — · — */
-function morse(p: Pen) {
-	disc(p, -9, -4, 2);
-	rect(p, -5, -6, 10, 4);
-	disc(p, 9, -4, 2);
-	rect(p, -11.5, 3, 8, 4);
-	disc(p, 0, 5, 2);
-	rect(p, 3.5, 3, 8, 4);
-}
-
-/** 助眠: crescent moon and a star. */
-function noise(p: Pen) {
-	crescent(p, -2, 2, 9.5, 3, -3, 8);
-	rect(p, 7.5, -11.5, 1, 7);
-	rect(p, 4.5, -8.5, 7, 1);
-}
-
-/** 遥控: handset sending upward. */
-function remote(p: Pen) {
-	frame(p, -5.5, -1.5, 11, 13);
-	disc(p, 0, 3, 1.5);
-	rect(p, -2.5, 7.5, 2, 2);
-	rect(p, 0.5, 7.5, 2, 2);
-	ring(p, 0, -1, 6, "top", 1);
-	ring(p, 0, -1, 11, "top", 1);
-}
-
-/** 打字: text lines and a cursor. */
-function type(p: Pen) {
-	rect(p, -11.5, -8.5, 23, 2);
-	rect(p, -11.5, -2.5, 23, 2);
-	rect(p, -11.5, 3.5, 12, 2);
-	rect(p, 3.5, 0.5, 2, 8);
-}
-
-/** Draw the launcher icon for a firmware id (`clock` from `clock.bin`). */
+/** Draw a launcher icon; null draws the chip. */
 export function drawFwIcon(
 	port: PortContent,
-	id: string,
+	icon: Icon | null,
 	cx: number,
 	cy: number,
 	size: number,
@@ -421,30 +330,24 @@ export function drawFwIcon(
 	const s = size < 14 ? 14 : size;
 	const k = s / GRID;
 	const p: Pen = { port, cx, cy, k, t: Math.max(2, Math.round(2 * k)), color };
-	switch (id) {
-	case "clock": clock(p); break;
-	case "words": words(p); break;
-	case "dict": dict(p); break;
-	case "kb": kb(p); break;
-	case "level": level(p); break;
-	case "usb": usb(p); break;
-	case "rec": rec(p, color === ON ? RED : color); break;
-	case "note": note(p); break;
-	case "calc": calc(p); break;
-	case "scan": scan(p); break;
-	case "metro": metro(p); break;
-	case "tune": tune(p); break;
-	case "step": step(p); break;
-	case "count": count(p); break;
-	case "piano": piano(p); break;
-	case "sd": sd(p); break;
-	case "db": db(p); break;
-	case "dice": dice(p); break;
-	case "game": game(p); break;
-	case "morse": morse(p); break;
-	case "noise": noise(p); break;
-	case "remote": remote(p); break;
-	case "type": type(p); break;
-	default: chip(p);
+	const red = color === ON ? RED : color;
+	const a = icon || CHIP;
+	for (let i = 0; i < a.length; ) {
+		const code = a[i++];
+		const op = code & 7;
+		p.color = code & RED_BIT ? red : color;
+		switch (op) {
+		case OP_RECT: rect(p, a[i], a[i + 1], a[i + 2], a[i + 3]); break;
+		case OP_FRAME: frame(p, a[i], a[i + 1], a[i + 2], a[i + 3]); break;
+		case OP_LINE: line(p, a[i], a[i + 1], a[i + 2], a[i + 3]); break;
+		case OP_DISC: disc(p, a[i], a[i + 1], a[i + 2]); break;
+		case OP_OVAL: oval(p, a[i], a[i + 1], a[i + 2], a[i + 3]); break;
+		case OP_RING:
+			ring(p, a[i], a[i + 1], a[i + 2], a[i + 3] === 1 ? "top" : a[i + 3] === 2 ? "bottom" : "all", a[i + 4]);
+			break;
+		case OP_CRESCENT: crescent(p, a[i], a[i + 1], a[i + 2], a[i + 3], a[i + 4], a[i + 5]); break;
+		default: return;
+		}
+		i += ARGS[op];
 	}
 }

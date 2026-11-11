@@ -20,6 +20,7 @@ export type KeyStroke = {
 	/** Fn+Q. Desktop keys never set this. */
 	qr: boolean;
 	tab: boolean;
+	help: boolean;
 };
 
 export type HeldState = {
@@ -42,6 +43,8 @@ const HELD_EMPTY: HeldState = {
 
 export class CardputerKeyboard {
 	status = "KB n/a";
+	repeatDelay = 0;
+	repeatRate = 60;
 	get available(): boolean {
 		return false;
 	}

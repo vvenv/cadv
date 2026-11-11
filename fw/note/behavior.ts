@@ -1,15 +1,18 @@
 /*
-	Edit cadv/*.txt. Other files show their size. Fn+Q draws a short QR.
+	Notes in cadv/note/*.txt. List shows each note's first line, newest first.
+	The editor has a cursor (Fn+H/J/K/L), held keys repeat, and the note is
+	saved a few seconds after typing stops and again on leaving.
 */
 
 import {} from "piu/MC";
 import Timer from "timer";
 import { bootLauncher } from "boot";
 import { listFiles, MAX_TEXT_BYTES, nextName, openHome, readText, utf8Length, writeText, type NoteFile } from "files";
+import { asEdit } from "editor";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
 import { hostStroke } from "hostkey";
-import { isBack, isConfirm, isHelp, isLauncher, isPageBack, navDir } from "keys";
+import { isBack, isConfirm, isHelp, isLauncher, navDir } from "keys";
 import { helpList } from "help-ui";
 import { menuStep } from "list";
 import { asMenu } from "menu-view";
@@ -23,7 +26,10 @@ import type { Directory } from "embedded:storage/files";
 
 type Mode = "list" | "edit" | "qr" | "help";
 
-const WIDTH = 16;
+/** Save this long after the last edit. */
+const AUTOSAVE_MS = 3000;
+const REPEAT_DELAY = 400;
+const REPEAT_RATE = 60;
 
 export class AppBehavior extends Behavior {
 	mode: Mode = "list";
@@ -36,8 +42,12 @@ export class AppBehavior extends Behavior {
 	helpIndex = 0;
 	name = "";
 	text = "";
-	/** Text changed since open; only then is it written back. */
+	cursor = 0;
+	bytes = 0;
+	/** Text changed since the last write; only then is it written back. */
 	dirty = false;
+	/** Date.now() of the last edit, for autosave. */
+	editedAt = 0;
 	/** File name armed by a first D press; a second D on it deletes. */
 	armedDelete = "";
 	hostEnterDown = false;
@@ -61,6 +71,10 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 		if (stroke)
 			this.handleStroke(app, stroke);
+		else if (this.dirty && this.mode === "edit" && Date.now() - this.editedAt > AUTOSAVE_MS) {
+			this.save();
+			this.paint(app);
+		}
 	}
 
 	onKeyDown(content: unknown, key: string) {
@@ -89,17 +103,21 @@ export class AppBehavior extends Behavior {
 			bootLauncher();
 			return;
 		}
-		if (isHelp(stroke) && this.mode !== "help" && this.mode !== "edit") {
+		if (this.mode === "edit") {
+			this.onEdit(app, stroke);
+			return;
+		}
+		if (isHelp(stroke) && this.mode !== "help") {
 			this.mode = "help";
 			this.helpIndex = 0;
-			this.showQr(app, false);
+			this.show(app);
 			this.paint(app);
 			return;
 		}
 		if (this.mode === "help" || this.mode === "qr") {
-			if (isBack(stroke) || isConfirm(stroke)) {
+			if (isBack(stroke) || isConfirm(stroke) || stroke.qr) {
 				this.mode = this.mode === "qr" ? "edit" : "list";
-				this.showQr(app, false);
+				this.show(app);
 				this.paint(app);
 				return;
 			}
@@ -109,10 +127,6 @@ export class AppBehavior extends Behavior {
 					this.helpIndex += dir;
 			}
 			this.paint(app);
-			return;
-		}
-		if (this.mode === "edit") {
-			this.onEdit(app, stroke);
 			return;
 		}
 		const wantsDelete = stroke.chars.some(ch => ch === "d" || ch === "D");
@@ -125,54 +139,106 @@ export class AppBehavior extends Behavior {
 		const dir = navDir(stroke);
 		if (dir !== 0 && this.files.length)
 			this.index = menuStep(this.index, this.files.length, dir);
-		if (isConfirm(stroke))
+		if (isConfirm(stroke)) {
 			this.open(app);
+			return;
+		}
 		if (wantsDelete)
 			this.remove();
 		this.paint(app);
 	}
 
 	onEdit(app: AppHost, stroke: KeyStroke) {
-		if (isPageBack(stroke) && this.text.length === 0) {
-			this.save();
-			this.mode = "list";
-			this.refresh();
-			this.paint(app);
-			return;
-		}
-		if (stroke.esc || stroke.left) {
-			this.save();
-			this.mode = "list";
-			this.refresh();
-			this.paint(app);
+		const port = contentByName(app, "editPort");
+		const view = asEdit(port);
+		if (stroke.esc) {
+			this.leaveEdit(app);
 			return;
 		}
 		if (stroke.qr) {
-			const bits = this.text.length && utf8Length(this.text) <= 17 ? qrBits(this.text) : null;
-			this.note = bits ? "" : (this.text.length ? "太长" : "空");
+			const bits = this.text.length && this.bytes <= 17 ? qrBits(this.text) : null;
 			if (!bits) {
+				this.note = this.text.length ? "太长" : "空";
 				this.paint(app);
 				return;
 			}
 			this.mode = "qr";
-			this.showQr(app, true);
-			const port = contentByName(app, "qrPort");
-			asQr(port)?.setBits(port, bits);
+			this.show(app);
+			const qrPort = contentByName(app, "qrPort");
+			asQr(qrPort)?.setBits(qrPort, bits);
 			return;
 		}
-		const before = this.text;
-		if (stroke.del && this.text.length)
-			this.text = this.text.slice(0, -1);
-		else if (stroke.enter)
-			this.text += "\n";
-		else {
-			for (const ch of stroke.chars) {
-				if (this.text.length < 800)
-					this.text += ch;
+		if (stroke.up || stroke.down) {
+			if (view)
+				this.cursor = view.vertical(stroke.up ? -1 : 1);
+			this.paint(app);
+			return;
+		}
+		if (view)
+			view.goalX = -1;
+		if (stroke.left || stroke.right) {
+			this.cursor = Math.max(0, Math.min(this.text.length, this.cursor + (stroke.left ? -1 : 1)));
+			this.paint(app);
+			return;
+		}
+		const t = this.text;
+		const c = this.cursor;
+		if (stroke.del) {
+			if (c > 0) {
+				this.bytes -= utf8Length(t.charAt(c - 1));
+				this.text = t.slice(0, c - 1) + t.slice(c);
+				this.cursor = c - 1;
 			}
 		}
-		if (this.text !== before)
+		else {
+			let add = stroke.enter ? "\n" : stroke.tab ? "  " : stroke.chars.join("");
+			while (add.length && this.bytes + utf8Length(add) > MAX_TEXT_BYTES)
+				add = add.slice(0, -1);
+			if (!add.length && (stroke.enter || stroke.chars.length))
+				this.note = "满了";
+			if (add.length) {
+				this.text = t.slice(0, c) + add + t.slice(c);
+				this.cursor = c + add.length;
+				this.bytes += utf8Length(add);
+			}
+		}
+		if (this.text !== t) {
 			this.dirty = true;
+			this.editedAt = Date.now();
+		}
+		this.paint(app);
+	}
+
+	enterEdit(app: AppHost, name: string, text: string) {
+		this.name = name;
+		this.text = text;
+		this.cursor = text.length;
+		this.bytes = utf8Length(text);
+		this.dirty = false;
+		this.mode = "edit";
+		if (this.kb) {
+			this.kb.repeatDelay = REPEAT_DELAY;
+			this.kb.repeatRate = REPEAT_RATE;
+		}
+		const view = asEdit(contentByName(app, "editPort"));
+		if (view) {
+			view.top = 0;
+			view.goalX = -1;
+		}
+		this.show(app);
+		this.paint(app);
+	}
+
+	leaveEdit(app: AppHost) {
+		this.save();
+		if (this.kb)
+			this.kb.repeatDelay = 0;
+		this.mode = "list";
+		this.refresh();
+		const at = this.files.findIndex(f => f.name === this.name);
+		if (at >= 0)
+			this.index = at;
+		this.show(app);
 		this.paint(app);
 	}
 
@@ -182,19 +248,12 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 			return;
 		}
-		this.name = nextName(this.files);
-		this.text = "";
-		this.dirty = false;
-		this.mode = "edit";
-		this.paint(app);
+		this.enterEdit(app, nextName(this.files), "");
 	}
 
 	open(app: AppHost) {
 		const file = this.files[this.index];
-		if (!file || !this.dir)
-			return;
-		if (!file.text) {
-			this.note = file.name + " " + file.size + "B";
+		if (!file || !this.dir) {
 			this.paint(app);
 			return;
 		}
@@ -204,11 +263,7 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 			return;
 		}
-		this.text = text;
-		this.dirty = false;
-		this.name = file.name;
-		this.mode = "edit";
-		this.paint(app);
+		this.enterEdit(app, file.name, text);
 	}
 
 	remove() {
@@ -223,6 +278,7 @@ export class AppBehavior extends Behavior {
 		this.armedDelete = "";
 		try {
 			this.dir.delete(file.name);
+			this.note = "已删";
 		}
 		catch {
 			this.note = "删失败";
@@ -231,7 +287,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	save() {
-		if (!this.dir || !this.name || this.mode === "list" || !this.dirty)
+		if (!this.dir || !this.name || this.mode === "list" || this.mode === "help" || !this.dirty)
 			return;
 		try {
 			writeText(this.dir, this.name, this.text);
@@ -239,21 +295,37 @@ export class AppBehavior extends Behavior {
 		}
 		catch {
 			this.note = "写失败";
+			// Retry on the next autosave window, not every tick.
+			this.editedAt = Date.now();
 		}
 	}
 
 	refresh() {
 		this.files = this.dir ? listFiles(this.dir) : [];
 		if (this.index >= this.files.length)
-			this.index = 0;
+			this.index = Math.max(0, this.files.length - 1);
 	}
 
-	showQr(app: AppHost, on: boolean) {
-		setVisibleProp(contentByName(app, "qrPort"), on);
-		setVisibleProp(contentByName(app, "listPort"), !on);
+	show(app: AppHost) {
+		setVisibleProp(contentByName(app, "qrPort"), this.mode === "qr");
+		setVisibleProp(contentByName(app, "editPort"), this.mode === "edit");
+		setVisibleProp(contentByName(app, "listPort"), this.mode === "list" || this.mode === "help");
 	}
 
 	paint(app: AppHost) {
+		if (this.mode === "qr")
+			return;
+		if (this.mode === "edit") {
+			const port = contentByName(app, "editPort");
+			const view = asEdit(port);
+			if (!view)
+				return;
+			const status = this.note || (this.dirty ? "*" : "");
+			const g = noteGlyph(this.note).kind ? noteGlyph(this.note) : titleGlyph(this.power);
+			view.setDoc(port, this.name.replace(/\.txt$/, "") + (status ? " " + status : ""), this.text, this.cursor, g.kind, g.level);
+			this.note = "";
+			return;
+		}
 		const port = contentByName(app, "listPort");
 		const view = asMenu(port);
 		if (!view)
@@ -261,14 +333,6 @@ export class AppBehavior extends Behavior {
 		if (this.mode === "help") {
 			const page = helpList(helpFor(), this, helpTitle());
 			view.setList(port, page.title, page.lines, "");
-			return;
-		}
-		if (this.mode === "edit") {
-			const lines = wrap(this.text.length ? this.text : "空").map(row => ({ text: row.text, selected: false }));
-			const editNote = this.note;
-			const g = noteGlyph(editNote).kind ? noteGlyph(editNote) : titleGlyph(this.power);
-			view.setList(port, this.name + (editNote ? " " + editNote : ""), lines, "", g.kind, g.level);
-			this.note = "";
 			return;
 		}
 		if (!this.files.length) {
@@ -279,27 +343,13 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		const lines = this.files.map((file, i) => ({
-			text: file.text ? file.name : file.name + " " + file.size + "B",
+			text: file.preview || "(空)",
+			right: file.name.replace(/\.txt$/, ""),
 			selected: i === this.index,
 		}));
 		const listNote = this.note;
 		const g = noteGlyph(listNote).kind ? noteGlyph(listNote) : titleGlyph(this.power);
-		view.setList(port, listNote || "记事", lines, "", g.kind, g.level);
+		view.setList(port, listNote || "记事 " + this.files.length, lines, "", g.kind, g.level);
 		this.note = "";
 	}
-}
-
-function wrap(text: string): { text: string }[] {
-	const rows: { text: string }[] = [];
-	const parts = text.split("\n");
-	for (let p = 0; p < parts.length && rows.length < 8; p++) {
-		const line = parts[p];
-		if (!line.length) {
-			rows.push({ text: " " });
-			continue;
-		}
-		for (let i = 0; i < line.length && rows.length < 8; i += WIDTH)
-			rows.push({ text: line.slice(i, i + WIDTH) });
-	}
-	return rows.length ? rows : [{ text: " " }];
 }

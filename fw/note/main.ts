@@ -4,6 +4,7 @@ import { BG } from "ink";
 import { bindFwTheme } from "theme";
 import { MenuBehavior } from "menu-view";
 import { QrBehavior } from "view";
+import { EditBehavior } from "editor";
 
 bindFwTheme("note");
 
@@ -15,6 +16,12 @@ const NoteApplication = Application.template($ => ({
 			name: "listPort",
 			left: 0, right: 0, top: 0, bottom: 0,
 			Behavior: MenuBehavior,
+		}),
+		Port($, {
+			name: "editPort",
+			left: 0, right: 0, top: 0, bottom: 0,
+			visible: false,
+			Behavior: EditBehavior,
 		}),
 		Port($, {
 			name: "qrPort",

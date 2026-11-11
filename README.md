@@ -52,13 +52,15 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 
 板子上：从任意已载入的程序回到基座，按住 **Fn+BS**。各程序共用几套习惯：
 
-- 背光四档：**Fn+[`** 暗、**Fn+]** 亮；大约 30 秒不动会变暗或熄屏
+- 背光四档：**Fn+[** 暗、**Fn+]** 亮；大约 30 秒不动会变暗或熄屏
 - 电量低于约 3.40V 时顶栏会提示低电
 - **Fn+T** 换配色主题，所有程序共用一套
-- 多数界面：`BS` / `Esc` / `←` 返回，`Enter` / 空格确认，`?`（Shift+/）帮助，`-` `=` 音量
+- 多数界面：`BS` / `Esc` / `←` 返回，`Enter` / 空格确认，`?`（Shift+/）或 **Fn+空格** 帮助，`-` `=` 音量
 - 上下移动：`K`/`J`，或照键帽上印的箭头按 `;`（↑）`.`（↓）；网格里 `,`（←）`/`（→）左右移动
 - `Fn`+`H`/`J`/`K`/`L` 当作 ←↓↑→
-- 打字、摩斯这类每个字母都是输入的程序，用 **Tab** 切换模式
+- `M` 切换模式；打字、摩斯这类每个字母都是输入的程序改用 **Tab**
+- `R` 重置；会丢数据的（计数、计步、骰子记录、声级统计）要连按两次 `R R`，删除是 `D D`
+- `?` 也是输入的程序（JS、蓝牙键盘）只认 **Fn+空格** 帮助
 
 ## 现在有哪些程序
 
@@ -96,7 +98,7 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 | 路径 | 用途 |
 |------|------|
 | `do.sh` | 选程序、模拟、烧录、往卡上拷文件 |
-| `fw/<id>/` | 一个程序：`label` 是菜单名，`manifest.json` 是入口 |
+| `fw/<id>/` | 一个程序：`label` 是菜单名，`icon` 是基座里的图标，`manifest.json` 是入口 |
 | `shared/` | 屏幕、键盘、喇叭、公共字体 |
 | `scripts/` | 词库、字体生成 |
 | `third_party/` | 本机 SDK 等（gitignore，不进仓库） |
@@ -108,6 +110,7 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 ```text
 fw/新名字/
   label            # 一行，菜单里显示的名字
+  icon             # 基座里的图标，可不放（格式见 fw/sd/README.md）
   manifest.json    # include ../../shared/manifest.json，再列出本程序的模块
   main.ts          # Application.template 必须放在这个文件
 ```

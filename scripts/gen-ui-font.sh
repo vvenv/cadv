@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Generate shared/fonts/UI-Bold-N, Word-Bold-48/32 and Gloss-Bold-28 from Source Han Sans SC Bold,
+# Generate shared/fonts/UI-Bold-N and Gloss-Bold-28 from Source Han Sans SC Bold,
+# Word-Bold-48/32 from JetBrains Mono Bold (WORD_FONT) for the spelling puzzle,
 # and Ipa-Bold-20/28 from Arial Bold for the phonetic lines.
 #
 # Source Han Sans VF's default instance is ExtraLight (wght 250). fontbm
@@ -31,6 +32,10 @@ WEIGHT=700
 FONTBM_VER="10.0.2"
 # Puzzle sizes, largest first. Styles say "bold 48px Word" / "bold 32px Word".
 WORD_SIZES="48 32"
+# Puzzle face is monospace: a blank `_` is as wide as any letter, so the centered
+# line does not shift while typing, and JetBrains Mono leaves a gap between
+# adjacent `_` so blanks stay countable. Static TTF, no weight pinning.
+WORD_FONT="${WORD_FONT:-$HOME/Library/Fonts/JetBrainsMono-Bold.ttf}"
 # Words top-line gloss. Style says "bold 28px Gloss". Only quiz-bank and words-firmware glyphs.
 GLOSS_SIZE=28
 # Phonetic sizes: 20 for dict, 28 for the words top line.
@@ -43,7 +48,7 @@ while IFS= read -r _src; do
 done < <(find "$ROOT/fw" "$ROOT/shared" \( -name '*.ts' -o -name 'wordbank-chars.txt' \) | sort)
 
 usage() {
-  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -235,12 +240,13 @@ main() {
   # Puzzle faces. Middle band is 240×71. The words firmware measures each
   # headword and picks the largest that fits: 48px, then 32px, then 20px UI.
   local word_family="Word" word_size word_stem
+  [ -f "$WORD_FONT" ] || log_die "填空字体不存在：${WORD_FONT}（可设置 WORD_FONT，默认 JetBrains Mono Bold）"
   find "$OUT_DIR" -maxdepth 1 -type f \( -name "Word-Regular-*.*" -o -name "Word-Bold-*.*" \) -delete
   for word_size in $WORD_SIZES; do
     word_stem="Word-Bold-${word_size}"
     log_info "fontbm size=${word_size} → ${word_stem} (puzzle)"
     "$FONTBM" \
-      --font-file "$font_use" \
+      --font-file "$WORD_FONT" \
       --font-size "$word_size" \
       --output "$WORK_DIR/$word_stem" \
       --texture-crop-width \
@@ -363,6 +369,9 @@ fonts_current() {
     [ "$src" -nt "$oldest" ] && return 1
   done
   if [ -e "$FONT_FILE" ] && [ "$FONT_FILE" -nt "$oldest" ]; then
+    return 1
+  fi
+  if [ -e "$WORD_FONT" ] && [ "$WORD_FONT" -nt "$oldest" ]; then
     return 1
   fi
   ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"

@@ -241,7 +241,7 @@ export class AppBehavior extends Behavior {
 				this.flash(app, "峰值清");
 				return;
 			}
-			if (ch === "m" || ch === "M") {
+			if (ch === "s" || ch === "S") {
 				this.warnOn = !this.warnOn;
 				this.flash(app, this.warnOn ? "告警开" : "告警关");
 				return;

@@ -56,6 +56,8 @@ export class AppBehavior extends Behavior {
 	/** Results as display strings, newest first. */
 	history: string[] = [];
 	note = "";
+	/** First R arms, second R clears the history. */
+	resetArmed = false;
 	helpIndex = 0;
 	hostEnterDown = false;
 
@@ -145,6 +147,9 @@ export class AppBehavior extends Behavior {
 			bootLauncher();
 			return;
 		}
+		const wantsReset = stroke.chars.some(ch => ch === "r" || ch === "R");
+		if (!wantsReset)
+			this.resetArmed = false;
 		if (isHelp(stroke) && this.mode !== "help") {
 			this.helpIndex = 0;
 			this.mode = "help";
@@ -198,6 +203,12 @@ export class AppBehavior extends Behavior {
 				return;
 			}
 			if (c === "r") {
+				if (!this.resetArmed) {
+					this.resetArmed = true;
+					this.paint(app);
+					return;
+				}
+				this.resetArmed = false;
 				this.history = [];
 				this.resetFaces();
 				this.paint(app);
@@ -308,6 +319,8 @@ export class AppBehavior extends Behavior {
 		const landed = !this.rolling && this.faces[0] > 0;
 		if (this.kind === "dice" && landed && this.count > 1)
 			title += " 合计" + this.total();
+		if (this.resetArmed)
+			title = "再按R清空";
 		const g = titleGlyph(this.power, this.note);
 		view.setState(face, {
 			title,

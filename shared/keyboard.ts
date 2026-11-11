@@ -87,6 +87,8 @@ export type KeyStroke = {
 	qr: boolean;
 	/** Tab. Typing apps use it to switch modes, since every letter is input. */
 	tab: boolean;
+	/** Fn+Space. Help in every app, including ones where ? is input. */
+	help: boolean;
 };
 
 /** Physical keys currently down. Modifiers are flags, not entries in `keys`. */
@@ -138,6 +140,15 @@ export class CardputerKeyboard {
 	#lastHeld: HeldState = HELD_EMPTY;
 	#ok = false;
 	status = "KB?";
+	/**
+		Auto-repeat for a held key: first repeat after `repeatDelay` ms, then
+		every `repeatRate` ms. 0 (the default) keeps one stroke per press.
+		Editors turn it on so BS and the Fn arrows can be held.
+	*/
+	repeatDelay = 0;
+	repeatRate = 60;
+	#repeatKey = "";
+	#repeatAt = 0;
 
 	constructor() {
 		const kb = readKbConfig();
@@ -201,8 +212,26 @@ export class CardputerKeyboard {
 		}
 		this.#prevDown = new Set(this.#pressed.keys());
 		if (!fresh.length)
-			return null;
+			return this.#repeat();
+		const last = fresh[fresh.length - 1];
+		this.#repeatKey = fresh.length === 1 ? pointKey(last.x, last.y) : "";
+		this.#repeatAt = Date.now() + this.repeatDelay;
 		return this.#buildStroke(fresh);
+	}
+
+	#repeat(): KeyStroke | null {
+		if (!this.repeatDelay || !this.#repeatKey)
+			return null;
+		const at = this.#pressed.get(this.#repeatKey);
+		if (!at) {
+			this.#repeatKey = "";
+			return null;
+		}
+		const now = Date.now();
+		if (now < this.#repeatAt)
+			return null;
+		this.#repeatAt = now + this.repeatRate;
+		return this.#buildStroke([at]);
 	}
 
 	/**
@@ -307,6 +336,7 @@ export class CardputerKeyboard {
 		let theme = false;
 		let qr = false;
 		let tab = false;
+		let help = false;
 		const fn = mods.has(KEY_FN);
 		const ctrl = mods.has(KEY_LEFT_CTRL);
 		for (const { x, y } of fresh) {
@@ -361,11 +391,15 @@ export class CardputerKeyboard {
 				qr = true;
 				continue;
 			}
+			if (fn && code === " ") {
+				help = true;
+				continue;
+			}
 			if (fn || ctrl || mods.has(KEY_LEFT_ALT) || mods.has(KEY_OPT))
 				continue;
 			chars.push(shift ? String(cell.b) : String(cell.a));
 		}
-		return { chars, enter, del, shift, esc, up, down, left, right, fn, bright, theme, qr, tab };
+		return { chars, enter, del, shift, esc, up, down, left, right, fn, bright, theme, qr, tab, help };
 	}
 
 	#captureHeld(): HeldState {

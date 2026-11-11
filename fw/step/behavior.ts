@@ -47,6 +47,8 @@ export class AppBehavior extends Behavior {
 	steps = 0;
 	stride = 70;
 	note = "";
+	/** First R arms, second R clears today. */
+	resetArmed = false;
 	helpIndex = 0;
 	hostEnterDown = false;
 	lastSaveMs = 0;
@@ -165,6 +167,9 @@ export class AppBehavior extends Behavior {
 			bootLauncher();
 			return;
 		}
+		const wantsReset = stroke.chars.some(ch => ch === "r" || ch === "R");
+		if (!wantsReset)
+			this.resetArmed = false;
 		if (isHelp(stroke) && this.mode !== "help") {
 			this.helpIndex = 0;
 			this.mode = "help";
@@ -187,7 +192,10 @@ export class AppBehavior extends Behavior {
 			this.stride = Math.max(30, Math.min(120, this.stride + dir * 5));
 			try { store.set("stride", this.stride); } catch { /* */ }
 		}
-		if (stroke.chars.some(ch => ch === "r" || ch === "R")) {
+		if (wantsReset && !this.resetArmed)
+			this.resetArmed = true;
+		else if (wantsReset) {
+			this.resetArmed = false;
 			this.saved = 0;
 			this.base = this.imu?.sample()?.steps ?? 0;
 			this.steps = 0;
@@ -218,7 +226,7 @@ export class AppBehavior extends Behavior {
 		setVisibleProp(face, true);
 		setVisibleProp(footer, true);
 		const meters = Math.round(this.steps * this.stride / 100);
-		const heading = this.note || this.day;
+		const heading = this.resetArmed ? "再按R清零" : (this.note || this.day);
 		const top = asStepTop(titlePort);
 		if (top)
 			top.setTop(titlePort, heading);

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cadv 常用命令入口。无参数进入交互菜单；具体做法仍在本脚本命令函数里，这里做转发。
 #
-# 固件在 fw/<id>/（manifest.json + 一行 label）。do.sh 按目录发现，不写死名单。
+# 固件在 fw/<id>/（manifest.json + 一行 label，可选 icon）。do.sh 按目录发现，不写死名单。
 #   ./do.sh                         # 交互菜单。烧录直接烧基座；模拟会再选固件
 #   ./do.sh flash                   # 把基座烧进芯片，然后回到菜单。其它固件放 SD 卡，在设备上选
 #   ./do.sh flash <id>              # 仍可把某一个直接烧进芯片，会盖掉基座
@@ -14,7 +14,7 @@
 #   ./do.sh ts-check                # 检查 MODDABLE / mcconfig，并扫 Piu commandList 风险
 #   ./do.sh port                    # 列出可用串口
 #   ./do.sh port free               # 结束占用串口的 idf_monitor / sd_link 等，再列出
-#   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/UI-Bold-20（思源 Bold）
+#   ./do.sh gen-font                # 用 fontbm 生成 shared/fonts/（界面思源 Bold，填空 JetBrains Mono Bold）
 #   ./do.sh gen-words               # 从 ../alice/data 生成词库
 #                                   # 拼写：wordbank.bin、junior.bin（junior 同步到 sample）
 #                                   # 查词：fw/dict/lex.bin，并同步到 sample
@@ -28,7 +28,7 @@
 #   ./do.sh sd rm clock.bin         # 删除 cadv 里的这些文件。可以写多个相对路径
 #   卡在板子上时，删除要这一版基座。旧的会提示先 ./do.sh flash。
 #   ./do.sh sd fw                  # 把除基座以外的全部固件拷进 cadv/（不烧进芯片）
-#   ./do.sh sd fw clock             # 只拷一个：cadv/clock.bin 和一行名字
+#   ./do.sh sd fw clock             # 只拷一个：cadv/clock.bin、一行名字和图标 clock.icon
 #   ./do.sh sd file ./a.txt         # 把文件或目录拷进 cadv/
 #   ./do.sh sd mount                # 把已弹出但仍插着的 优盘（fw/usb）重新挂上
 #   卡插在电脑上时直接写卡。没插卡、板子用 USB 连着并且跑着基座时，经串口写入板子上的卡。
@@ -151,6 +151,13 @@ fw_label() {
   else
     printf '%s\n' "$id"
   fi
+}
+
+# fw/<id>/icon is the launcher icon text. Empty when the firmware has none.
+fw_icon() {
+  local f="$FW_ROOT/$1/icon"
+  [ -f "$f" ] && printf '%s\n' "$f"
+  return 0
 }
 
 fw_exists() {
@@ -830,6 +837,7 @@ fw_image_newer_source() {
     fi
   done < <(find "$FW_ROOT/$id" "$ROOT/shared" -type f \
     ! -name '.DS_Store' \
+    ! -path "$FW_ROOT/$id/icon" \
     -newer "$bin")
   [ -n "$best" ] || return 0
   printf '%s\n' "${best#"$ROOT"/}"
@@ -1251,7 +1259,7 @@ ensure_fw_image() {
 }
 
 cmd_sd_fw_device() {
-  local port="$1" id src tmp rc=0 args=() tmps=() packs=() put_dict=0 lexsrc
+  local port="$1" id src tmp icon rc=0 args=() tmps=() packs=() put_dict=0 lexsrc
   shift
   # Images are already built by cmd_sd_fw. Ping only gates the USB write.
   log_info "经 USB 写入卡上的 ${SD_DIR}/（${port}）"
@@ -1262,6 +1270,8 @@ cmd_sd_fw_device() {
     printf '%s\n' "$(fw_label "$id")" >"$tmp"
     tmps+=("$tmp")
     args+=("$src" "${id}.bin" "$tmp" "${id}.txt")
+    icon="$(fw_icon "$id")"
+    [ -z "$icon" ] || args+=("$icon" "${id}.icon")
     if [ "$id" = "words" ]; then
       while IFS= read -r src; do
         [ -n "$src" ] || continue
@@ -1300,7 +1310,7 @@ cmd_sd_fw_device() {
 }
 
 cmd_sd_fw() {
-  local route kind root id src dest home ids=() packs=() policy=ask
+  local route kind root id src dest home icon ids=() packs=() policy=ask
   if [ $# -eq 0 ] || [ "${1:-}" = "all" ]; then
     # A batch would otherwise stop on one prompt per stale image.
     policy=auto
@@ -1342,6 +1352,12 @@ cmd_sd_fw() {
     dest="$home/${id}.bin"
     cp -X -f "$src" "$dest"
     printf '%s\n' "$(fw_label "$id")" > "$home/${id}.txt"
+    icon="$(fw_icon "$id")"
+    if [ -n "$icon" ]; then
+      cp -X -f "$icon" "$home/${id}.icon"
+    else
+      rm -f "$home/${id}.icon"
+    fi
     log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
     if [ "$id" = "words" ]; then
       packs=()

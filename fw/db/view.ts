@@ -21,6 +21,8 @@ const GRAPH_HI = 110;
 
 export type MeterState = {
 	title: string;
+	/** "dBA" / "dBZ". */
+	unit: string;
 	/** -1 = no reading yet. */
 	value: number;
 	avg: number;
@@ -57,7 +59,7 @@ function colorFor(db: number): string {
 }
 
 function same(a: MeterState, b: MeterState): boolean {
-	if (a.title !== b.title || a.value !== b.value || a.avg !== b.avg || a.max !== b.max
+	if (a.title !== b.title || a.unit !== b.unit || a.value !== b.value || a.avg !== b.avg || a.max !== b.max
 		|| a.mark !== b.mark || a.level !== b.level || a.bars.length !== b.bars.length)
 		return false;
 	for (let i = 0; i < a.bars.length; i++) {
@@ -68,7 +70,7 @@ function same(a: MeterState, b: MeterState): boolean {
 }
 
 export class MeterBehavior extends Behavior {
-	state: MeterState = { title: "", value: -1, avg: -1, max: -1, bars: [], mark: "", level: 0 };
+	state: MeterState = { title: "", unit: "dB", value: -1, avg: -1, max: -1, bars: [], mark: "", level: 0 };
 	gen = -1;
 
 	setState(port: unknown, next: MeterState) {
@@ -99,14 +101,14 @@ export class MeterBehavior extends Behavior {
 		port.drawString(stats, st, MID, width - 6 - sw, rowTextY(0), sw + 2);
 		port.drawString(s.title, st, ON, tx, rowTextY(0), Math.max(1, width - tx - sw - 12));
 
-		/* Readout: up to three digits plus "dB". */
+		/* Readout: up to three digits plus the unit. */
 		const top = ROW_PITCH + 2;
 		const digitH = 46;
 		const digitW = 26;
 		const gap = 5;
 		const text = s.value < 0 ? "   " : String(Math.min(999, s.value));
 		const span = readoutSpan(text, digitW, 12, gap);
-		const unit = "dB";
+		const unit = s.unit;
 		const uw = port.measureString(unit, st).width;
 		const x0 = Math.floor((width - span - uw - 6) / 2);
 		drawReadout(port, text, x0, top, digitW, digitH, 12, gap, true);

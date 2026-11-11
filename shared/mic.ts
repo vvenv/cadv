@@ -29,7 +29,13 @@ function faultText(e: unknown): string {
 	return "无麦克风";
 }
 
-export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
+export type MicOptions = {
+	/** false skips the per-sample peak scan when the caller never reads peak(). */
+	peak?: boolean;
+};
+
+export function openMic(onPcm?: (pcm: Int16Array) => void, options?: MicOptions): MicFeed | null {
+	const wantPeak = options?.peak !== false;
 	try {
 		writeCodec(true);
 		let lastPeak = 0;
@@ -50,17 +56,19 @@ export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
 					if (!buf || buf.byteLength < 2)
 						return;
 					const pcm = new Int16Array(buf, 0, buf.byteLength >> 1);
-					let peak = 0;
-					for (let i = 0; i < pcm.length; i++) {
-						const a = pcm[i] < 0 ? -pcm[i] : pcm[i];
-						if (a > peak)
-							peak = a;
+					if (wantPeak) {
+						let peak = 0;
+						for (let i = 0; i < pcm.length; i++) {
+							const a = pcm[i] < 0 ? -pcm[i] : pcm[i];
+							if (a > peak)
+								peak = a;
+						}
+						lastPeak = Math.round(peak * 100 / 32767);
+						if (lastPeak > 100)
+							lastPeak = 100;
+						if (lastPeak > holdPeak)
+							holdPeak = lastPeak;
 					}
-					lastPeak = Math.round(peak * 100 / 32767);
-					if (lastPeak > 100)
-						lastPeak = 100;
-					if (lastPeak > holdPeak)
-						holdPeak = lastPeak;
 					if (onPcm)
 						onPcm(pcm);
 				}

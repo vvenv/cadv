@@ -10,7 +10,7 @@ import { drawGlyph, drawProgress, fillDisk } from "draw";
 import { BG, FONT_UI, INK, ON, RED, type Glyph } from "ink";
 import { ROW_LEAD, ROW_PITCH, rowOrigin, rowTextY } from "list";
 import { themeGeneration } from "theme";
-import { drawFwIcon } from "icons";
+import { drawFwIcon, type Icon } from "icons";
 
 /** First index of the page that contains `selected`. */
 function pageStart(selected: number, count: number, visible: number): number {
@@ -27,6 +27,7 @@ function pageStart(selected: number, count: number, visible: number): number {
 export type HomeTile = {
 	id: string;
 	label: string;
+	icon: Icon | null;
 	/** Mirror too big for the flash slot. */
 	big?: boolean;
 	/** Could not read this entry. */
@@ -81,6 +82,7 @@ function sameTiles(a: HomeTile[], b: HomeTile[]): boolean {
 		if (
 			a[i].id !== b[i].id
 			|| a[i].label !== b[i].label
+			|| a[i].icon !== b[i].icon
 			|| !!a[i].big !== !!b[i].big
 			|| !!a[i].bad !== !!b[i].bad
 		)
@@ -194,7 +196,7 @@ export class HomeBehavior extends Behavior {
 
 			const iconCy = y + 4 + Math.floor(ICON / 2);
 			const iconCx = x + Math.floor(cellW / 2);
-			drawFwIcon(port, tile.id, iconCx, iconCy, ICON, selected ? BG : accent);
+			drawFwIcon(port, tile.icon, iconCx, iconCy, ICON, selected ? BG : accent);
 
 			if (tile.big) {
 				const badge = "超";

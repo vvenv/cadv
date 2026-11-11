@@ -1,0 +1,14 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/examples/manifest_typings.json",
+		"$(MODDABLE)/examples/manifest_piu.json",
+		"../../shared/manifest.json"
+	],
+	"modules": { "*": ["./main", "./behavior", "./view", "./help", "./repl"] },
+	"preload": ["behavior", "view", "help", "repl"],
+	"resources": {
+		"*-mask": ["./fonts/Code-Bold-20"]
+	},
+	"strip": []
+}

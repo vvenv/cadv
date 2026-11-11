@@ -1,17 +1,21 @@
 /*
 	Only the cadv/ directory on the card. The rest of a large card is never scanned.
-	*.bin there are firmware images. A sibling <id>.txt is the one-line label.
+	*.bin there are firmware images. A sibling <id>.txt is the one-line label,
+	<id>.icon the launcher icon (see icons.ts); either may be missing.
 	Known labels so the UI font includes them: 时钟 拼写 查词 键盘 水平 设备 优盘 录音 记事 计算 扫描 节拍 调音 计步 计数 钢琴
 */
 
 import Modules from "modules";
 import type { Directory, File } from "embedded:storage/files";
+import { parseIcon, type Icon } from "icons";
 
 export const CARD_DIR = "cadv";
 
 export type SdEntry = {
 	path: string;
 	label: string;
+	/** Parsed cadv/<id>.icon; null draws the fallback chip. */
+	icon: Icon | null;
 	size: number;
 	error: string;
 };
@@ -86,6 +90,38 @@ function readLabel(dir: Directory, id: string): string {
 	}
 }
 
+/** Icon files are ASCII; non-ASCII bytes (comments) become spaces. */
+function asciiToString(buf: ArrayBuffer): string {
+	const bytes = new Uint8Array(buf);
+	let out = "";
+	for (let i = 0; i < bytes.length; i++) {
+		const c = bytes[i];
+		out += c < 0x80 ? String.fromCharCode(c) : " ";
+	}
+	return out;
+}
+
+const ICON_MAX = 2048;
+
+function readIcon(dir: Directory, id: string): Icon | null {
+	const path = id + ".icon";
+	try {
+		const st = dir.status(path);
+		if (!st.isFile() || st.size <= 0 || st.size > ICON_MAX)
+			return null;
+		const file = dir.openFile({ path, mode: "r" });
+		try {
+			return parseIcon(asciiToString(file.read(st.size, 0)), path);
+		}
+		finally {
+			file.close();
+		}
+	}
+	catch {
+		return null;
+	}
+}
+
 function ensureHome(volume: Directory): Directory {
 	let isDir = false;
 	let isFile = false;
@@ -157,12 +193,13 @@ export function loadCatalog(): SdCatalog {
 			entries.push({
 				path,
 				label: readLabel(home, id),
+				icon: readIcon(home, id),
 				size: typeof st.size === "number" ? st.size : 0,
 				error: "",
 			});
 		}
 		catch (e) {
-			entries.push({ path, label: id, size: 0, error: errorText(e) });
+			entries.push({ path, label: id, icon: null, size: 0, error: errorText(e) });
 		}
 	}
 	trace(`sd ${CARD_DIR} ${entries.length} images\n`);

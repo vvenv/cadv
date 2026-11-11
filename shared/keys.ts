@@ -8,7 +8,12 @@
 	Confirm (primary Enter): also Space.
 	Move (primary K/J): also Fn+K/J, ↑↓, and the keycap arrows ; (↑) . (↓).
 	Sideways (grids): ← → (Fn+H/L) and the keycap arrows , (←) / (→).
-	Help: ? (Shift+/). Bare / is the → keycap, not help. Volume: - and =.
+	Help: ? (Shift+/), or Fn+Space where ? is input (repl, kb). Bare / is
+	the → keycap, not help. Volume: - and =.
+	Mode: M switches an app's mode (count, dice, scan). Apps where every
+	letter is input use Tab instead (type, morse, remote).
+	Reset: R. A reset that throws data away (count, step, dice, db) needs
+	R twice, like D D for delete.
 	Brightness: Fn+[ / Fn+].
 	Note QR: Fn+Q. Q alone is a letter.
 	Launcher: Fn+BS, from an app that was loaded off the card.
@@ -52,8 +57,10 @@ export function isConfirm(stroke: KeyStroke): boolean {
 	return false;
 }
 
-/** ? only. Bare / is the → keycap. */
+/** ? or Fn+Space. Bare / is the → keycap. */
 export function isHelp(stroke: KeyStroke): boolean {
+	if (stroke.help)
+		return true;
 	for (let i = 0; i < stroke.chars.length; i++) {
 		if (stroke.chars[i] === "?")
 			return true;

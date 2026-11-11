@@ -1,7 +1,8 @@
 /*
-	Sound level meter. PCM from the mic is reduced to an RMS level every
-	WINDOW samples (DC removed), shown as dB = dBFS + offset. The offset is
-	a user calibration; nothing here knows the mic's real sensitivity.
+	Sound level meter. The per-sample work (A/Z weighting, Fast/Slow time
+	weighting, window energy) runs in C (slm.c); this side only sees one
+	result per WINDOW samples. Shown as dB = dBFS + offset. The offset is a
+	user calibration; nothing here knows the mic's real sensitivity.
 */
 
 import {} from "piu/MC";
@@ -18,6 +19,7 @@ import { pref } from "pref";
 import { Power } from "power";
 import { acceptStroke, titleGlyph } from "session";
 import { contentByName, setVisibleProp, type AppHost } from "ui";
+import { slmFeed, slmReset } from "slm";
 import { asMeter, HISTORY } from "view";
 
 const store = pref("db");
@@ -26,11 +28,19 @@ const WINDOW = 2000;
 const OFFSET_DEFAULT = 100;
 const OFFSET_MIN = 60;
 const OFFSET_MAX = 140;
-/** Readout smoothing per window (about "fast" weighting). */
-const SMOOTH = 0.35;
+/** IEC 61672 time constants, seconds. */
+const TAU_FAST = 0.125;
+const TAU_SLOW = 1;
+/** Windows dropped after (re)start: codec pop and filter settling (~0.5 s). */
+const SETTLE = 4;
 /** One history bar every this many windows (~0.25 s). */
 const BAR_EVERY = 2;
 const FLOOR_DB = -90;
+const FLOOR_MS = Math.pow(10, FLOOR_DB / 10);
+
+function toDbfs(ms: number): number {
+	return ms > FLOOR_MS ? 10 * Math.log10(ms) : FLOOR_DB;
+}
 
 type Mode = "run" | "help";
 
@@ -41,20 +51,25 @@ export class AppBehavior extends Behavior {
 	mic: MicFeed | null = null;
 	kbTimer: ReturnType<typeof Timer.repeat> | null = null;
 	offset = OFFSET_DEFAULT;
+	/** A weighting (else Z). */
+	aWeight = true;
+	/** Slow time weighting (else Fast). */
+	slow = false;
 	paused = false;
 	note = "";
-	/* Window accumulators (filled from the mic callback). */
-	accN = 0;
-	accSum = 0;
-	accSq = 0;
-	/** Latest smoothed dBFS, or null before the first window. */
+	/** First R arms, second R clears the statistics. */
+	resetArmed = false;
+	/** [window ms, weighted ms now, weighted ms max], written by slmFeed. */
+	out = new Float32Array(3);
+	/** Latest time-weighted dBFS, or null before the first window. */
 	level: number | null = null;
-	/* Stats in dBFS / energy. */
+	/* Stats in dBFS / energy (mean square, full scale = 1). */
 	maxDbfs = FLOOR_DB;
 	energySum = 0;
 	energyN = 0;
 	history: number[] = [];
 	barTick = 0;
+	barEnergy = 0;
 	dirty = false;
 	helpIndex = 0;
 	hostEnterDown = false;
@@ -62,13 +77,16 @@ export class AppBehavior extends Behavior {
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
 		this.offset = store.getInt("offset", OFFSET_DEFAULT, OFFSET_MIN, OFFSET_MAX);
+		this.aWeight = store.getInt("weight", 1, 0, 1) === 1;
+		this.slow = store.getInt("slow", 0, 0, 1) === 1;
+		this.restart();
 		this.power = new Power("dim");
 		this.paint(app);
 		Timer.set(() => this.boot(app), 1);
 	}
 
 	boot(app: AppHost) {
-		this.mic = openMic(pcm => this.onPcm(pcm));
+		this.mic = openMic(pcm => this.onPcm(pcm), { peak: false });
 		if (!this.mic)
 			this.note = micFault() || "无麦克风";
 		this.kb = new CardputerKeyboard();
@@ -76,45 +94,39 @@ export class AppBehavior extends Behavior {
 		this.paint(app);
 	}
 
+	/** Reset the native filters; the first SETTLE windows are dropped. */
+	restart() {
+		slmReset(this.aWeight, this.slow ? TAU_SLOW : TAU_FAST, WINDOW, SETTLE);
+		this.barTick = 0;
+		this.barEnergy = 0;
+	}
+
 	onPcm(pcm: Int16Array) {
 		if (this.paused)
 			return;
-		let sum = this.accSum;
-		let sq = this.accSq;
-		let n = this.accN;
-		for (let i = 0; i < pcm.length; i++) {
-			const v = pcm[i];
-			sum += v;
-			sq += v * v;
-			n++;
-			if (n >= WINDOW) {
-				const mean = sum / n;
-				const power = Math.max(0, sq / n - mean * mean);
-				this.addWindow(power);
-				sum = 0;
-				sq = 0;
-				n = 0;
-			}
-		}
-		this.accSum = sum;
-		this.accSq = sq;
-		this.accN = n;
+		const out = this.out;
+		const done = slmFeed(pcm.buffer, pcm.byteOffset, pcm.length, out.buffer);
+		if (done > 0)
+			this.addWindow(out[0], out[1], out[2], done);
 	}
 
-	addWindow(power: number) {
-		const rms = Math.sqrt(power);
-		const dbfs = rms > 0 ? Math.max(FLOOR_DB, 20 * Math.log10(rms / 32768)) : FLOOR_DB;
-		this.level = this.level === null ? dbfs : this.level + (dbfs - this.level) * SMOOTH;
-		if (dbfs > this.maxDbfs)
-			this.maxDbfs = dbfs;
-		this.energySum += power;
-		this.energyN++;
-		this.barTick++;
+	/** windowMs: mean square of the window(s); now/peak: time-weighted. */
+	addWindow(windowMs: number, now: number, peak: number, count: number) {
+		this.level = toDbfs(now);
+		const peakDb = toDbfs(peak);
+		if (peakDb > this.maxDbfs)
+			this.maxDbfs = peakDb;
+		this.energySum += windowMs * count;
+		this.energyN += count;
+		this.barEnergy += windowMs * count;
+		this.barTick += count;
 		if (this.barTick >= BAR_EVERY) {
-			this.barTick = 0;
-			this.history.push(this.level);
+			/* Each bar is the Leq of its slot, so short bangs still show. */
+			this.history.push(toDbfs(this.barEnergy / this.barTick));
 			if (this.history.length > HISTORY)
 				this.history.shift();
+			this.barTick = 0;
+			this.barEnergy = 0;
 		}
 		this.dirty = true;
 	}
@@ -160,6 +172,9 @@ export class AppBehavior extends Behavior {
 			bootLauncher();
 			return;
 		}
+		const wantsReset = stroke.chars.some(ch => ch === "r" || ch === "R");
+		if (!wantsReset)
+			this.resetArmed = false;
 		if (isHelp(stroke) && this.mode !== "help") {
 			this.helpIndex = 0;
 			this.mode = "help";
@@ -180,6 +195,9 @@ export class AppBehavior extends Behavior {
 		}
 		if (isConfirm(stroke)) {
 			this.paused = !this.paused;
+			/* Filter state is stale after a gap; settle again on resume. */
+			if (!this.paused)
+				this.restart();
 			this.paint(app);
 			return;
 		}
@@ -196,14 +214,43 @@ export class AppBehavior extends Behavior {
 				return;
 			}
 			if (ch === "r" || ch === "R") {
-				this.maxDbfs = this.level ?? FLOOR_DB;
-				this.energySum = 0;
-				this.energyN = 0;
-				this.history = [];
+				if (!this.resetArmed) {
+					this.resetArmed = true;
+					this.paint(app);
+					return;
+				}
+				this.resetArmed = false;
+				this.clearStats();
+				this.paint(app);
+				return;
+			}
+			if (ch === "a" || ch === "A") {
+				this.aWeight = !this.aWeight;
+				try { store.set("weight", this.aWeight ? 1 : 0); } catch { /* */ }
+				/* A and Z readings don't mix: start the statistics over. */
+				this.restart();
+				this.level = null;
+				this.clearStats();
+				this.paint(app);
+				return;
+			}
+			if (ch === "s" || ch === "S") {
+				this.slow = !this.slow;
+				try { store.set("slow", this.slow ? 1 : 0); } catch { /* */ }
+				this.restart();
+				this.level = null;
+				this.clearStats();
 				this.paint(app);
 				return;
 			}
 		}
+	}
+
+	clearStats() {
+		this.maxDbfs = this.level ?? FLOOR_DB;
+		this.energySum = 0;
+		this.energyN = 0;
+		this.history = [];
 	}
 
 	setOffset(n: number) {
@@ -236,16 +283,17 @@ export class AppBehavior extends Behavior {
 		const view = asMeter(face);
 		if (!view)
 			return;
-		const status = this.note ? this.note : this.paused ? { kind: "pause" as const } : "";
+		const status = this.resetArmed ? "再按R清空" : this.note ? this.note : this.paused ? { kind: "pause" as const } : "";
 		const g = titleGlyph(this.power, status);
 		const have = this.level !== null;
-		const leq = this.energyN ? 10 * Math.log10(Math.max(1e-9, this.energySum / this.energyN) / (32768 * 32768)) : FLOOR_DB;
+		const leq = this.energyN ? toDbfs(this.energySum / this.energyN) : FLOOR_DB;
 		const bars: number[] = [];
 		for (const v of this.history)
 			bars.push(this.db(v));
 		const offsetNote = this.offset === OFFSET_DEFAULT ? "" : " 校" + (this.offset > OFFSET_DEFAULT ? "+" : "") + (this.offset - OFFSET_DEFAULT);
 		view.setState(face, {
-			title: (this.paused ? "暂停" : "分贝") + offsetNote,
+			title: (this.paused ? "暂停" : "分贝") + (this.slow ? " 慢" : " 快") + offsetNote,
+			unit: this.aWeight ? "dBA" : "dBZ",
 			value: have && this.level !== null ? this.db(this.level) : -1,
 			avg: this.energyN ? this.db(leq) : -1,
 			max: have ? this.db(this.maxDbfs) : -1,

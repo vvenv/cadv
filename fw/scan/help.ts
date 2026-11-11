@@ -2,7 +2,7 @@ export type HelpRow = { key: string; action: string };
 
 const ROWS: readonly HelpRow[] = Object.freeze([
 	{ key: "?", action: "打开本页" },
-	{ key: "T", action: "无线/蓝牙" },
+	{ key: "M", action: "无线/蓝牙" },
 	{ key: "R", action: "重扫" },
 	{ key: "K/J", action: "上下" },
 	{ key: "Fn+[/]", action: "暗/亮" },

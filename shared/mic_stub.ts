@@ -17,7 +17,11 @@ export function micFault(): string {
 	return "";
 }
 
-export function openMic(onPcm?: (pcm: Int16Array) => void): MicFeed | null {
+export type MicOptions = {
+	peak?: boolean;
+};
+
+export function openMic(onPcm?: (pcm: Int16Array) => void, _options?: MicOptions): MicFeed | null {
 	let phase = 0;
 	let timer: Timer | undefined;
 	const step = 2 * Math.PI * 440 / RATE;
