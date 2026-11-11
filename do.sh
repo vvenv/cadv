@@ -29,6 +29,7 @@
 #   卡在板子上时，删除要这一版基座。旧的会提示先 ./do.sh flash。
 #   ./do.sh sd fw                  # 把除基座以外的全部固件拷进 cadv/（不烧进芯片）
 #   ./do.sh sd fw clock             # 只拷一个：cadv/clock.bin、一行名字和图标 clock.icon
+#   ./do.sh sd icon [id…]           # 只传图标 cadv/<id>.icon，不传镜像
 #   ./do.sh sd file ./a.txt         # 把文件或目录拷进 cadv/
 #   ./do.sh sd mount                # 把已弹出但仍插着的 优盘（fw/usb）重新挂上
 #   卡插在电脑上时直接写卡。没插卡、板子用 USB 连着并且跑着基座时，经串口写入板子上的卡。
@@ -1425,6 +1426,49 @@ cmd_sd_mount() {
   log_die "挂载失败"
 }
 
+# Icons only, no images: cadv/<id>.icon for each firmware that has fw/<id>/icon.
+cmd_sd_icon() {
+  local route kind root id icon home ids=() args=()
+  if [ $# -eq 0 ] || [ "${1:-}" = "all" ]; then
+    while IFS= read -r id; do
+      [ -n "$id" ] && [ "$id" != "sd" ] && ids+=("$id")
+    done < <(fw_ids)
+  else
+    for id in "$@"; do
+      fw_exists "$id" || log_die "没有固件：${id}（可选：$(fw_ids | tr '\n' ' ')）"
+      ids+=("$id")
+    done
+  fi
+  route="$(sd_route)" || return $?
+  [ -n "$route" ] || return 0
+  kind="${route%%$'\t'*}"
+  root="${route#*$'\t'}"
+  for id in "${ids[@]}"; do
+    icon="$(fw_icon "$id")"
+    if [ -z "$icon" ]; then
+      log_warn "$(fw_label "$id") 没有 fw/${id}/icon，跳过"
+      continue
+    fi
+    args+=("$icon" "${id}.icon")
+  done
+  [ "${#args[@]}" -gt 0 ] || log_die "没有可上传的图标"
+  if [ "$kind" = "device" ]; then
+    log_info "经 USB 写入卡上的 ${SD_DIR}/（${root}）"
+    link_ping "$root"
+    link_put "$root" "${args[@]}" || return $?
+  else
+    home="$root/$SD_DIR"
+    mkdir -p "$home"
+    set -- "${args[@]}"
+    while [ $# -gt 0 ]; do
+      cp -X -f "$1" "$home/$2"
+      shift 2
+    done
+    sync || true
+  fi
+  log_success "图标 $((${#args[@]} / 2)) 个 → ${SD_DIR}/*.icon。基座里按 BS 重新扫描"
+}
+
 cmd_sd() {
   local sub="${1:-}"
   case "$sub" in
@@ -1440,6 +1484,10 @@ cmd_sd() {
       shift
       cmd_sd_bank "$@"
       ;;
+    icon | icons)
+      shift
+      cmd_sd_icon "$@"
+      ;;
     file | files)
       shift
       cmd_sd_file "$@"
@@ -1453,7 +1501,7 @@ cmd_sd() {
       cmd_sd_mount "$@"
       ;;
     *)
-      log_die "用法：./do.sh sd [ls|fw|bank|file|rm|mount] …"
+      log_die "用法：./do.sh sd [ls|fw|icon|bank|file|rm|mount] …"
       ;;
   esac
 }
@@ -1465,6 +1513,7 @@ sd_menu() {
     choice="$(prompt_menu "SD 卡" --back --default=1 \
       "fw:上传固件" \
       "ls:列出 cadv" \
+      "icon:只传图标" \
       "bank:上传词库" \
       "file:上传文件到 cadv" \
       "mount:挂上 USB 盘")"
@@ -1485,6 +1534,10 @@ sd_menu() {
           continue
         fi
         [ "$rc" -eq 0 ] || log_error "执行失败（sd）"
+        pause_menu
+        ;;
+      icon)
+        (cmd_sd_icon) || log_error "执行失败（sd icon）"
         pause_menu
         ;;
       bank)
