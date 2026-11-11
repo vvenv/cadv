@@ -35,6 +35,7 @@
 		"*-mask": [
 			"../../shared/fonts/Word-Bold-48",
 			"../../shared/fonts/Word-Bold-32",
+			"../../shared/fonts/Gloss-Bold-28",
 			"../../shared/fonts/Ipa-Bold-20"
 		],
 		"*": [

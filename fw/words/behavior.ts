@@ -75,6 +75,8 @@ function dropMiss(raw: string, word: string): string {
 }
 
 const WORD_HOLD_MS = 700;
+/** Words-only face from gen-ui-font.sh (Gloss-Bold-28). */
+const FONT_GLOSS = "bold 28px Gloss";
 /** Keep the puzzle off the panel edges. */
 const PUZZLE_PAD = 4;
 
@@ -141,11 +143,11 @@ function phoneFace(): object {
 	return phoneFaceStyle;
 }
 
-/** Top-line gloss. Same UI face, bright ink for the taller band. */
+/** Top-line gloss. 28px fills the 64px band; glyphs cover the banks and this firmware's text. */
 function glossFace(): object {
 	const gen = themeGeneration();
 	if (!glossFaceStyle || glossFaceGen !== gen) {
-		glossFaceStyle = new Style({ font: FONT_UI, color: ON, horizontal: "left", vertical: "middle" });
+		glossFaceStyle = new Style({ font: FONT_GLOSS, color: ON, horizontal: "left", vertical: "middle" });
 		glossFaceGen = gen;
 	}
 	return glossFaceStyle;

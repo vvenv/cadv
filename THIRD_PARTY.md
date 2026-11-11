@@ -22,7 +22,7 @@
 
 | 资源 | 来源 | 备注 |
 |------|------|------|
-| `UI-Bold-20.*`、`Word-Bold-48.*`、`Word-Bold-32.*` | [Source Han Sans](https://github.com/adobe-fonts/source-han-sans)（思源黑体）Bold | SIL Open Font License；重新生成见 `scripts/gen-ui-font.sh` |
+| `UI-Bold-20.*`、`Word-Bold-48.*`、`Word-Bold-32.*`、`Gloss-Bold-28.*` | [Source Han Sans](https://github.com/adobe-fonts/source-han-sans)（思源黑体）Bold | SIL Open Font License；重新生成见 `scripts/gen-ui-font.sh` |
 | `Ipa-Bold-20.*` | 当前由 **Arial Bold**（系统字体）栅格化音标 | Arial 是专有字体。开源分发上这是已知问题，计划换成可自由再分发的字体 |
 
 ## 运行时网络服务

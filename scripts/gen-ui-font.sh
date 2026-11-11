@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate shared/fonts/UI-Bold-N and Word-Bold-48/32 from Source Han Sans SC Bold,
+# Generate shared/fonts/UI-Bold-N, Word-Bold-48/32 and Gloss-Bold-28 from Source Han Sans SC Bold,
 # and Ipa-Bold-20 from Arial Bold for the word-quiz phonetic line.
 #
 # Source Han Sans VF's default instance is ExtraLight (wght 250). fontbm
@@ -31,6 +31,8 @@ WEIGHT=700
 FONTBM_VER="10.0.2"
 # Puzzle sizes, largest first. Styles say "bold 48px Word" / "bold 32px Word".
 WORD_SIZES="48 32"
+# Words top-line gloss. Style says "bold 28px Gloss". Only quiz-bank and words-firmware glyphs.
+GLOSS_SIZE=28
 CHARS_EXTRA="年月日周闰初十廿卅冬腊设闹钟等待对时℃"
 # UI glyphs come from firmware text and wordbank-chars.txt. phone-chars.txt is IPA-only and is not included here.
 CHAR_SOURCES=()
@@ -252,6 +254,36 @@ main() {
     log_success "wrote ${word_stem} → shared/fonts/ (family=${word_family})"
   done
 
+  # Gloss face. Words top band is 240×64; 20px UI left most of it empty.
+  # Hanzi only from the quiz banks and the words / shared UI text, so the
+  # bigger face stays near the bank's ~1.3k glyphs instead of every firmware's.
+  local gloss_stem="Gloss-Bold-${GLOSS_SIZE}" gloss_family="Gloss"
+  local -a gloss_args=(
+    --font-file "$font_use"
+    --font-size "$GLOSS_SIZE"
+    --output "$WORK_DIR/$gloss_stem"
+    --texture-crop-width
+    --texture-crop-height
+    --texture-name-suffix none
+    --data-format bin
+    --chars 32-126
+    --chars-file "$chars_extra"
+    --chars-file "$ROOT/fw/words/wordbank-chars.txt"
+  )
+  for f in "$ROOT"/fw/words/*.ts "$ROOT"/shared/*.ts; do
+    [ -f "$f" ] && gloss_args+=(--chars-file "$f")
+  done
+  [ "$MONO" -eq 1 ] && gloss_args+=(--monochrome)
+  log_info "fontbm size=${GLOSS_SIZE} → ${gloss_stem} (gloss)"
+  "$FONTBM" "${gloss_args[@]}"
+  [ -f "$WORK_DIR/${gloss_stem}.fnt" ] && [ -f "$WORK_DIR/${gloss_stem}.png" ] \
+    || log_die "fontbm 未生成 ${gloss_stem}.{fnt,png}"
+  bmf_set_family "$WORK_DIR/${gloss_stem}.fnt" "$gloss_family"
+  find "$OUT_DIR" -maxdepth 1 -type f \( -name "Gloss-Regular-*.*" -o -name "Gloss-Bold-*.*" \) -delete
+  mv "$WORK_DIR/${gloss_stem}.fnt" "$OUT_DIR/"
+  mv "$WORK_DIR/${gloss_stem}.png" "$OUT_DIR/"
+  log_success "wrote ${gloss_stem} → shared/fonts/ (family=${gloss_family})"
+
   # Phonetic face. Family Ipa matches Style { font: "bold 20px Ipa" }.
   local ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"
   local ipa_stem="Ipa-Bold-20" ipa_family="Ipa"
@@ -306,8 +338,10 @@ fonts_current() {
   local ipa="$OUT_DIR/Ipa-Bold-20.fnt"
   local phone_chars="$ROOT/fw/words/phone-chars.txt"
   local oldest src ipa_src word word_size
-  [ -f "$ui" ] && [ -f "$ipa" ] || return 1
+  local gloss="$OUT_DIR/Gloss-Bold-${GLOSS_SIZE}.fnt"
+  [ -f "$ui" ] && [ -f "$ipa" ] && [ -f "$gloss" ] || return 1
   oldest="$ui"
+  [ "$gloss" -ot "$oldest" ] && oldest="$gloss"
   for word_size in $WORD_SIZES; do
     word="$OUT_DIR/Word-Bold-${word_size}.fnt"
     [ -f "$word" ] || return 1
