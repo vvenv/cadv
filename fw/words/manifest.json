@@ -34,6 +34,7 @@
 	"resources": {
 		"*-mask": [
 			"../../shared/fonts/Word-Bold-48",
+			"../../shared/fonts/Word-Bold-32",
 			"../../shared/fonts/Ipa-Bold-20"
 		],
 		"*": [

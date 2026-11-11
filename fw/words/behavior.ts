@@ -22,7 +22,7 @@ import { acceptStroke, titleGlyph } from "session";
 import { ClockSound } from "sound";
 import { loadSettings, saveSettings, VOL_MAX, VOL_MIN, type WordSettings } from "settings";
 import { asMarquee, MARQUEE_MS, setMarqueeMark, setMarqueeText } from "marquee";
-import { FONT_UI, FONT_WORD, ON, noteGlyph, type Glyph } from "ink";
+import { FONT_UI, FONT_WORD, FONT_WORD_MID, ON, noteGlyph, type Glyph } from "ink";
 import { themeGeneration } from "theme";
 import { contentByName, setStringProp, setVisibleProp, type AppHost } from "ui";
 import { flushProgress, loadProgress, setDone, unfinishedFirst } from "progress";
@@ -75,28 +75,60 @@ function dropMiss(raw: string, word: string): string {
 }
 
 const WORD_HOLD_MS = 700;
+/** Keep the puzzle off the panel edges. */
+const PUZZLE_PAD = 4;
 
-let valueStyleWord: object | undefined;
-let valueStyleFit: object | undefined;
+type MeasuredStyle = { measure(text: string): { width: number; height: number } };
+
+let valueStyleWord: MeasuredStyle | undefined;
+let valueStyleMid: MeasuredStyle | undefined;
+let valueStyleFit: MeasuredStyle | undefined;
 let valueStyleGen = -1;
 let phoneFaceStyle: object | undefined;
 let phoneFaceGen = -1;
 let glossFaceStyle: object | undefined;
 let glossFaceGen = -1;
+/** Last pick, so typing does not re-measure the same headword. */
+let puzzleFitWord = "";
+let puzzleFitWidth = -1;
+let puzzleFitStyle: object | undefined;
 
 function refreshValueStyles(): void {
 	const gen = themeGeneration();
-	if (valueStyleGen === gen && valueStyleWord && valueStyleFit)
+	if (valueStyleGen === gen && valueStyleWord && valueStyleMid && valueStyleFit)
 		return;
-	valueStyleFit = new Style({ font: FONT_UI, color: ON, horizontal: "center", vertical: "middle" });
-	valueStyleWord = new Style({ font: FONT_WORD, color: ON, horizontal: "center", vertical: "middle" });
+	valueStyleFit = new Style({ font: FONT_UI, color: ON, horizontal: "center", vertical: "middle" }) as unknown as MeasuredStyle;
+	valueStyleMid = new Style({ font: FONT_WORD_MID, color: ON, horizontal: "center", vertical: "middle" }) as unknown as MeasuredStyle;
+	valueStyleWord = new Style({ font: FONT_WORD, color: ON, horizontal: "center", vertical: "middle" }) as unknown as MeasuredStyle;
 	valueStyleGen = gen;
+	puzzleFitWord = "";
 }
 
-/** Bold 48px fits 7 letters in 240px. Longer headwords use 20px. */
-function puzzleStyle(letters: number): object {
+/** Widest the puzzle can get: each slot is its letter or "_", whichever is wider. */
+function puzzleWidth(style: MeasuredStyle, word: string): number {
+	const blank = style.measure("_").width;
+	let w = 0;
+	for (let i = 0; i < word.length; i++)
+		w += Math.max(style.measure(word.charAt(i)).width, blank);
+	return w;
+}
+
+/** Largest face whose worst-case puzzle fits: 48px, then 32px, then 20px UI. */
+function puzzleStyle(word: string, room: number): object {
 	refreshValueStyles();
-	return letters > 7 ? valueStyleFit! : valueStyleWord!;
+	if (puzzleFitStyle && puzzleFitWord === word && puzzleFitWidth === room)
+		return puzzleFitStyle;
+	let pick: MeasuredStyle = valueStyleFit!;
+	for (const style of [valueStyleWord!, valueStyleMid!]) {
+		if (puzzleWidth(style, word) <= room) {
+			pick = style;
+			break;
+		}
+	}
+	puzzleFitWord = word;
+	puzzleFitWidth = room;
+	puzzleFitStyle = pick;
+	return pick;
 }
 
 /** Phonetic only. Arial Bold; Source Han has no IPA. */
@@ -579,8 +611,11 @@ export class AppBehavior extends Behavior {
 		const entry = wordAt(this.settings.wordBank, this.lexIndex());
 		const note = this.wordNote && Date.now() < this.wordNoteUntil ? this.wordNote : "";
 		const value = contentByName(app, "puzzleLabel");
-		if (hasStyle(value))
-			value.style = puzzleStyle(entry.word ? entry.word.length : 0);
+		if (hasStyle(value)) {
+			const width = (value as { width?: number }).width;
+			const room = (typeof width === "number" && width > 0 ? width : 240) - PUZZLE_PAD;
+			value.style = puzzleStyle(entry.word || "", room);
+		}
 		const view = entry.word ? renderPuzzle(entry.word, this.wordHidden, this.wordTyped) : "";
 		setStringProp(contentByName(app, "puzzleLabel"), view);
 		const flash = note ? noteGlyph(note) : { kind: "" as Glyph };

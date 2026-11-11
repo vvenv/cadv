@@ -46,6 +46,8 @@ export function setPalette(p: Palette): void {
 
 export const FONT_UI = "bold 20px UI";
 export const FONT_WORD = "bold 48px Word";
+/** Puzzle step-down for headwords too wide for FONT_WORD. */
+export const FONT_WORD_MID = "bold 32px Word";
 
 /** Inset from the panel edge for status glyphs, labels, and chrome. */
 export const EDGE_PAD = 8;

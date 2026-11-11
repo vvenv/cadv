@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate shared/fonts/UI-Bold-N and Word-Bold-48 from Source Han Sans SC Bold,
+# Generate shared/fonts/UI-Bold-N and Word-Bold-48/32 from Source Han Sans SC Bold,
 # and Ipa-Bold-20 from Arial Bold for the word-quiz phonetic line.
 #
 # Source Han Sans VF's default instance is ExtraLight (wght 250). fontbm
@@ -18,8 +18,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/lib/log.sh"
 
 OUT_DIR="$ROOT/shared/fonts"
-# File names are UI-Bold-20 / Word-Bold-48 / Ipa-Bold-20. Styles must say
-# "bold 20px UI", "bold 48px Word", and "bold 20px Ipa".
+# File names are UI-Bold-20 / Word-Bold-48 / Word-Bold-32 / Ipa-Bold-20. Styles must say
+# "bold 20px UI", "bold 48px Word", "bold 32px Word", and "bold 20px Ipa".
 FAMILY="UI"
 SIZE=20
 MONO=0
@@ -29,6 +29,8 @@ SC_INDEX=2
 # Named instance Bold. Default master of the VF is ExtraLight (250).
 WEIGHT=700
 FONTBM_VER="10.0.2"
+# Puzzle sizes, largest first. Styles say "bold 48px Word" / "bold 32px Word".
+WORD_SIZES="48 32"
 CHARS_EXTRA="年月日周闰初十廿卅冬腊设闹钟等待对时℃"
 # UI glyphs come from firmware text and wordbank-chars.txt. phone-chars.txt is IPA-only and is not included here.
 CHAR_SOURCES=()
@@ -226,26 +228,29 @@ main() {
   ')"
   log_success "wrote ${out_stem} glyphs=${nglyphs} → shared/fonts/ (family=${FAMILY})"
 
-  # Puzzle face. Middle band is 240×71. Bold 48px: widest 7-letter headword
-  # ("maximum") is 238px, so 8 letters and longer drop to 20px UI.
-  local word_size=48 word_family="Word" word_stem="Word-Bold-48"
-  log_info "fontbm size=${word_size} → ${word_stem} (puzzle)"
-  "$FONTBM" \
-    --font-file "$font_use" \
-    --font-size "$word_size" \
-    --output "$WORK_DIR/$word_stem" \
-    --texture-crop-width \
-    --texture-crop-height \
-    --texture-name-suffix none \
-    --data-format bin \
-    --chars 32-126
-  [ -f "$WORK_DIR/${word_stem}.fnt" ] && [ -f "$WORK_DIR/${word_stem}.png" ] \
-    || log_die "fontbm 未生成 ${word_stem}.{fnt,png}"
-  bmf_set_family "$WORK_DIR/${word_stem}.fnt" "$word_family"
+  # Puzzle faces. Middle band is 240×71. The words firmware measures each
+  # headword and picks the largest that fits: 48px, then 32px, then 20px UI.
+  local word_family="Word" word_size word_stem
   find "$OUT_DIR" -maxdepth 1 -type f \( -name "Word-Regular-*.*" -o -name "Word-Bold-*.*" \) -delete
-  mv "$WORK_DIR/${word_stem}.fnt" "$OUT_DIR/"
-  mv "$WORK_DIR/${word_stem}.png" "$OUT_DIR/"
-  log_success "wrote ${word_stem} → shared/fonts/ (family=${word_family})"
+  for word_size in $WORD_SIZES; do
+    word_stem="Word-Bold-${word_size}"
+    log_info "fontbm size=${word_size} → ${word_stem} (puzzle)"
+    "$FONTBM" \
+      --font-file "$font_use" \
+      --font-size "$word_size" \
+      --output "$WORK_DIR/$word_stem" \
+      --texture-crop-width \
+      --texture-crop-height \
+      --texture-name-suffix none \
+      --data-format bin \
+      --chars 32-126
+    [ -f "$WORK_DIR/${word_stem}.fnt" ] && [ -f "$WORK_DIR/${word_stem}.png" ] \
+      || log_die "fontbm 未生成 ${word_stem}.{fnt,png}"
+    bmf_set_family "$WORK_DIR/${word_stem}.fnt" "$word_family"
+    mv "$WORK_DIR/${word_stem}.fnt" "$OUT_DIR/"
+    mv "$WORK_DIR/${word_stem}.png" "$OUT_DIR/"
+    log_success "wrote ${word_stem} → shared/fonts/ (family=${word_family})"
+  done
 
   # Phonetic face. Family Ipa matches Style { font: "bold 20px Ipa" }.
   local ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"
@@ -298,13 +303,16 @@ PY
 # Exit 0 when UI, Word, and Ipa are at least as new as their sources.
 fonts_current() {
   local ui="$OUT_DIR/${FAMILY}-Bold-${SIZE}.fnt"
-  local word="$OUT_DIR/Word-Bold-48.fnt"
   local ipa="$OUT_DIR/Ipa-Bold-20.fnt"
   local phone_chars="$ROOT/fw/words/phone-chars.txt"
-  local oldest src ipa_src
-  [ -f "$ui" ] && [ -f "$word" ] && [ -f "$ipa" ] || return 1
+  local oldest src ipa_src word word_size
+  [ -f "$ui" ] && [ -f "$ipa" ] || return 1
   oldest="$ui"
-  [ "$word" -ot "$oldest" ] && oldest="$word"
+  for word_size in $WORD_SIZES; do
+    word="$OUT_DIR/Word-Bold-${word_size}.fnt"
+    [ -f "$word" ] || return 1
+    [ "$word" -ot "$oldest" ] && oldest="$word"
+  done
   [ "$ipa" -ot "$oldest" ] && oldest="$ipa"
   for src in "${BASH_SOURCE[0]}" "${CHAR_SOURCES[@]}" "$phone_chars"; do
     [ -e "$src" ] || continue
