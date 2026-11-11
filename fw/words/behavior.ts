@@ -133,11 +133,11 @@ function puzzleStyle(word: string, room: number): object {
 	return pick;
 }
 
-/** Phonetic only. Arial Bold; Source Han has no IPA. */
+/** Phonetic only. Arial Bold; Source Han has no IPA. 28px to match the gloss. */
 function phoneFace(): object {
 	const gen = themeGeneration();
 	if (!phoneFaceStyle || phoneFaceGen !== gen) {
-		phoneFaceStyle = new Style({ font: "bold 20px Ipa", color: ON, horizontal: "left", vertical: "middle" });
+		phoneFaceStyle = new Style({ font: "bold 28px Ipa", color: ON, horizontal: "left", vertical: "middle" });
 		phoneFaceGen = gen;
 	}
 	return phoneFaceStyle;

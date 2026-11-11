@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate shared/fonts/UI-Bold-N, Word-Bold-48/32 and Gloss-Bold-28 from Source Han Sans SC Bold,
-# and Ipa-Bold-20 from Arial Bold for the word-quiz phonetic line.
+# and Ipa-Bold-20/28 from Arial Bold for the phonetic lines.
 #
 # Source Han Sans VF's default instance is ExtraLight (wght 250). fontbm
 # rasterizes that master, which is too thin on a 240×135 panel. Pin the
@@ -18,8 +18,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/lib/log.sh"
 
 OUT_DIR="$ROOT/shared/fonts"
-# File names are UI-Bold-20 / Word-Bold-48 / Word-Bold-32 / Ipa-Bold-20. Styles must say
-# "bold 20px UI", "bold 48px Word", "bold 32px Word", and "bold 20px Ipa".
+# File names are UI-Bold-20 / Word-Bold-48 / Word-Bold-32 / Gloss-Bold-28 / Ipa-Bold-20 / Ipa-Bold-28.
+# Styles must say e.g. "bold 20px UI", "bold 48px Word", "bold 28px Gloss", "bold 20px Ipa".
 FAMILY="UI"
 SIZE=20
 MONO=0
@@ -33,6 +33,8 @@ FONTBM_VER="10.0.2"
 WORD_SIZES="48 32"
 # Words top-line gloss. Style says "bold 28px Gloss". Only quiz-bank and words-firmware glyphs.
 GLOSS_SIZE=28
+# Phonetic sizes: 20 for dict, 28 for the words top line.
+IPA_SIZES="20 28"
 CHARS_EXTRA="年月日周闰初十廿卅冬腊设闹钟等待对时℃"
 # UI glyphs come from firmware text and wordbank-chars.txt. phone-chars.txt is IPA-only and is not included here.
 CHAR_SOURCES=()
@@ -284,9 +286,10 @@ main() {
   mv "$WORK_DIR/${gloss_stem}.png" "$OUT_DIR/"
   log_success "wrote ${gloss_stem} → shared/fonts/ (family=${gloss_family})"
 
-  # Phonetic face. Family Ipa matches Style { font: "bold 20px Ipa" }.
+  # Phonetic faces. Family Ipa: dict uses "bold 20px Ipa", words "bold 28px Ipa"
+  # to match its 28px gloss.
   local ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"
-  local ipa_stem="Ipa-Bold-20" ipa_family="Ipa"
+  local ipa_stem ipa_family="Ipa"
   local phone_chars="$ROOT/fw/words/phone-chars.txt"
   [ -f "$ipa_src" ] || log_die "IPA 字体不存在：${ipa_src}（可设置 IPA_FONT）"
   if [ -s "$phone_chars" ] && command -v hb-shape >/dev/null 2>&1; then
@@ -310,36 +313,39 @@ PY
 )"
     [ -z "$miss" ] || log_die "Arial Bold 缺少音标字形：$miss"
   fi
-  log_info "fontbm size=20 → ${ipa_stem} (phonetic)"
-  local -a ipa_args=(
-    --font-file "$ipa_src"
-    --font-size 20
-    --output "$WORK_DIR/$ipa_stem"
-    --texture-crop-width
-    --texture-crop-height
-    --texture-name-suffix none
-    --data-format bin
-    --chars 32-126
-  )
-  [ -s "$phone_chars" ] && ipa_args+=(--chars-file "$phone_chars")
-  "$FONTBM" "${ipa_args[@]}"
-  [ -f "$WORK_DIR/${ipa_stem}.fnt" ] && [ -f "$WORK_DIR/${ipa_stem}.png" ] \
-    || log_die "fontbm 未生成 ${ipa_stem}.{fnt,png}"
-  bmf_set_family "$WORK_DIR/${ipa_stem}.fnt" "$ipa_family"
+  local ipa_size
   find "$OUT_DIR" -maxdepth 1 -type f \( -name "Ipa-Regular-*.*" -o -name "Ipa-Bold-*.*" \) -delete
-  mv "$WORK_DIR/${ipa_stem}.fnt" "$OUT_DIR/"
-  mv "$WORK_DIR/${ipa_stem}.png" "$OUT_DIR/"
-  log_success "wrote ${ipa_stem} → shared/fonts/ (family=${ipa_family})"
+  for ipa_size in $IPA_SIZES; do
+    ipa_stem="Ipa-Bold-${ipa_size}"
+    log_info "fontbm size=${ipa_size} → ${ipa_stem} (phonetic)"
+    local -a ipa_args=(
+      --font-file "$ipa_src"
+      --font-size "$ipa_size"
+      --output "$WORK_DIR/$ipa_stem"
+      --texture-crop-width
+      --texture-crop-height
+      --texture-name-suffix none
+      --data-format bin
+      --chars 32-126
+    )
+    [ -s "$phone_chars" ] && ipa_args+=(--chars-file "$phone_chars")
+    "$FONTBM" "${ipa_args[@]}"
+    [ -f "$WORK_DIR/${ipa_stem}.fnt" ] && [ -f "$WORK_DIR/${ipa_stem}.png" ] \
+      || log_die "fontbm 未生成 ${ipa_stem}.{fnt,png}"
+    bmf_set_family "$WORK_DIR/${ipa_stem}.fnt" "$ipa_family"
+    mv "$WORK_DIR/${ipa_stem}.fnt" "$OUT_DIR/"
+    mv "$WORK_DIR/${ipa_stem}.png" "$OUT_DIR/"
+    log_success "wrote ${ipa_stem} → shared/fonts/ (family=${ipa_family})"
+  done
 }
 
-# Exit 0 when UI, Word, and Ipa are at least as new as their sources.
+# Exit 0 when UI, Word, Gloss, and Ipa are at least as new as their sources.
 fonts_current() {
   local ui="$OUT_DIR/${FAMILY}-Bold-${SIZE}.fnt"
-  local ipa="$OUT_DIR/Ipa-Bold-20.fnt"
   local phone_chars="$ROOT/fw/words/phone-chars.txt"
-  local oldest src ipa_src word word_size
+  local oldest src ipa_src word word_size ipa ipa_size
   local gloss="$OUT_DIR/Gloss-Bold-${GLOSS_SIZE}.fnt"
-  [ -f "$ui" ] && [ -f "$ipa" ] && [ -f "$gloss" ] || return 1
+  [ -f "$ui" ] && [ -f "$gloss" ] || return 1
   oldest="$ui"
   [ "$gloss" -ot "$oldest" ] && oldest="$gloss"
   for word_size in $WORD_SIZES; do
@@ -347,7 +353,11 @@ fonts_current() {
     [ -f "$word" ] || return 1
     [ "$word" -ot "$oldest" ] && oldest="$word"
   done
-  [ "$ipa" -ot "$oldest" ] && oldest="$ipa"
+  for ipa_size in $IPA_SIZES; do
+    ipa="$OUT_DIR/Ipa-Bold-${ipa_size}.fnt"
+    [ -f "$ipa" ] || return 1
+    [ "$ipa" -ot "$oldest" ] && oldest="$ipa"
+  done
   for src in "${BASH_SOURCE[0]}" "${CHAR_SOURCES[@]}" "$phone_chars"; do
     [ -e "$src" ] || continue
     [ "$src" -nt "$oldest" ] && return 1
@@ -356,7 +366,7 @@ fonts_current() {
     return 1
   fi
   ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"
-  if [ -e "$ipa_src" ] && [ "$ipa_src" -nt "$ipa" ]; then
+  if [ -e "$ipa_src" ] && [ "$ipa_src" -nt "$oldest" ]; then
     return 1
   fi
   return 0
