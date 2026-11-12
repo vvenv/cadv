@@ -8,7 +8,7 @@ by hand after `./do.sh sd fw` / `./do.sh burner`:
     python3 scripts/make_site.py --version 1.0.0
 
 Writes to dist/site/ (or --out):
-    index.html              web flasher page (web/index.html filled in)
+    index.html, help.html   web flasher pages (web/* with placeholders filled in)
     fw/<id>.bin             merged image: bootloader, partition table, otadata, app; flash at 0x0
     fw/<id>.json            ESP Web Tools manifest for it
     cadv-sd-<version>.zip   what goes on the card: cadv/<id>.bin/.txt/.icon, word banks
@@ -104,18 +104,24 @@ def main():
 	def row(app):
 		mb = f"{app['size'] / 1048576:.1f} MB"
 		return (
-			f'<li><span class="name">{html.escape(app["label"])}</span>'
-			f'<span class="meta">{html.escape(app["id"])} · {mb}</span>'
+			f'\t\t<li title="{html.escape(app["id"])} · {mb}"><span class="name">{html.escape(app["label"])}</span>'
 			f'<esp-web-install-button manifest="fw/{app["id"]}.json">'
 			f'<button slot="activate">烧录</button></esp-web-install-button></li>'
 		)
 
 	others = "\n".join(row(a) for a in apps if a["id"] != BASE_ID)
-	page = (ROOT / "web/index.html").read_text(encoding="utf-8")
-	page = page.replace("{{VERSION}}", html.escape(args.version))
-	page = page.replace("{{SD_ZIP}}", bundle.name)
-	page = page.replace("{{APPS}}", others)
-	(out / "index.html").write_text(page, encoding="utf-8")
+	# Every file in web/ is published; *.html get the placeholders filled in.
+	for src in sorted((ROOT / "web").iterdir()):
+		if not src.is_file():
+			continue
+		if src.suffix != ".html":
+			shutil.copyfile(src, out / src.name)
+			continue
+		page = src.read_text(encoding="utf-8")
+		page = page.replace("{{VERSION}}", html.escape(args.version))
+		page = page.replace("{{SD_ZIP}}", bundle.name)
+		page = page.replace("{{APPS}}", others)
+		(out / src.name).write_text(page, encoding="utf-8")
 	print(f"{out}: {len(apps)} images, {bundle.name}")
 
 

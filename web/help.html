@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CADV 烧录帮助</title>
+<meta name="description" content="CADV 网页烧录的步骤和常见问题">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="help">
+	<header>
+		<h1>帮助<small>{{VERSION}}</small></h1>
+		<a href="./">← 返回烧录</a>
+	</header>
+
+	<p>CADV 是给 M5Stack Cardputer-Adv 用的一组小程序。芯片里只放一个「基座」，程序放在 microSD 卡的 <code>cadv/</code> 里，开机选一个载入。</p>
+
+	<h2>第一次装</h2>
+	<div class="card">
+		<ol>
+			<li>关掉电源开关，按住 <kbd>G0</kbd>，插上 USB 线，再松开 <kbd>G0</kbd>。</li>
+			<li>点「基座」后面的「烧录」，在弹出的列表里选这块板子的串口。问要不要清空时，第一次装选清空；只是升级可以不清，设置会留着。</li>
+			<li>烧完按一下侧面的 <kbd>RESET</kbd>。</li>
+			<li>下载「卡上程序」，解压到 microSD 卡根目录（得到一个 <code>cadv</code> 文件夹），插回板子。</li>
+			<li>开机后用 <kbd>,</kbd> <kbd>/</kbd> <kbd>;</kbd> <kbd>.</kbd> 选程序，<kbd>Enter</kbd> 载入。在程序里按住 <kbd>Fn</kbd>+<kbd>BS</kbd> 回到基座。</li>
+		</ol>
+	</div>
+
+	<h2>单独烧一个程序</h2>
+	<div class="card">
+		<p>不想要基座、只用一个程序时，在首页「单独烧一个程序」里点它。这会盖掉芯片里原来的东西；想回到基座，再烧一次基座就行。</p>
+	</div>
+
+	<h2>烧不进去</h2>
+	<div class="card">
+		<p>只能用电脑上的 Chrome 或 Edge，手机和 Safari、Firefox 都不支持 Web Serial。</p>
+		<p>列表里没有串口：确认是按住 <kbd>G0</kbd> 再插的线，换一根能传数据的 USB 线。</p>
+		<p>烧完屏幕不亮：按一下 <kbd>RESET</kbd>，或关电源再开。</p>
+	</div>
+
+	<footer>烧录用的是 <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>。源码和说明：<a href="https://github.com/vvenv/cadv">github.com/vvenv/cadv</a>。</footer>
+</main>
+</body>
+</html>
