@@ -108,6 +108,15 @@ void xs_boot_launcher(xsMachine *the)
 	const esp_partition_t *slot;
 	esp_err_t err;
 
+	/*
+		M5Launcher lives in the "test" app partition and gives installed apps
+		the ota_N slots, so under it ota_0 is just another app. otadata cannot
+		select a test partition; Launcher takes over on every restart and
+		shows its boot screen, so restarting is the way back. Our own table
+		has no test partition: the base is ota_0.
+	*/
+	if (esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_TEST, NULL))
+		esp_restart();
 	slot = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
 	if (!slot)
 		slot = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, NULL);

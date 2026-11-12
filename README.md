@@ -48,6 +48,7 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 | 把全部程序拷进卡（不含基座） | `./do.sh sd fw` |
 | 只传词库 | `./do.sh sd bank` |
 | 检查工具链 | `./do.sh ts-check` |
+| 打发布用的整片镜像（M5Burner / M5Launcher） | `./do.sh burner [id]` |
 | 帮助 | `./do.sh help` |
 
 板子上：从任意已载入的程序回到基座，按住 **Fn+BS**。各程序共用几套习惯：

@@ -41,3 +41,6 @@ tmp/
 
 # Moddable SDK checkout (local)
 third_party/
+
+# Release images (do.sh burner)
+dist/

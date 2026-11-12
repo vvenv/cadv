@@ -77,7 +77,9 @@
 				{ "idf": "app_update" }
 			],
 			"esp32Config": {
-				"CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE": "y"
+				"CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE": "y",
+				"CONFIG_ESPTOOLPY_FLASHSIZE_4MB": "n",
+				"CONFIG_ESPTOOLPY_FLASHSIZE_8MB": "y"
 			},
 			"config": {
 				"screen": "st7789",
@@ -159,7 +161,8 @@
 			},
 			"build": {
 				"ESP32_SUBCLASS": "esp32s3",
-				"USE_USB": "2"
+				"USE_USB": "2",
+				"PARTITIONS_FILE": "./partitions.csv"
 			}
 		},
 		"...": {

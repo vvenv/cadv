@@ -22,6 +22,9 @@
 #   ./do.sh sd fw dict              # 固件镜像 + cadv/dict/lex.bin
 #   ./do.sh sd bank                 # 只传词库，不传固件。菜单：拼写包、查词、全部
 #   ./do.sh sd bank dict            # 只传 cadv/dict/lex.bin
+#   ./do.sh burner [id…]            # 合并成一个整片镜像（0x0 起烧，给 M5Burner / 网页烧录）→ dist/burner/
+#                                   # 不写 id 是基座；同时把单独镜像放到 dist/launcher/（给 M5Launcher）
+#                                   # CADV_VERSION=1.0.0 指定版本号，默认 git describe
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh sd                      # 列出卡上的 cadv/
 #   菜单「列出 cadv」可多选删除：空格勾选，a 全选，回车后再确认。Esc、← 或 BS 不删。
@@ -1877,6 +1880,32 @@ cmd_ts_flash() {
   fi
 }
 
+# One image for M5Burner / web flashers / esptool at 0x0: bootloader, partition
+# table, otadata and the app, merged at the offsets the build itself used.
+# Also copies the bare app image for M5Launcher, which installs it into a slot.
+#   dist/burner/<id>-<ver>.bin    whole flash, written at 0x0
+#   dist/launcher/<id>-<ver>.bin  app only (what cadv/<id>.bin holds)
+cmd_burner() {
+  local ids=("$@") id ver build out
+  [ "${#ids[@]}" -gt 0 ] || ids=(sd)
+  need_moddable
+  need_idf
+  ver="${CADV_VERSION:-$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || date +%Y%m%d)}"
+  mkdir -p "$ROOT/dist/burner" "$ROOT/dist/launcher"
+  for id in "${ids[@]}"; do
+    fw_exists "$id" || log_die "没有固件：${id}（可选：$(fw_ids | tr '\n' ' ')）"
+    ensure_fw_image "$id" auto
+    build="$MODDABLE/build/tmp/esp32/esp32s3_cdc/release/$id/xsProj-esp32s3/build"
+    [ -f "$build/flash_args" ] || log_die "缺少 $build/flash_args，先编译：./do.sh burner $id"
+    grep -q -- '--flash-size 8MB' "$build/flash_args" || log_die "$(fw_label "$id") 不是按 8MB 编的，重编：CADV_SD_BUILD=1 ./do.sh burner $id"
+    out="$ROOT/dist/burner/$id-$ver.bin"
+    (cd "$build" && python -m esptool --chip esp32s3 merge-bin -o "$out" @flash_args) >/dev/null ||
+      log_die "合并失败：$id"
+    cp "$(fw_image "$id")" "$ROOT/dist/launcher/$id-$ver.bin"
+    log_success "$(fw_label "$id")：$(human_bytes "$(stat -f%z "$out")") → dist/burner/$id-$ver.bin（从 0x0 烧）；单独镜像 → dist/launcher/$id-$ver.bin"
+  done
+}
+
 run() {
   local cmd="$1"
   shift || true
@@ -1890,6 +1919,7 @@ run() {
     gen-font | font) cmd_gen_font "$@" ;;
     gen-words) cmd_gen_words ;;
     port) cmd_port "$@" ;;
+    burner) cmd_burner "$@" ;;
     clean) cmd_clean ;;
     -h | --help | help) usage ;;
     *)

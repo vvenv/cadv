@@ -1,0 +1,12 @@
+{
+	"device": "2093000000000000012",
+	"sourceUrl": "https://github.com/vvenv/cadv",
+	"firmwares": {
+		"words": {
+			"firmwareId": null,
+			"name": "Words - English spelling (Cardputer ADV)",
+			"categories": ["2190000000000000012", "2190000000000000009"],
+			"description": "fw/words/burner.md"
+		}
+	}
+}

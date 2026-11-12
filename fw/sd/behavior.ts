@@ -16,7 +16,7 @@ import { loadCatalog, openRead, type SdCatalog, type SdEntry } from "catalog";
 import { cardSpace } from "card";
 import { Power } from "power";
 import { acceptStroke, titleGlyph } from "session";
-import { fitsSlot } from "slot";
+import { builtForSmallFlash, fitsSlot } from "slot";
 import { pollLink, setLinkBusy, type LinkEvent } from "link";
 import { helpFor, helpTitle } from "help";
 import { CardputerKeyboard, type KeyStroke } from "keyboard";
@@ -427,8 +427,32 @@ export class AppBehavior extends Behavior {
 			this.paint(app);
 			return;
 		}
+		if (this.smallFlashImage(entry)) {
+			this.note = "旧镜像需重编";
+			this.paint(app);
+			return;
+		}
 		saveLast(entryId(entry));
 		this.tryInstalled(app, entry);
+	}
+
+	/** Built for the old 4MB table; see builtForSmallFlash. */
+	smallFlashImage(entry: SdEntry): boolean {
+		const root = this.catalog.root;
+		if (!root || entry.size < 4)
+			return false;
+		let file: File | null = null;
+		try {
+			file = openRead(root, entry.path);
+			const head = file.read(4, 0);
+			file.close();
+			file = null;
+			return builtForSmallFlash(head);
+		}
+		catch {
+			try { file?.close(); } catch { /* */ }
+			return false; // let the load report the read error
+		}
 	}
 
 	/** Same image already in the slot: boot it as is. Otherwise write it. */
