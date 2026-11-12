@@ -2,10 +2,12 @@ import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { BG } from "ink";
 import { bindFwTheme } from "theme";
+import { confirmBoot } from "boot";
 import { MenuBehavior } from "menu-view";
 import { GameBehavior } from "view";
 
 bindFwTheme("game");
+confirmBoot();
 
 const GameApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

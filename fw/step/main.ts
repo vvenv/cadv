@@ -2,11 +2,13 @@ import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { BG } from "ink";
 import { bindFwTheme } from "theme";
+import { confirmBoot } from "boot";
 import { MenuBehavior } from "menu-view";
 import { SevenSegBehavior } from "sevenseg";
 import { StepFooterBehavior, StepTopBehavior } from "view";
 
 bindFwTheme("step");
+confirmBoot();
 
 const StepApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

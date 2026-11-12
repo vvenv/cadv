@@ -115,6 +115,8 @@ fw/新名字/
   main.ts          # Application.template 必须放在这个文件
 ```
 
+`main.ts` 里照别的程序写上 `bindFwTheme("新名字")` 和 `confirmBoot()`。少了后者，程序每次重启都会退回基座。
+
 `./do.sh` 会扫 `fw/*/manifest.json`。新程序用 `./do.sh sd fw 新名字` 放进卡，不要指望它自动烧进芯片。
 
 ## 词库

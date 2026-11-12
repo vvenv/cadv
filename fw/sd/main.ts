@@ -8,8 +8,10 @@ import { MenuBehavior } from "menu-view";
 import { HomeBehavior } from "view";
 import { BG } from "ink";
 import { bindFwTheme } from "theme";
+import { confirmBoot } from "boot";
 
 bindFwTheme("sd");
+confirmBoot(0);
 
 const SdApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

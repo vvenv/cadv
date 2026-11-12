@@ -6,10 +6,12 @@ import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { BG } from "ink";
 import { bindFwTheme } from "theme";
+import { confirmBoot } from "boot";
 import { MenuBehavior } from "menu-view";
 import { LevelViewBehavior } from "view";
 
 bindFwTheme("level");
+confirmBoot();
 
 const LevelApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

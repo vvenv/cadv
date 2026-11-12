@@ -2,11 +2,13 @@ import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { BG } from "ink";
 import { bindFwTheme } from "theme";
+import { confirmBoot } from "boot";
 import { MenuBehavior } from "menu-view";
 import { QrBehavior } from "view";
 import { EditBehavior } from "editor";
 
 bindFwTheme("note");
+confirmBoot();
 
 const NoteApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

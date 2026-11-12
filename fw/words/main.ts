@@ -7,9 +7,11 @@ import { AppBehavior } from "behavior";
 import { MarqueeBehavior } from "marquee";
 import { BG, FONT_WORD, ON } from "ink";
 import { bindFwTheme } from "theme";
+import { confirmBoot } from "boot";
 import { MenuBehavior } from "menu-view";
 
 bindFwTheme("words");
+confirmBoot();
 
 const WordApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

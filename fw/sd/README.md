@@ -24,6 +24,10 @@ crescent x y r bx by br # 圆减去另一个圆，月牙
 
 载入之后，在那个固件里按 **Fn+BS** 回到这个基座。
 
+选的程序和上次载入的是同一个镜像（比较镜像末尾的 SHA-256）时，不再重写闪存，直接启动，标题显示「启动」。卡上的镜像换过，就照常写入。
+
+程序启动后要跑满约 3 秒才算「起来了」（`confirmBoot()`，每个 `main.ts` 都调一次；基座自己立刻确认）。在这之前重启或崩溃，bootloader 会自动退回基座，标题显示「上回没跑起来」。这靠 `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`，配在 `shared/manifest.json` 里，所以改完要 `./do.sh flash` 重烧一次基座（bootloader 跟着它一起烧）。新加的程序也要在 `main.ts` 里调用 `confirmBoot()`，否则它每次重启都会退回基座。
+
 闪存被分成两半，每一半大约 1.9MB。镜像更大就载不进去。卡上的份数不受这个限制。第一次使用，或 USB 烧过别的固件之后，要再烧一次基座，分区才在：
 
 ```bash

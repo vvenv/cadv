@@ -1,7 +1,9 @@
 /*
 	Lists firmware images in cadv/ as a horizontal icon grid.
 	Enter writes the chosen image into the other flash slot and reboots;
-	BS while the bar is filling cancels. The last app loaded is selected
+	when that slot already holds the same image it boots it without writing.
+	BS while the bar is filling cancels. If the app restarted before it
+	confirmed itself, the bootloader came back here and the title says so. The last app loaded is selected
 	again on the next visit. Arrows move in the grid; a letter jumps to the
 	next app whose id starts with it (H/J/K/L stay movement keys).
 */
@@ -9,7 +11,7 @@
 import {} from "piu/MC";
 import Preference from "preference";
 import Timer from "timer";
-import { openInstaller, type Installer } from "boot";
+import { bootCrashed, bootInstalled, openInstaller, type Installer } from "boot";
 import { loadCatalog, openRead, type SdCatalog, type SdEntry } from "catalog";
 import { cardSpace } from "card";
 import { Power } from "power";
@@ -164,6 +166,7 @@ export class AppBehavior extends Behavior {
 	linkName = "";
 	linkWait = 0;
 	linkArmed = false;
+	crashChecked = false;
 
 	onDisplaying(content: unknown) {
 		const app = content as AppHost;
@@ -304,6 +307,14 @@ export class AppBehavior extends Behavior {
 			}
 		}
 		this.scanning = false;
+		if (!this.crashChecked) {
+			this.crashChecked = true;
+			try {
+				if (bootCrashed())
+					this.note = "上回没跑起来";
+			}
+			catch { /* */ }
+		}
 		this.paint(app);
 		if (!this.rescan || this.mode === "load")
 			return;
@@ -417,7 +428,35 @@ export class AppBehavior extends Behavior {
 			return;
 		}
 		saveLast(entryId(entry));
-		this.beginLoad(app, entry);
+		this.tryInstalled(app, entry);
+	}
+
+	/** Same image already in the slot: boot it as is. Otherwise write it. */
+	tryInstalled(app: AppHost, entry: SdEntry) {
+		const root = this.catalog.root;
+		if (!root || entry.size <= 32) {
+			this.beginLoad(app, entry);
+			return;
+		}
+		this.mode = "load";
+		this.note = "启动";
+		this.paint(app);
+		// Yield so the label shows while the slot image is verified.
+		Timer.set(() => {
+			let file: File | null = null;
+			try {
+				file = openRead(root, entry.path);
+				const tail = file.read(32, entry.size - 32);
+				file.close();
+				file = null;
+				if (tail.byteLength === 32)
+					bootInstalled(tail, entry.size); // never returns on a match
+			}
+			catch { /* fall back to writing */ }
+			try { file?.close(); } catch { /* */ }
+			this.mode = "list";
+			this.beginLoad(app, entry);
+		}, 30);
 	}
 
 	beginLoad(app: AppHost, entry: SdEntry) {

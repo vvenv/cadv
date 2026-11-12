@@ -1,6 +1,10 @@
 /*
 	Install an app image into ota_1 and reboot into it.
 	ota_0 stays the USB-flashed launcher. Fn+BS boots that slot again.
+
+	Rollback is on (CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE): a freshly selected
+	slot boots as "pending verify". If it restarts before confirming itself,
+	the bootloader marks it aborted and falls back to the launcher.
 */
 
 #include "xsmc.h"
@@ -9,6 +13,8 @@
 #include "esp_err.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
+
+#include <string.h>
 
 static esp_ota_handle_t gHandle;
 static const esp_partition_t *gDest;
@@ -111,4 +117,61 @@ void xs_boot_launcher(xsMachine *the)
 	if (err != ESP_OK)
 		xsUnknownError((char *)esp_err_to_name(err));
 	esp_restart();
+}
+
+/*
+	Boot ota_1 without rewriting it when it already holds the image whose
+	appended SHA-256 (its last 32 bytes) is arg 0 and whose size is arg 1.
+	Returns false when the slot holds something else. On a match it never returns.
+	esp_ota_set_boot_partition verifies the whole image, so a half-written
+	slot is rejected there too.
+*/
+void xs_boot_installed(xsMachine *the)
+{
+	const esp_partition_t *slot;
+	const esp_partition_t *running;
+	void *tail;
+	xsUnsignedValue tailLength;
+	size_t size;
+	uint8_t have[32];
+
+	xsmcSetFalse(xsResult);
+	xsmcGetBufferReadable(xsArg(0), &tail, &tailLength);
+	size = (size_t)xsmcToInteger(xsArg(1));
+	if (tailLength != sizeof(have) || gOpen)
+		return;
+	slot = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
+	if (!slot || size <= sizeof(have) || size > slot->size)
+		return;
+	running = esp_ota_get_running_partition();
+	if (running && running->address == slot->address)
+		return;
+	if (esp_partition_read(slot, size - sizeof(have), have, sizeof(have)) != ESP_OK)
+		return;
+	if (memcmp(have, tail, sizeof(have)))
+		return;
+	if (esp_ota_set_boot_partition(slot) != ESP_OK)
+		return;
+	esp_restart();
+}
+
+/* The running image is healthy. Cancels the bootloader's pending rollback. */
+void xs_boot_confirm(xsMachine *the)
+{
+	(void)the;
+	esp_ota_mark_app_valid_cancel_rollback();
+}
+
+/* True when the app slot was rolled back: it restarted before confirming. */
+void xs_boot_crashed(xsMachine *the)
+{
+	const esp_partition_t *slot;
+	esp_ota_img_states_t state;
+
+	xsmcSetFalse(xsResult);
+	slot = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
+	if (!slot || esp_ota_get_state_partition(slot, &state) != ESP_OK)
+		return;
+	if (state == ESP_OTA_IMG_ABORTED)
+		xsmcSetTrue(xsResult);
 }

@@ -6,10 +6,12 @@ import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { BG } from "ink";
 import { bindFwTheme } from "theme";
+import { confirmBoot } from "boot";
 import { MarqueeBehavior } from "marquee";
 import { MenuBehavior } from "menu-view";
 
 bindFwTheme("kb");
+confirmBoot();
 
 const KbApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

@@ -15,3 +15,14 @@ export function openInstaller(): Installer {
 
 export function bootLauncher() {
 }
+
+export function bootInstalled(_tail: ArrayBuffer, _size: number): boolean {
+	return false;
+}
+
+export function confirmBoot(_ms?: number) {
+}
+
+export function bootCrashed(): boolean {
+	return false;
+}

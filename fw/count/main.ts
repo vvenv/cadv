@@ -2,11 +2,13 @@ import {} from "piu/MC";
 import { AppBehavior } from "behavior";
 import { BG } from "ink";
 import { bindFwTheme } from "theme";
+import { confirmBoot } from "boot";
 import { MenuBehavior } from "menu-view";
 import { SevenSegBehavior } from "sevenseg";
 import { CountFooterBehavior, CountTopBehavior } from "view";
 
 bindFwTheme("count");
+confirmBoot();
 
 const CountApplication = Application.template($ => ({
 	skin: new Skin({ fill: BG }),

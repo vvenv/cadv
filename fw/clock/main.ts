@@ -10,9 +10,11 @@ import { MarqueeBehavior } from "marquee";
 import { MenuBehavior } from "menu-view";
 import { BG } from "ink";
 import { bindFwTheme } from "theme";
+import { confirmBoot } from "boot";
 import { SevenSegBehavior } from "sevenseg";
 
 bindFwTheme("clock");
+confirmBoot();
 
 declare function trace(message: string): void;
 

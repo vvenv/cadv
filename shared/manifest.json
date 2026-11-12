@@ -76,6 +76,9 @@
 			"dependency": [
 				{ "idf": "app_update" }
 			],
+			"esp32Config": {
+				"CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE": "y"
+			},
 			"config": {
 				"screen": "st7789",
 				"touch": "",
