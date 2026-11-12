@@ -6,7 +6,7 @@
 				"${workspaceFolder}/third_party/moddable/xs/includes",
 				"${workspaceFolder}/third_party/moddable/xs/platforms/esp",
 				"${workspaceFolder}/third_party/moddable/xs/platforms/mc",
-				"${workspaceFolder}/third_party/moddable/build/tmp/esp32/esp32s3_cdc/release/sd"
+				"${workspaceFolder}/third_party/moddable/build/tmp/esp32/esp32s3_cdc/release/base"
 			],
 			"defines": [
 				"ESP32=3",

@@ -68,7 +68,7 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 
 | 目录 | 菜单名 | 做什么 |
 |------|--------|--------|
-| `fw/sd` | 基座 | 从卡上的 `cadv/` 载入别的程序 |
+| `fw/base` | 基座 | 从卡上的 `cadv/` 载入别的程序 |
 | `fw/clock` | 时钟 | 校时、天气、闹钟、秒表、番茄钟、月历等 |
 | `fw/words` | 拼写 | 填空练词；默认可用来自 Alice 的小学词表 |
 | `fw/dict` | 查词 | 输入英文，看词性、中文、音标 |
@@ -115,7 +115,7 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 ```text
 fw/新名字/
   label            # 一行，菜单里显示的名字
-  icon             # 基座里的图标，可不放（格式见 fw/sd/README.md）
+  icon             # 基座里的图标，可不放（格式见 fw/base/README.md）
   manifest.json    # include ../../shared/manifest.json，再列出本程序的模块
   main.ts          # Application.template 必须放在这个文件
 ```

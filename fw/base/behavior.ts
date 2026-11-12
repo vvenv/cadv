@@ -32,7 +32,7 @@ import type { File } from "embedded:storage/files";
 
 type Mode = "list" | "help" | "load" | "recv";
 
-const PREF = "sd";
+const PREF = "base";
 const PREF_LAST = "last";
 
 function loadLast(): string {

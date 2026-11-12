@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Talk to the Cardputer launcher over USB and write files into cadv/.
 
-Frame, little endian, same as fw/sd/link.c:
+Frame, little endian, same as fw/base/link.c:
   u32 magic 'CADV' | u8 op | u8 status | u32 length | payload | u32 crc32
 crc32 is zlib's, covering the bytes from op through the payload.
 """
@@ -43,7 +43,7 @@ class LinkError(Exception):
 
 
 def crc32_update(crc: int, data: bytes) -> int:
-    """Same bit loop as fw/sd/link.c. Matches zlib.crc32."""
+    """Same bit loop as fw/base/link.c. Matches zlib.crc32."""
     crc = (~crc) & 0xFFFFFFFF
     for byte in data:
         crc ^= byte

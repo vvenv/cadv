@@ -10,7 +10,7 @@ import { BG } from "ink";
 import { bindFwTheme } from "theme";
 import { confirmBoot } from "boot";
 
-bindFwTheme("sd");
+bindFwTheme("base");
 confirmBoot(0);
 
 const SdApplication = Application.template($ => ({

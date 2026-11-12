@@ -50,7 +50,7 @@ Cardputer-Adv 有 8MB 闪存，分区表在 `shared/partitions.csv`：otadata �
 
 没插卡时走板子上的 USB 串口，文件由基座写进卡。这要求芯片里是 `./do.sh flash` 烧进去的这一版基座。`CADV_SD=/Volumes/名字` 指定插在电脑上的卡。`CADV_PORT=` 指定串口。`CADV_LINK=device` 强制走板子，`CADV_LINK=0` 只认电脑上的卡。`CADV_SD_BUILD=1` 每个都先重编再拷。上传全部时，过时的镜像会直接重编。
 
-桌面模拟用 `fw/sd/sample` 当卡，里面已经有一个 `cadv/`。`./do.sh sim sd`。模拟器不能真的载入。
+桌面模拟用 `fw/base/sample` 当卡，里面已经有一个 `cadv/`。`./do.sh sim base`。模拟器不能真的载入。
 
 ## 发布：M5Burner 和 M5Launcher
 

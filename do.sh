@@ -57,6 +57,8 @@ source "$ROOT/scripts/lib/log.sh"
 source "$ROOT/scripts/lib/prompt-menu.sh"
 
 FW_ROOT="$ROOT/fw"
+# Launcher firmware. It stays in the chip. `./do.sh sd` is the card, not this id.
+LAUNCHER=base
 
 export PATH="/opt/homebrew/bin:${HOME}/Library/Python/3.9/bin:${PATH}"
 export HOMEBREW_PREFIX="${HOMEBREW_PREFIX:-/opt/homebrew}"
@@ -187,7 +189,7 @@ pick_fw_multi() {
   local title="$1" id opts=()
   while IFS= read -r id; do
     [ -n "$id" ] || continue
-    [ "$id" = "sd" ] && continue
+    [ "$id" = "$LAUNCHER" ] && continue
     opts+=("$id:$(fw_label "$id")")
   done < <(fw_ids)
   [ "${#opts[@]}" -gt 0 ] || log_die "没有可上传的固件"
@@ -1321,13 +1323,13 @@ cmd_sd_fw() {
     policy=auto
     while IFS= read -r id; do
       [ -n "$id" ] || continue
-      [ "$id" = "sd" ] && continue
+      [ "$id" = "$LAUNCHER" ] && continue
       ids+=("$id")
     done < <(fw_ids)
   else
     for id in "$@"; do
-      if [ "$id" = "sd" ]; then
-        log_warn "跳过基座 sd，它留在芯片里"
+      if [ "$id" = "$LAUNCHER" ]; then
+        log_warn "跳过基座 ${LAUNCHER}，它留在芯片里"
         continue
       fi
       fw_exists "$id" || log_die "没有固件：${id}（可选：$(fw_ids | tr '\n' ' ')）"
@@ -1435,7 +1437,7 @@ cmd_sd_icon() {
   local route kind root id icon home ids=() args=()
   if [ $# -eq 0 ] || [ "${1:-}" = "all" ]; then
     while IFS= read -r id; do
-      [ -n "$id" ] && [ "$id" != "sd" ] && ids+=("$id")
+      [ -n "$id" ] && [ "$id" != "$LAUNCHER" ] && ids+=("$id")
     done < <(fw_ids)
   else
     for id in "$@"; do
@@ -1731,7 +1733,7 @@ need_idf() {
 # The launcher owns USB Serial/JTAG. A debug build's xsbug reader consumes
 # every byte on that port, so the host cannot upload through the device.
 esp_mc() {
-  if [ "${1:-}" = "sd" ]; then
+  if [ "${1:-}" = "$LAUNCHER" ]; then
     ESP_MC=(-m -p esp32/esp32s3_cdc)
   else
     ESP_MC=(-d -m -dn -p esp32/esp32s3_cdc)
@@ -1822,7 +1824,7 @@ release_flash_watch() {
 cmd_ts_flash() {
   local id want=0
   # The chip only holds the launcher. Other firmware is chosen on the device.
-  id="${1:-sd}"
+  id="${1:-$LAUNCHER}"
   fw_exists "$id" || log_die "没有固件：${id}（可选：$(fw_ids | tr '\n' ' ')）"
   if fw_needs_bank "$id"; then
     want=1
@@ -1855,7 +1857,7 @@ cmd_ts_flash() {
   # that monitor. bash 3.2 + set -u: empty "${arr[@]}" is unbound — branch.
   local log rc watch_pid=""
   log="$(mktemp "${TMPDIR:-/tmp}/cadv-flash.XXXXXX")"
-  if [ "$id" = "sd" ]; then
+  if [ "$id" = "$LAUNCHER" ]; then
     release_flash_watch "$log" &
     watch_pid=$!
   fi
@@ -1874,7 +1876,7 @@ cmd_ts_flash() {
   set -o pipefail
   set -e
   if [ "$rc" -ne 0 ] && flash_log_verified "$log"; then
-    if [ "$id" != "sd" ]; then
+    if [ "$id" != "$LAUNCHER" ]; then
       log_warn "xsbug 没开，调试器连接失败。固件已经写入。"
     fi
     rc=0
@@ -1885,7 +1887,7 @@ cmd_ts_flash() {
     log_die "mcconfig 退出码 ${rc}"
   fi
   log_success "已烧录 $(fw_label "$id")。板子按 RESET。"
-  if [ "$id" = "sd" ]; then
+  if [ "$id" = "$LAUNCHER" ]; then
     log_info "上传固件可以不拔卡：USB 接着，等基座菜单出来，再选上传。"
   fi
 }
@@ -1897,7 +1899,7 @@ cmd_ts_flash() {
 #   dist/launcher/<id>-<ver>.bin  app only (what cadv/<id>.bin holds)
 cmd_burner() {
   local ids=("$@") id ver build out
-  [ "${#ids[@]}" -gt 0 ] || ids=(sd)
+  [ "${#ids[@]}" -gt 0 ] || ids=("$LAUNCHER")
   need_moddable
   need_idf
   ver="${CADV_VERSION:-$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || date +%Y%m%d)}"
@@ -1921,7 +1923,7 @@ cmd_burner() {
 # bare screen. The first screen after launch is what gets captured.
 cmd_shot() {
   local ids=("$@") id
-  [ "${#ids[@]}" -gt 0 ] || ids=(sd)
+  [ "${#ids[@]}" -gt 0 ] || ids=("$LAUNCHER")
   mkdir -p "$ROOT/dist/shots"
   for id in "${ids[@]}"; do
     fw_exists "$id" || log_die "没有固件：${id}"

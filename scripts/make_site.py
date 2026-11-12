@@ -27,6 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET = ("esp32", "esp32s3_cdc", "release")
+BASE_ID = "base"  # launcher; flashed to the chip, never copied onto the card
 
 
 def label(fw: Path) -> str:
@@ -75,7 +76,7 @@ def main():
 		}, ensure_ascii=False, indent="\t") + "\n", encoding="utf-8")
 		apps.append({"id": fid, "label": name, "size": merged.stat().st_size})
 
-		if fid == "sd":
+		if fid == BASE_ID:
 			continue  # the base stays in flash, never on the card
 		shutil.copyfile(image, card / f"{fid}.bin")
 		(card / f"{fid}.txt").write_text(name + "\n", encoding="utf-8")
@@ -90,8 +91,8 @@ def main():
 			(card / "dict").mkdir(exist_ok=True)
 			shutil.copyfile(fw / "lex.bin", card / "dict" / "lex.bin")
 
-	if not any(a["id"] == "sd" for a in apps):
-		sys.exit("the base (fw/sd) was not built")
+	if not any(a["id"] == BASE_ID for a in apps):
+		sys.exit("the base (fw/base) was not built")
 
 	bundle = out / f"cadv-sd-{args.version}.zip"
 	with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as z:
@@ -109,7 +110,7 @@ def main():
 			f'<button slot="activate">烧录</button></esp-web-install-button></li>'
 		)
 
-	others = "\n".join(row(a) for a in apps if a["id"] != "sd")
+	others = "\n".join(row(a) for a in apps if a["id"] != BASE_ID)
 	page = (ROOT / "web/index.html").read_text(encoding="utf-8")
 	page = page.replace("{{VERSION}}", html.escape(args.version))
 	page = page.replace("{{SD_ZIP}}", bundle.name)
