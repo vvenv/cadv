@@ -4,7 +4,8 @@
 #   - optionally M5Burner (scripts/burner_publish.py), when the repo variable
 #     BURNER_PUBLISH is "true" and M5BURNER_USER / M5BURNER_PWD secrets exist
 #
-# One-time setup: Settings → Pages → Source: GitHub Actions.
+# One-time setup: Settings → Pages → Source: GitHub Actions, custom domain
+# cadv.wenfu.dev (DNS: CNAME cadv → vvenv.github.io, not proxied).
 # Keep MODDABLE_REF on the SDK release the local third_party/moddable came from.
 
 name: release
@@ -55,8 +56,13 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="dev-${GITHUB_SHA::7}"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
+      # github.workspace is the host path; inside the container it is $GITHUB_WORKSPACE.
+      - name: MODDABLE
+        shell: bash
+        run: echo "MODDABLE=$GITHUB_WORKSPACE/cadv/third_party/moddable" >> "$GITHUB_ENV"
+
       - name: Host packages for the Moddable tools
-        run: apt-get update && apt-get install -y --no-install-recommends libgtk-3-dev
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config libgtk-3-dev
 
       - name: Moddable tools
         shell: bash
@@ -71,7 +77,6 @@ jobs:
         shell: bash
         run: |
           . "$IDF_PATH/export.sh"
-          export MODDABLE="$PWD/third_party/moddable"
           export PATH="$MODDABLE/build/bin/lin/release:$PATH"
           for d in fw/*/; do
             [ -f "$d/manifest.json" ] || continue
@@ -89,6 +94,12 @@ jobs:
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
+          body: |
+            网页烧录：https://cadv.wenfu.dev/
+
+            - `<id>.bin`：整片镜像，从 0x0 烧（esptool / M5Burner 都行）
+            - `cadv-sd-*.zip`：解压到 microSD 根目录，得到 `cadv/`
+          generate_release_notes: true
           files: |
             cadv/dist/site/fw/*.bin
             cadv/dist/site/cadv-sd-*.zip

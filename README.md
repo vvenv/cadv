@@ -6,6 +6,18 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+**不想装工具链？** 用电脑上的 Chrome / Edge 打开 [cadv.wenfu.dev](https://cadv.wenfu.dev/)，直接网页烧录基座，再下载卡上文件包解压到 microSD。
+
+## 发布
+
+打一个 `v*` tag 推上去即可，其余交给 `.github/workflows/release.yml`：
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+CI 会编全部固件，更新 [cadv.wenfu.dev](https://cadv.wenfu.dev/)，并建 GitHub Release（整片镜像 + `cadv-sd-<版本>.zip`）。仓库变量 `BURNER_PUBLISH=true` 且配好 `M5BURNER_USER` / `M5BURNER_PWD` 时，顺带发到 M5Burner。在 Actions 里手动运行只更新网页，版本号记作 `dev-<commit>`。
+
 ## 你需要什么
 
 - Cardputer-Adv
