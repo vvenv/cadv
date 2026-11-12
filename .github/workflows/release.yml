@@ -59,14 +59,17 @@ jobs:
       # github.workspace is the host path; inside the container it is $GITHUB_WORKSPACE.
       - name: MODDABLE
         shell: bash
-        run: echo "MODDABLE=$GITHUB_WORKSPACE/cadv/third_party/moddable" >> "$GITHUB_ENV"
+        run: |
+          echo "MODDABLE=$GITHUB_WORKSPACE/cadv/third_party/moddable" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/cadv/third_party/moddable/build/bin/lin/release" >> "$GITHUB_PATH"
 
       - name: Host packages for the Moddable tools
         run: apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config libgtk-3-dev
 
+      # Not -j at the top level: xsbug and friends call xsc, which must be built first.
       - name: Moddable tools
         shell: bash
-        run: make -C cadv/third_party/moddable/build/makefiles/lin -j"$(nproc)"
+        run: make -C cadv/third_party/moddable/build/makefiles/lin
 
       - name: Word banks (from vvenv/alice)
         working-directory: cadv
@@ -77,7 +80,6 @@ jobs:
         shell: bash
         run: |
           . "$IDF_PATH/export.sh"
-          export PATH="$MODDABLE/build/bin/lin/release:$PATH"
           for d in fw/*/; do
             [ -f "$d/manifest.json" ] || continue
             echo "::group::$(basename "$d")"
