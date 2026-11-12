@@ -1,5 +1,7 @@
 # 时钟固件 — Moddable + TypeScript
+<!-- summary: 联网校时的时钟，带天气、闹钟、秒表、番茄钟、月历 -->
 
+<!-- dev -->
 这是 `fw/clock`。板端用 **TypeScript**（经 Moddable XS）跑在 ESP32-S3 上。  
 桌面模拟器用 **PIU** 画时钟；真机同样走 PIU + Cardputer-Adv ST7789 / TCA8418 键盘 / ES8311 扬声器。
 
@@ -48,6 +50,10 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 ./do.sh sd fw clock    # 镜像进卡上的 cadv/（芯片里先 ./do.sh flash 基座）
 ```
 
+<!-- /dev -->
+
+联网自动校时的时钟。主界面是七段数码管样式：上行日期、星期、闹钟和时间，下行农历、温度、湿度。还有天气、四个闹钟、倒计时、秒表、番茄钟、月历和世界时间。
+
 ### Wi-Fi / NTP（真机对时）
 
 板端默认无 RTC，需 Wi-Fi + SNTP。**优先在设备上用键盘配置**（TCA8418）：
@@ -83,6 +89,7 @@ cd "$IDF_PATH" && ./install.sh esp32s3
 
 顶栏右上角是四格电量图标。电池不高于 3.40V 时菜单标题会带低电标记。键盘那条边朝下时，表盘转 180°。`C` / `A` / `T` / `W` / `S` / `H` 仍可在时钟界面直接用。
 
+<!-- dev -->
 也可预置 Wi-Fi（可选，构建时写入 config；设备上仍可改）：
 
 ```bash

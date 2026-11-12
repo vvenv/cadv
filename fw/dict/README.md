@@ -12,4 +12,5 @@
 ./do.sh sd bank dict
 ```
 
+<!-- dev -->
 `sd fw dict` 会把镜像和 `lex.bin` 一起拷到卡上。只传词库：菜单 SD → 上传词库，选查词或全部。模拟读 `fw/dict/sample`。

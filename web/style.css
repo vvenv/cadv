@@ -70,24 +70,37 @@ button, .btn {
 }
 .btn.ghost, ul.apps button { background: transparent; color: var(--accent); }
 button:focus-visible, .btn:focus-visible, .tip:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.row .name a { color: inherit; text-decoration: none; }
+.row .name a:hover { text-decoration: underline; }
 ul.apps {
 	list-style: none;
 	margin: 0;
 	padding: 0;
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 	gap: 8px;
 }
 ul.apps li {
-	display: flex;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
+	column-gap: 10px;
 	background: var(--card);
 	border: 1px solid var(--line);
 	border-radius: 10px;
-	padding: 8px 8px 8px 14px;
+	padding: 10px 10px 10px 14px;
 }
+ul.apps .name { font-weight: 600; color: var(--ink); text-decoration: none; }
+ul.apps .name:hover { text-decoration: underline; color: var(--accent); }
+ul.apps .sub {
+	grid-row: 2;
+	font-size: 14px;
+	color: var(--muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+ul.apps esp-web-install-button { grid-row: 1 / span 2; grid-column: 2; }
 ul.apps button { padding: 4px 12px; font-size: 14px; }
 [slot="unsupported"], [slot="not-allowed"] { color: var(--warn); font-size: 15px; }
 
@@ -125,6 +138,33 @@ ul.apps button { padding: 4px 12px; font-size: 14px; }
 	z-index: 10;
 }
 .tip:hover::after, .tip:focus::after { opacity: 1; }
+
+/* program page */
+.title { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.title .sub { margin: 4px 0 0; color: var(--muted); }
+.title .act { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.doc article { overflow-wrap: anywhere; }
+.doc article h2 { font-size: 19px; color: var(--ink); margin: 28px 0 8px; }
+.doc article h3, .doc article h4 { font-size: 17px; margin: 22px 0 6px; }
+.doc article p { margin: 10px 0; }
+.doc article ul, .doc article ol { padding-left: 22px; }
+.doc article code {
+	font-size: 14px;
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	padding: 0 4px;
+}
+.doc article table {
+	display: block;
+	overflow-x: auto;
+	border-collapse: collapse;
+	margin: 12px 0;
+	font-size: 15px;
+}
+.doc article th, .doc article td { border-bottom: 1px solid var(--line); padding: 7px 12px 7px 0; text-align: left; vertical-align: top; }
+.doc article th { color: var(--muted); font-weight: 600; }
+.doc article td:first-child { white-space: nowrap; }
 
 /* help page */
 ol { padding-left: 22px; margin: 0; }

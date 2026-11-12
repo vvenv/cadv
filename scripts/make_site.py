@@ -9,6 +9,7 @@ by hand after `./do.sh sd fw` / `./do.sh burner`:
 
 Writes to dist/site/ (or --out):
     index.html, help.html   web flasher pages (web/* with placeholders filled in)
+    app/<id>.html           one page per program, from fw/<id>/README.md (web/_app.html)
     fw/<id>.bin             merged image: bootloader, partition table, otadata, app; flash at 0x0
     fw/<id>.json            ESP Web Tools manifest for it
     cadv-sd-<version>.zip   what goes on the card: cadv/<id>.bin/.txt/.icon, word banks
@@ -23,6 +24,8 @@ import shutil
 import subprocess
 import sys
 import zipfile
+
+import webmd
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -74,7 +77,9 @@ def main():
 			"new_install_prompt_erase": True,
 			"builds": [{"chipFamily": "ESP32-S3", "parts": [{"path": f"{fid}.bin", "offset": 0}]}],
 		}, ensure_ascii=False, indent="\t") + "\n", encoding="utf-8")
-		apps.append({"id": fid, "label": name, "size": merged.stat().st_size})
+		readme = fw / "README.md"
+		summary, body = webmd.render(readme.read_text(encoding="utf-8"), f"fw/{fid}/") if readme.is_file() else ("", "")
+		apps.append({"id": fid, "label": name, "size": merged.stat().st_size, "summary": summary, "body": body})
 
 		if fid == BASE_ID:
 			continue  # the base stays in flash, never on the card
@@ -103,25 +108,44 @@ def main():
 
 	def row(app):
 		mb = f"{app['size'] / 1048576:.1f} MB"
+		e = html.escape
 		return (
-			f'\t\t<li title="{html.escape(app["id"])} · {mb}"><span class="name">{html.escape(app["label"])}</span>'
-			f'<esp-web-install-button manifest="fw/{app["id"]}.json">'
+			f'\t\t<li><a class="name" href="app/{e(app["id"])}.html">{e(app["label"])}</a>'
+			f'<span class="sub" title="{e(app["summary"])}">{e(app["summary"])}</span>'
+			f'<esp-web-install-button manifest="fw/{e(app["id"])}.json" title="{e(app["id"])} · {mb}">'
 			f'<button slot="activate">烧录</button></esp-web-install-button></li>'
 		)
 
+	def fill(page: str, extra: dict[str, str]) -> str:
+		for k, v in {"VERSION": html.escape(args.version), "SD_ZIP": bundle.name, **extra}.items():
+			page = page.replace("{{" + k + "}}", v)
+		return page
+
 	others = "\n".join(row(a) for a in apps if a["id"] != BASE_ID)
 	# Every file in web/ is published; *.html get the placeholders filled in.
+	# Files starting with _ are templates, not pages.
 	for src in sorted((ROOT / "web").iterdir()):
-		if not src.is_file():
+		if not src.is_file() or src.name.startswith("_"):
 			continue
 		if src.suffix != ".html":
 			shutil.copyfile(src, out / src.name)
 			continue
-		page = src.read_text(encoding="utf-8")
-		page = page.replace("{{VERSION}}", html.escape(args.version))
-		page = page.replace("{{SD_ZIP}}", bundle.name)
-		page = page.replace("{{APPS}}", others)
-		(out / src.name).write_text(page, encoding="utf-8")
+		(out / src.name).write_text(fill(src.read_text(encoding="utf-8"), {"APPS": others}), encoding="utf-8")
+
+	tmpl = (ROOT / "web/_app.html").read_text(encoding="utf-8")
+	(out / "app").mkdir()
+	for a in apps:
+		base = a["id"] == BASE_ID
+		page = fill(tmpl, {
+			"ID": html.escape(a["id"]),
+			"LABEL": html.escape(a["label"]),
+			"SUMMARY": html.escape(a["summary"]),
+			"FLASH": "烧录" if base else "单独烧录",
+			"TIP": "电源关 → 按住 G0 → 插 USB → 松开，再点烧录。&#10;烧完按 RESET。" if base
+			else "装进基座：下载首页的「卡上程序」放到 microSD。&#10;单独烧录会盖掉芯片里的基座。",
+			"BODY": a["body"],
+		})
+		(out / "app" / f"{a['id']}.html").write_text(page, encoding="utf-8")
 	print(f"{out}: {len(apps)} images, {bundle.name}")
 
 

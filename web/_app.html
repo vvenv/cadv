@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{LABEL}} · CADV</title>
+<meta name="description" content="{{SUMMARY}}">
+<link rel="stylesheet" href="../style.css">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+</head>
+<body>
+<main class="doc">
+	<header>
+		<a href="../">← 全部程序</a>
+		<a href="../help.html">帮助</a>
+	</header>
+
+	<div class="title">
+		<div>
+			<h1>{{LABEL}}</h1>
+			<p class="sub">{{SUMMARY}}</p>
+		</div>
+		<span class="act">
+			<esp-web-install-button manifest="../fw/{{ID}}.json">
+				<button slot="activate">{{FLASH}}</button>
+				<span slot="unsupported">请用电脑上的 Chrome 或 Edge</span>
+				<span slot="not-allowed">需要 https 页面</span>
+			</esp-web-install-button>
+			<span class="tip" tabindex="0" data-tip="{{TIP}}">?</span>
+		</span>
+	</div>
+
+	<article>
+{{BODY}}
+	</article>
+
+	<footer><a href="https://github.com/vvenv/cadv/tree/main/fw/{{ID}}">源码</a> · {{VERSION}}</footer>
+</main>
+</body>
+</html>
