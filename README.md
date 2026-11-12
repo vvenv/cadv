@@ -16,7 +16,7 @@
 git tag v1.0.0 && git push origin v1.0.0
 ```
 
-CI 会编全部固件，更新 [cadv.wenfu.dev](https://cadv.wenfu.dev/)，并建 GitHub Release（整片镜像 + `cadv-sd-<版本>.zip`）。仓库变量 `BURNER_PUBLISH=true` 且配好 `M5BURNER_USER` / `M5BURNER_PWD` 时，顺带发到 M5Burner。在 Actions 里手动运行只更新网页，版本号记作 `dev-<commit>`。
+CI 会编全部固件，更新 [cadv.wenfu.dev](https://cadv.wenfu.dev/)，并建 GitHub Release（整片镜像 + `cadv-sd-<版本>.zip`）。只改了网页（`web/`、各程序的 `README.md`、`label`）时，推到 main 就行：`.github/workflows/site.yml` 不编固件，沿用上一次编好的镜像，大约一分钟更新网页。仓库变量 `BURNER_PUBLISH=true` 且配好 `M5BURNER_USER` / `M5BURNER_PWD` 时，顺带发到 M5Burner。在 Actions 里手动运行只更新网页，版本号记作 `dev-<commit>`。
 
 ## 你需要什么
 

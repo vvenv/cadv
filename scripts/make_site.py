@@ -14,6 +14,10 @@ Writes to dist/site/ (or --out):
     fw/<id>.json            ESP Web Tools manifest for it
     cadv-sd-<version>.zip   what goes on the card: cadv/<id>.bin/.txt/.icon, word banks
 Firmware with no build output is skipped with a warning.
+
+--prebuilt DIR skips compiling: it takes the merged <id>.bin images and the
+cadv-sd-*.zip from DIR (a downloaded GitHub release) and only rebuilds the
+pages. .github/workflows/site.yml uses this when only the web pages changed.
 """
 
 import argparse
@@ -45,6 +49,7 @@ def main():
 	ap.add_argument("--version", required=True)
 	ap.add_argument("--out", default=str(ROOT / "dist/site"))
 	ap.add_argument("--moddable", default=os.environ.get("MODDABLE", str(ROOT / "third_party/moddable")))
+	ap.add_argument("--prebuilt", help="reuse release images from this directory instead of the build tree")
 	args = ap.parse_args()
 
 	moddable = Path(args.moddable)
@@ -58,18 +63,25 @@ def main():
 	apps = []
 	for fw in sorted(p for p in (ROOT / "fw").iterdir() if (p / "manifest.json").is_file()):
 		fid = fw.name
-		build = moddable / "build/tmp" / TARGET[0] / TARGET[1] / TARGET[2] / fid / "xsProj-esp32s3/build"
-		image = moddable / "build/bin" / TARGET[0] / TARGET[1] / TARGET[2] / fid / "xs_esp32.bin"
-		if not (build / "flash_args").is_file() or not image.is_file():
-			print(f"warning: {fid} has no release build, skipped", file=sys.stderr)
-			continue
-		if "--flash-size 8MB" not in (build / "flash_args").read_text():
-			sys.exit(f"{fid} was built for the old 4MB table; rebuild it")
 		merged = out / "fw" / f"{fid}.bin"
-		subprocess.run(
-			[sys.executable, "-m", "esptool", "--chip", "esp32s3", "merge-bin", "-o", str(merged), "@flash_args"],
-			cwd=build, check=True, stdout=subprocess.DEVNULL,
-		)
+		if args.prebuilt:
+			src = Path(args.prebuilt) / f"{fid}.bin"
+			if not src.is_file():
+				print(f"warning: {fid} is not in the release, skipped", file=sys.stderr)
+				continue
+			shutil.copyfile(src, merged)
+		else:
+			build = moddable / "build/tmp" / TARGET[0] / TARGET[1] / TARGET[2] / fid / "xsProj-esp32s3/build"
+			image = moddable / "build/bin" / TARGET[0] / TARGET[1] / TARGET[2] / fid / "xs_esp32.bin"
+			if not (build / "flash_args").is_file() or not image.is_file():
+				print(f"warning: {fid} has no release build, skipped", file=sys.stderr)
+				continue
+			if "--flash-size 8MB" not in (build / "flash_args").read_text():
+				sys.exit(f"{fid} was built for the old 4MB table; rebuild it")
+			subprocess.run(
+				[sys.executable, "-m", "esptool", "--chip", "esp32s3", "merge-bin", "-o", str(merged), "@flash_args"],
+				cwd=build, check=True, stdout=subprocess.DEVNULL,
+			)
 		name = label(fw)
 		(out / "fw" / f"{fid}.json").write_text(json.dumps({
 			"name": f"CADV {name}",
@@ -81,8 +93,8 @@ def main():
 		summary, body = webmd.render(readme.read_text(encoding="utf-8"), f"fw/{fid}/") if readme.is_file() else ("", "")
 		apps.append({"id": fid, "label": name, "size": merged.stat().st_size, "summary": summary, "body": body})
 
-		if fid == BASE_ID:
-			continue  # the base stays in flash, never on the card
+		if fid == BASE_ID or args.prebuilt:
+			continue  # the base stays in flash, never on the card; a prebuilt bundle is reused
 		shutil.copyfile(image, card / f"{fid}.bin")
 		(card / f"{fid}.txt").write_text(name + "\n", encoding="utf-8")
 		if (fw / "icon").is_file():
@@ -100,10 +112,17 @@ def main():
 		sys.exit("the base (fw/base) was not built")
 
 	bundle = out / f"cadv-sd-{args.version}.zip"
-	with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as z:
-		for path in sorted((out / "sd").rglob("*")):
-			if path.is_file():
-				z.write(path, path.relative_to(out / "sd"))
+	if args.prebuilt:
+		zips = sorted(Path(args.prebuilt).glob("cadv-sd-*.zip"))
+		if len(zips) != 1:
+			sys.exit(f"expected one cadv-sd-*.zip in {args.prebuilt}, found {len(zips)}")
+		bundle = out / zips[0].name
+		shutil.copyfile(zips[0], bundle)
+	else:
+		with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as z:
+			for path in sorted((out / "sd").rglob("*")):
+				if path.is_file():
+					z.write(path, path.relative_to(out / "sd"))
 	shutil.rmtree(out / "sd")
 
 	def row(app):
@@ -142,7 +161,7 @@ def main():
 			"SUMMARY": html.escape(a["summary"]),
 			"FLASH": "烧录" if base else "单独烧录",
 			"TIP": "电源关 → 按住 G0 → 插 USB → 松开，再点烧录。&#10;烧完按 RESET。" if base
-			else "装进基座：下载首页的「卡上程序」放到 microSD。&#10;单独烧录会盖掉芯片里的基座。",
+			else "想和别的程序一起用：烧基座，再把首页的「SD 卡程序包」放到 microSD。&#10;单独烧录会盖掉芯片里的基座。",
 			"BODY": a["body"],
 		})
 		(out / "app" / f"{a['id']}.html").write_text(page, encoding="utf-8")

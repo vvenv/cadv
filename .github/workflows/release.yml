@@ -1,4 +1,6 @@
-# Build every image, then publish:
+# Build every image, then publish (firmware and pages together).
+# Pages-only changes go through site.yml, which reuses the latest release.
+#
 #   - GitHub Pages: the web flasher (web/index.html) with merged images and the SD bundle
 #   - a GitHub release with the same files, on a v* tag
 #   - optionally M5Burner (scripts/burner_publish.py), when the repo variable
@@ -93,6 +95,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: cadv/dist/site
+          retention-days: 90  # site.yml reuses these images
 
       - name: GitHub release
         if: github.ref_type == 'tag'
@@ -124,6 +127,9 @@ jobs:
   pages:
     needs: build
     runs-on: ubuntu-24.04
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}

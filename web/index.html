@@ -17,9 +17,13 @@
 
 	<div class="card">
 		<div class="row">
-			<span class="name"><a href="app/base.html">基座</a>
-				<span class="tip" tabindex="0" data-tip="电源关 → 按住 G0 → 插 USB → 松开，再点烧录。&#10;烧完按 RESET。">?</span>
-			</span>
+			<span class="step">1</span>
+			<div class="what">
+				<span class="name"><a href="app/base.html">基座</a>
+					<span class="tip" tabindex="0" data-tip="电源关 → 按住 G0 → 插 USB → 松开，再点烧录。&#10;烧完按 RESET。">?</span>
+				</span>
+				<span class="sub">烧进芯片，开机后从卡里选程序</span>
+			</div>
 			<esp-web-install-button manifest="fw/base.json">
 				<button slot="activate">烧录</button>
 				<span slot="unsupported">请用电脑上的 Chrome 或 Edge</span>
@@ -27,10 +31,14 @@
 			</esp-web-install-button>
 		</div>
 		<div class="row">
-			<span class="name">卡上程序
-				<span class="tip" tabindex="0" data-tip="解压到 microSD 根目录，得到 cadv 文件夹，插回板子。">?</span>
-			</span>
-			<a class="btn ghost" href="{{SD_ZIP}}" download>下载</a>
+			<span class="step">2</span>
+			<div class="what">
+				<span class="name">SD 卡程序包
+					<span class="tip" tabindex="0" data-tip="zip 里是一个 cadv 文件夹，放到 microSD 卡根目录，插回板子。&#10;升级时整个覆盖。">?</span>
+				</span>
+				<span class="sub">全部程序，解压到 microSD 卡根目录</span>
+			</div>
+			<a class="btn" href="{{SD_ZIP}}" download>下载</a>
 		</div>
 	</div>
 
