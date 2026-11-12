@@ -167,6 +167,9 @@ export class AppBehavior extends Behavior {
 	linkName = "";
 	linkWait = 0;
 	linkArmed = false;
+	/** A file landed; rescan the card once the host goes quiet, not per file. */
+	linkScanDue = false;
+	linkPaintAt = 0;
 	crashChecked = false;
 
 	onDisplaying(content: unknown) {
@@ -191,7 +194,7 @@ export class AppBehavior extends Behavior {
 	}
 
 	armLink(app: AppHost) {
-		if (this.linkArmed || this.mode !== "recv")
+		if (this.linkArmed || (this.mode !== "recv" && !this.linkScanDue))
 			return;
 		this.linkArmed = true;
 		Timer.set(() => {
@@ -215,10 +218,17 @@ export class AppBehavior extends Behavior {
 			ev = null;
 		}
 		if (!ev) {
-			if (this.mode !== "recv")
+			if (this.mode !== "recv" && !this.linkScanDue)
 				return;
 			if (fromFast)
 				this.linkWait += 1;
+			if (this.linkScanDue && this.linkWait > 15) {
+				this.linkScanDue = false;
+				this.linkWait = 0;
+				this.linkName = "";
+				this.startScan(app);
+				return;
+			}
 			if (this.linkWait > 500) {
 				this.mode = "list";
 				this.note = "";
@@ -233,21 +243,34 @@ export class AppBehavior extends Behavior {
 		if (ev.phase === "recv") {
 			const pct = ev.total ? Math.floor(ev.got * 100 / ev.total) : 100;
 			const note = "USB " + pct + "%";
-			const changed = this.mode !== "recv" || this.note !== note || this.linkName !== ev.name;
+			// A repaint costs more than a 4 KB chunk. New file: now; percent: at most 5/s.
+			const now = Date.now();
+			const changed = this.mode !== "recv" || this.linkName !== ev.name
+				|| (this.note !== note && now - this.linkPaintAt >= 200);
 			this.mode = "recv";
 			this.note = note;
 			this.linkName = ev.name;
-			if (changed)
+			if (changed) {
+				this.linkPaintAt = now;
 				this.paint(app);
+			}
 			this.armLink(app);
 			return;
 		}
 		if (ev.phase === "done") {
-			this.linkName = "";
-			this.mode = "list";
-			this.note = "";
-			this.startScan(app);
+			// Next file usually follows at once. Scan after the link is idle.
+			this.linkScanDue = true;
+			if (this.mode === "recv") {
+				this.note = "USB 100%";
+				this.linkPaintAt = Date.now();
+				this.paint(app);
+			}
+			this.armLink(app);
 			return;
+		}
+		if (this.linkScanDue) {
+			this.linkScanDue = false;
+			this.startScan(app);
 		}
 		this.mode = "list";
 		this.linkName = "";

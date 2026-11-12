@@ -43,6 +43,9 @@
 #   只上传一个：镜像比 fw/<id> 或 shared 旧时先问要不要重编。
 #   上传全部，或一次传多个（菜单里勾选多项也一样）：过时的直接重编，不再逐个询问。
 #   CADV_SD_BUILD=1 每个都重编；=0 仍用旧镜像；=ask 改回逐个询问。
+#   多个固件并行编译，输出写进 .cache/build/<id>.log，终端每个固件一行；失败时显示日志要点。
+#   CADV_JOBS=N 同时编几个（默认 CPU 核数一半，最多 4）；CADV_VERBOSE=1 逐个编并显示全部输出。
+#   卡上已有且内容相同的文件不再传（经 USB 要这一版基座）；CADV_SD_FORCE=1 全部重传。
 #   基座要先 ./do.sh flash，这一版才从 USB 收文件。
 #   ./do.sh help                    # 本说明
 set -euo pipefail
@@ -85,6 +88,36 @@ pause_menu() {
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || log_die "缺少命令：$1"
+}
+
+now_ms() {
+  perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000'
+}
+
+# 2.4 s / 1 分 05 秒
+fmt_ms() {
+  local ms="$1"
+  if [ "$ms" -lt 60000 ]; then
+    printf '%d.%d s' $((ms / 1000)) $((ms % 1000 / 100))
+  else
+    printf '%d 分 %02d 秒' $((ms / 60000)) $((ms % 60000 / 1000))
+  fi
+}
+
+is_tty_err() {
+  [ -t 2 ]
+}
+
+# Clear the live status line on stderr before a normal line.
+clear_status() {
+  if is_tty_err; then
+    printf '\r\033[K' >&2
+  fi
+  return 0
+}
+
+verbose() {
+  [ "${CADV_VERBOSE:-0}" = 1 ]
 }
 
 detect_port() {
@@ -325,7 +358,7 @@ refresh_generated() {
   if [ "$words" -eq 1 ]; then
     msg="词库比词表或释义旧，会重做词库和字体"
   else
-    msg="字体比界面文案或词库旧"
+    msg="界面文字里有新字，或字体文件变了，重做字体"
   fi
 
   case "${CADV_REFRESH:-1}" in
@@ -355,8 +388,29 @@ refresh_generated() {
     cmd_gen_words
   fi
   if font_stale; then
-    cmd_gen_font
+    gen_font_quiet
   fi
+}
+
+# Font generation prints a dozen lines; keep them in a log and show one.
+gen_font_quiet() {
+  local log="$ROOT/.cache/gen-font.log" t0
+  if verbose; then
+    cmd_gen_font
+    return
+  fi
+  mkdir -p "$ROOT/.cache"
+  t0=$(now_ms)
+  if is_tty_err; then
+    printf '  生成字体…（约 20 s）' >&2
+  fi
+  if ! "$ROOT/scripts/gen-ui-font.sh" >"$log" 2>&1; then
+    clear_status
+    tail -n 20 "$log" >&2
+    log_die "字体生成失败，完整日志：${log#"$ROOT"/}"
+  fi
+  clear_status
+  log_success "字体 $(fmt_ms $(($(now_ms) - t0)))：$(tail -n 1 "$log" | sed 's/^.*gen-ui-font  //')"
 }
 
 # ---------- SD card ----------
@@ -805,17 +859,8 @@ cmd_sd_bank() {
     if [ "$put_dict" -eq 1 ]; then
       args+=("$(dict_lex_src)" "dict/lex.bin")
     fi
+    # sd_link prints each file it writes and a summary (skips included).
     link_put "$root" "${args[@]}"
-    if [ "${#words[@]}" -gt 0 ]; then
-      for id in "${words[@]}"; do
-        src="$(words_pack_src "$id")"
-        log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
-      done
-    fi
-    if [ "$put_dict" -eq 1 ]; then
-      src="$(dict_lex_src)"
-      log_success "查词 → ${SD_DIR}/dict/lex.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
-    fi
     return 0
   fi
   mkdir -p "$root/$SD_DIR"
@@ -1168,7 +1213,6 @@ cmd_sd_file_device() {
   done
   log_info "经 USB 写入 ${SD_DIR}/（${port}）"
   link_put "$port" "${args[@]}"
-  log_success "已写入 ${#srcs[@]} 个文件"
 }
 
 cmd_sd_file() {
@@ -1219,58 +1263,109 @@ cmd_sd_file() {
   sync || true
 }
 
-# $2：ask 先问；auto 过时就编。CADV_SD_BUILD 优先：1 一律重编，0 用旧镜像，ask 逐个问。
-ensure_fw_image() {
-  local id="$1" policy="${2:-ask}" src newer ans
+# Whether $1 needs a build under policy $2 (ask / auto / 1 / 0).
+# 0: build it. 1: image current. 2: stale but kept. 3: answer missing, cancel.
+# BUILD_WHY gets the reason for a build.
+fw_image_wanted() {
+  local id="$1" policy="$2" src newer ans
+  BUILD_WHY=""
+  src="$(fw_image "$id")"
+  if [ ! -f "$src" ]; then
+    BUILD_WHY="还没有镜像"
+    return 0
+  fi
+  if [ "$policy" = 1 ]; then
+    BUILD_WHY="CADV_SD_BUILD=1"
+    return 0
+  fi
+  newer="$(fw_image_newer_source "$id")"
+  [ -n "$newer" ] || return 1
+  case "$policy" in
+    0)
+      log_warn "$(fw_label "$id") 的源文件比镜像新（${newer}）。已跳过重编（CADV_SD_BUILD=0）"
+      return 2
+      ;;
+    auto)
+      BUILD_WHY="${newer} 更新了"
+      return 0
+      ;;
+  esac
+  if [ -t 0 ] || [ -t 1 ]; then
+    # Default is Y. A failed read used to become ans=n and upload the old image.
+    tty_cook
+    if ! read -r -p "$(fw_label "$id") 比镜像新（${newer}）。现在重编？ [Y/n] " ans </dev/tty; then
+      log_warn "没有读到回答，已取消，不上传"
+      return 3
+    fi
+    case "${ans:-Y}" in
+      n|N|no|NO|否)
+        log_warn "已跳过，继续用 $(date -r "$src" '+%Y-%m-%d %H:%M') 的镜像"
+        return 2
+        ;;
+    esac
+    BUILD_WHY="${newer} 更新了"
+    return 0
+  fi
+  log_warn "$(fw_label "$id") 的源文件比镜像新（${newer}）。非交互已跳过；上传全部会自动重编，或设 CADV_SD_BUILD=1"
+  return 2
+}
+
+# Build every stale image of "$@" in one parallel batch.
+# $1：ask 先问；auto 过时就编。CADV_SD_BUILD 优先：1 一律重编，0 用旧镜像，ask 逐个问。
+ensure_fw_images() {
+  local policy="$1" id rc todo=() current=0 why=() want=0
+  shift
   if [ -n "${CADV_SD_BUILD:-}" ]; then
     policy="$CADV_SD_BUILD"
   fi
-  src="$(fw_image "$id")"
-  if [ ! -f "$src" ]; then
-    log_info "还没有 $(fw_label "$id") 的镜像，先编译（不烧进芯片）"
-    build_fw_image "$id"
-  elif [ "$policy" = 1 ]; then
-    log_info "重编 $(fw_label "$id")（不烧进芯片）"
-    build_fw_image "$id"
-  else
-    newer="$(fw_image_newer_source "$id")"
-    if [ -z "$newer" ]; then
-      log_info "用已有镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')"
-    elif [ "$policy" = 0 ]; then
-      log_warn "$(fw_label "$id") 的源文件比镜像新（${newer}，镜像 $(date -r "$src" '+%Y-%m-%d %H:%M')）。已跳过重编（CADV_SD_BUILD=0）"
-    elif [ "$policy" = auto ]; then
-      log_info "$(fw_label "$id") 比镜像新（${newer}）。重编（不烧进芯片）"
-      build_fw_image "$id"
-    elif [ -t 0 ] || [ -t 1 ]; then
-      # Default is Y. A failed read used to become ans=n and upload the old image.
-      tty_cook
-      if ! read -r -p "$(fw_label "$id") 比镜像新（${newer}）。现在重编？ [Y/n] " ans </dev/tty; then
-        log_warn "没有读到回答，已取消，不上传"
-        return 1
-      fi
-      case "${ans:-Y}" in
-        n|N|no|NO|否)
-          log_warn "已跳过，继续用 $(date -r "$src" '+%Y-%m-%d %H:%M') 的镜像"
-          ;;
-        *)
-          log_info "重编 $(fw_label "$id")（不烧进芯片）"
-          build_fw_image "$id"
-          ;;
-      esac
-    else
-      log_warn "$(fw_label "$id") 的源文件比镜像新（${newer}）。非交互已跳过；上传全部会自动重编，或设 CADV_SD_BUILD=1"
+  # Fonts and word banks first: a new glyph in one firmware rewrites
+  # shared/fonts, which every image embeds, so staleness is decided after.
+  for id in "$@"; do
+    if fw_needs_bank "$id"; then
+      want=1
     fi
+  done
+  refresh_generated "$want"
+  for id in "$@"; do
+    rc=0
+    fw_image_wanted "$id" "$policy" || rc=$?
+    case "$rc" in
+      0)
+        todo+=("$id")
+        why+=("${id}：${BUILD_WHY}")
+        ;;
+      1) current=$((current + 1)) ;;
+      3) return 1 ;;
+    esac
+  done
+  if [ "$#" -eq 1 ] && [ "$current" -eq 1 ]; then
+    log_info "$(fw_label "$1") 的镜像已是最新（$(date -r "$(fw_image "$1")" '+%m-%d %H:%M')）"
+  elif [ "$current" -gt 0 ]; then
+    log_info "${current} 个镜像已是最新"
   fi
-  src="$(fw_image "$id")"
-  [ -f "$src" ] || log_die "编译后仍没有镜像：$src"
+  if [ "${#todo[@]}" -gt 0 ]; then
+    if [ "${#todo[@]}" -le 6 ]; then
+      for id in "${why[@]}"; do
+        log_info "要编译 ${id}"
+      done
+    fi
+    build_fw_images "${todo[@]}"
+  fi
+  for id in "$@"; do
+    [ -f "$(fw_image "$id")" ] || log_die "编译后仍没有镜像：$(fw_image "$id")"
+  done
+}
+
+ensure_fw_image() {
+  ensure_fw_images "${2:-ask}" "$1"
 }
 
 cmd_sd_fw_device() {
   local port="$1" id src tmp icon rc=0 args=() tmps=() packs=() put_dict=0 lexsrc
   shift
-  # Images are already built by cmd_sd_fw. Ping only gates the USB write.
+  # Images are already built by cmd_sd_fw. sd_link pings, skips what the
+  # card already has, and prints progress and a summary.
   log_info "经 USB 写入卡上的 ${SD_DIR}/（${port}）"
-  link_ping "$port"
   for id in "$@"; do
     src="$(fw_image "$id")"
     tmp="$(mktemp "${TMPDIR:-/tmp}/cadv-label.XXXXXX")"
@@ -1298,22 +1393,7 @@ cmd_sd_fw_device() {
   done
   link_put "$port" "${args[@]}" || rc=$?
   rm -f "${tmps[@]}"
-  [ "$rc" -eq 0 ] || return "$rc"
-  for id in "$@"; do
-    src="$(fw_image "$id")"
-    log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
-  done
-  # bash 3.2 + set -u: empty "${packs[@]}" is unbound. No extra packs is normal.
-  if [ "${#packs[@]}" -gt 0 ]; then
-    for id in "${packs[@]}"; do
-      src="$(words_pack_src "$id")"
-      log_success "词库 → ${WORDS_BANK_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$src" | tr -d ' ')")）"
-    done
-  fi
-  if [ "$put_dict" -eq 1 ]; then
-    lexsrc="$(dict_lex_src)"
-    log_success "查词 → ${SD_DIR}/dict/lex.bin（$(human_bytes "$(wc -c <"$lexsrc" | tr -d ' ')")）"
-  fi
+  return "$rc"
 }
 
 cmd_sd_fw() {
@@ -1340,32 +1420,38 @@ cmd_sd_fw() {
     fi
   fi
   [ "${#ids[@]}" -gt 0 ] || log_die "没有可上传的固件"
+  local t0 same=0 copied=0
+  t0=$(now_ms)
   # Build before touching the card/port so a dead launcher still leaves fresh bins.
-  for id in "${ids[@]}"; do
-    ensure_fw_image "$id" "$policy"
-  done
+  ensure_fw_images "$policy" "${ids[@]}" || return 0
   route="$(sd_route)" || return $?
   [ -n "$route" ] || return 0
   kind="${route%%$'\t'*}"
   root="${route#*$'\t'}"
   if [ "$kind" = "device" ]; then
     cmd_sd_fw_device "$root" "${ids[@]}"
+    log_success "完成，共用时 $(fmt_ms $(($(now_ms) - t0)))"
     return 0
   fi
   home="$root/$SD_DIR"
   mkdir -p "$home"
+  log_info "写入 ${home}/"
   for id in "${ids[@]}"; do
     src="$(fw_image "$id")"
     dest="$home/${id}.bin"
-    cp -X -f "$src" "$dest"
+    if sd_copy_changed "$src" "$dest"; then
+      copied=$((copied + 1))
+      log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
+    else
+      same=$((same + 1))
+    fi
     printf '%s\n' "$(fw_label "$id")" > "$home/${id}.txt"
     icon="$(fw_icon "$id")"
     if [ -n "$icon" ]; then
-      cp -X -f "$icon" "$home/${id}.icon"
+      sd_copy_changed "$icon" "$home/${id}.icon" || true
     else
-      rm -f "$home/${id}.icon"
+      rm -f "${home:?}/${id:?}.icon"
     fi
-    log_success "$(fw_label "$id") → ${SD_DIR}/${id}.bin（$(human_bytes "$(wc -c <"$dest" | tr -d ' ')")）"
     if [ "$id" = "words" ]; then
       packs=()
       while IFS= read -r src; do
@@ -1381,6 +1467,18 @@ cmd_sd_fw() {
     fi
   done
   sync || true
+  if [ "$same" -gt 0 ]; then
+    log_info "${same} 个镜像和卡上相同，已跳过（CADV_SD_FORCE=1 强制重写）"
+  fi
+  log_success "完成，写入 ${copied} 个镜像，共用时 $(fmt_ms $(($(now_ms) - t0)))"
+}
+
+# Copy unless the card already holds the same bytes. 1 when skipped.
+sd_copy_changed() {
+  if [ "${CADV_SD_FORCE:-0}" != 1 ] && [ -f "$2" ] && cmp -s "$1" "$2"; then
+    return 1
+  fi
+  cp -X -f "$1" "$2"
 }
 
 # 1 if the Cardputer USB-disk composite (TinyUSB CDC serial 123456) is still plugged in.
@@ -1460,8 +1558,9 @@ cmd_sd_icon() {
   [ "${#args[@]}" -gt 0 ] || log_die "没有可上传的图标"
   if [ "$kind" = "device" ]; then
     log_info "经 USB 写入卡上的 ${SD_DIR}/（${root}）"
-    link_ping "$root"
     link_put "$root" "${args[@]}" || return $?
+    log_info "基座里按 BS 重新扫描"
+    return 0
   else
     home="$root/$SD_DIR"
     mkdir -p "$home"
@@ -1724,8 +1823,18 @@ need_idf() {
     # Prefer brew python@3.12 only before export — system/homebrew python3 may be 3.14.
     # Re-prepending after export.sh would hide the IDF venv and break idf.py (no rich_click).
     export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/opt/python@3.12/bin:$PATH"
+    # export.sh prints ~20 lines of banner. Show them only on failure.
+    local idf_log="${TMPDIR:-/tmp}/cadv-idf-export.$$.log"
+    if verbose; then
+      # shellcheck disable=SC1091
+      source "$IDF_PATH/export.sh"
     # shellcheck disable=SC1091
-    source "$IDF_PATH/export.sh"
+    elif ! source "$IDF_PATH/export.sh" >"$idf_log" 2>&1; then
+      cat "$idf_log" >&2
+      rm -f "${idf_log:?}"
+      log_die "ESP-IDF 环境载入失败"
+    fi
+    rm -f "${idf_log:?}"
     CADV_IDF_READY=1
   fi
 }
@@ -1740,30 +1849,143 @@ esp_mc() {
   fi
 }
 
-# Compile the ESP32 image and stop before esptool. Same bin flash writes at ota_0 (0x20000).
-build_fw_image() {
-  local id="$1" want=0
-  if fw_needs_bank "$id"; then
-    want=1
+BUILD_LOG_DIR="$ROOT/.cache/build"
+
+# How many images compile at once. Each mcconfig already runs make/ninja
+# with every core, so a few jobs are enough to fill the gaps between them.
+build_jobs() {
+  local n="${CADV_JOBS:-}"
+  if [ -z "$n" ]; then
+    n=$(( $(sysctl -n hw.ncpu 2>/dev/null || echo 2) / 2 ))
+    [ "$n" -le 4 ] || n=4
   fi
-  refresh_generated "$want"
-  need_moddable
-  need_idf
-  check_piu_lists "$id" || log_die "Piu commandList 检查未过：$id"
-  local wifi_args=() line
+  [ "$n" -ge 1 ] 2>/dev/null || n=1
+  printf '%s\n' "$n"
+}
+
+# One release image. Output goes to $2; "$2.done" gets "rc ms" at the end.
+build_one_image() {
+  local id="$1" log="$2" wifi_args=() line t0 rc=0
   if [ -f "$FW_ROOT/$id/wifi.local.json.example" ]; then
     while IFS= read -r line; do
       [ -n "$line" ] && wifi_args+=("$line")
     done < <(ts_wifi_args "$id")
   fi
+  t0=$(now_ms)
   # Release, not -dn. Debug images own USB for xsbug, so the clock never
   # paints and a port open is read as "restart" — the launcher's "校验…" stays up and flashes.
-  ESP_MC=(-m -p esp32/esp32s3_cdc)
+  # bash 3.2 + set -u: empty "${arr[@]}" is unbound — branch.
   if [ "${#wifi_args[@]}" -gt 0 ]; then
-    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}" -t build "${wifi_args[@]}")
+    (cd "$FW_ROOT/$id" && mcconfig -m -p esp32/esp32s3_cdc -t build "${wifi_args[@]}") >"$log" 2>&1 || rc=$?
   else
-    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}" -t build)
+    (cd "$FW_ROOT/$id" && mcconfig -m -p esp32/esp32s3_cdc -t build) >"$log" 2>&1 || rc=$?
   fi
+  printf '%s %s\n' "$rc" "$(($(now_ms) - t0))" >"$log.done"
+  return "$rc"
+}
+
+# The lines of a failed build log worth reading first.
+build_log_excerpt() {
+  local log="$1" hits
+  hits="$(grep -nE '(error|Error|ERROR|错误|undefined reference|No such file|not found)' "$log" | grep -v 'warning' | head -n 15 || true)"
+  if [ -n "$hits" ]; then
+    printf '%s\n' "$hits" | sed 's/^/      /' >&2
+  else
+    tail -n 15 "$log" | sed 's/^/      /' >&2
+  fi
+}
+
+# Compile ESP32 images and stop before esptool. Same bin flash writes at ota_0 (0x20000).
+# Several at once; one line per image. CADV_VERBOSE=1 builds one by one with full output.
+build_fw_images() {
+  [ $# -gt 0 ] || return 0
+  local ids=("$@") id want=0 out jobs n next=0 finished=0 failed="" running="" still tok pid
+  local log rc ms t0 names
+  for id in "${ids[@]}"; do
+    if fw_needs_bank "$id"; then
+      want=1
+    fi
+  done
+  refresh_generated "$want"
+  need_moddable
+  need_idf
+  if ! out="$(check_piu_lists "${ids[@]}" 2>&1)"; then
+    printf '%s\n' "$out" | grep -v '^✓' >&2
+    log_die "Piu commandList 检查未过"
+  fi
+  mkdir -p "$BUILD_LOG_DIR"
+  n="${#ids[@]}"
+  t0=$(now_ms)
+  if verbose; then
+    for id in "${ids[@]}"; do
+      log="$BUILD_LOG_DIR/$id.log"
+      log_info "编译 $(fw_label "$id")（${id}）"
+      rm -f "${log:?}.done"
+      build_one_image "$id" "$log" || { cat "$log" >&2; log_die "编译失败：$id"; }
+      cat "$log"
+    done
+    return 0
+  fi
+  jobs="$(build_jobs)"
+  [ "$jobs" -le "$n" ] || jobs="$n"
+  if [ "$n" -eq 1 ]; then
+    log_info "编译 $(fw_label "${ids[0]}")（${ids[0]}），日志 ${BUILD_LOG_DIR#"$ROOT"/}/${ids[0]}.log"
+  else
+    log_info "编译 ${n} 个固件，同时 ${jobs} 个，日志在 ${BUILD_LOG_DIR#"$ROOT"/}/"
+  fi
+  while [ "$next" -lt "$n" ] || [ -n "$running" ]; do
+    while [ "$next" -lt "$n" ] && [ "$(printf '%s' "$running" | wc -w | tr -d ' ')" -lt "$jobs" ]; do
+      id="${ids[$next]}"
+      next=$((next + 1))
+      log="$BUILD_LOG_DIR/$id.log"
+      rm -f "${log:?}.done"
+      (build_one_image "$id" "$log") &
+      running="$running $!:$id"
+    done
+    if is_tty_err; then
+      names=""
+      for tok in $running; do names="$names ${tok#*:}"; done
+      printf '\r\033[K  … %d/%d 完成，编译中：%s  %s' "$finished" "$n" "${names# }" "$(fmt_ms $(($(now_ms) - t0)))" >&2
+    fi
+    sleep 0.25
+    still=""
+    for tok in $running; do
+      pid="${tok%%:*}"
+      id="${tok#*:}"
+      log="$BUILD_LOG_DIR/$id.log"
+      if [ ! -f "$log.done" ]; then
+        still="$still $tok"
+        continue
+      fi
+      wait "$pid" 2>/dev/null || true
+      read -r rc ms <"$log.done"
+      finished=$((finished + 1))
+      clear_status
+      if [ "$rc" -eq 0 ] && [ -f "$(fw_image "$id")" ]; then
+        printf '  %s✓%s %-8s %s\t%8s  %s\n' "$_LOG_OK" "$_LOG_RESET" "$id" "$(fw_label "$id")" \
+          "$(human_bytes "$(stat -f%z "$(fw_image "$id")")")" "$(fmt_ms "$ms")"
+      else
+        printf '  %s✗%s %-8s %s\t失败（%s）\n' "$_LOG_ERR" "$_LOG_RESET" "$id" "$(fw_label "$id")" "${log#"$ROOT"/}" >&2
+        failed="$failed $id"
+      fi
+    done
+    running="$still"
+  done
+  clear_status
+  if [ -n "$failed" ]; then
+    for id in $failed; do
+      log_error "$(fw_label "$id")（${id}）编译失败。${BUILD_LOG_DIR#"$ROOT"/}/${id}.log 里的要点："
+      build_log_excerpt "$BUILD_LOG_DIR/$id.log"
+    done
+    log_die "$(printf '%s' "$failed" | wc -w | tr -d ' ') 个固件编译失败：${failed# }"
+  fi
+  if [ "$n" -gt 1 ]; then
+    log_success "编译完成 ${n} 个，用时 $(fmt_ms $(($(now_ms) - t0)))"
+  fi
+}
+
+build_fw_image() {
+  build_fw_images "$1"
 }
 
 # Release launcher stays in idf.py monitor after a good flash. The last boot
@@ -1821,6 +2043,53 @@ release_flash_watch() {
   done
 }
 
+# Condense idf.py / esptool / monitor output: one live write percentage,
+# key lines, every error. The full stream still goes to the log via tee.
+flash_filter() {
+  if verbose; then
+    cat
+    return
+  fi
+  perl -e '
+    $| = 1;
+    my $tty = -t STDOUT;
+    my ($pct, $live, $buf, $n, $bytes, $ok) = (-1, 0, "", 0, 0, 0);
+    sub out { if ($live) { print "\r\033[K"; $live = 0 } print "  $_[0]\n" }
+    sub line {
+      my $l = shift;
+      $l =~ s/\e\[[0-9;]*m//g;
+      return if $l =~ /^\s*$/;
+      if ($l =~ /Writing at 0x[0-9a-f]+.*?(\d+(?:\.\d+)?)\s*%/i) {
+        my $p = int($1);
+        return if $p == $pct || !$tty;
+        $pct = $p;
+        print "\r\033[K  写入第 " . ($n + 1) . " 段 $p%";
+        $live = 1;
+        return;
+      }
+      if ($l =~ /Writing at 0x/) { return }
+      if ($l =~ /^Connected to /) { out($l); return }
+      # esptool skips unchanged blocks; one line for all the regions it wrote.
+      if ($l =~ /^Wrote (\d+) bytes/) { $n++; $bytes += $1; $pct = -1; return }
+      if ($l =~ /Hash of data verified/) { $ok++; return }
+      if ($l =~ /Hard resetting/) {
+        out(sprintf("✓ 写入 %d 段，共 %.0f KB%s", $n, $bytes / 1024, $ok ? "，已校验" : ""));
+        out("复位，等基座启动…");
+        return;
+      }
+      if ($l =~ /(sd cadv \d+ images)/) { out("✓ 基座已启动（$1）"); return }
+      if ($l =~ /\b(error|fatal|failed|cannot|could not|permission denied|no such file|timed out)\b/i
+          && $l !~ /\bwarning\b/i) { out($l) }
+    }
+    while (sysread(STDIN, my $chunk, 4096)) {
+      $buf .= $chunk;
+      while ($buf =~ s/^([^\r\n]*)[\r\n]//) { line($1) }
+    }
+    line($buf) if length $buf;
+    print "\r\033[K" if $live;
+  '
+}
+
 cmd_ts_flash() {
   local id want=0
   # The chip only holds the launcher. Other firmware is chosen on the device.
@@ -1845,8 +2114,13 @@ cmd_ts_flash() {
     fi
   fi
 
+  # The launcher is a release image: build it with the quiet builder first
+  # (one line, log on failure), so mcconfig below only deploys.
+  if [ "$id" = "$LAUNCHER" ]; then
+    build_fw_images "$id"
+  fi
   release_upload_port
-  log_info "烧录 $(fw_label "$id")（${id}）到 esp32/esp32s3_cdc"
+  log_info "烧录 $(fw_label "$id")（${id}）到 esp32/esp32s3_cdc，日志 .cache/flash.log"
   esp_mc "$id"
   # -dn builds a debug image but does not launch xsbug. serial2xsbug then
   # exits non-zero after a successful flash. esptool 4 prints "Hash of data
@@ -1855,8 +2129,11 @@ cmd_ts_flash() {
   # A release build still stays in idf.py monitor after reset, stopped on
   # "sd cadv N images", so the menu cannot return. release_flash_watch ends
   # that monitor. bash 3.2 + set -u: empty "${arr[@]}" is unbound — branch.
-  local log rc watch_pid=""
-  log="$(mktemp "${TMPDIR:-/tmp}/cadv-flash.XXXXXX")"
+  local log rc watch_pid="" t0
+  mkdir -p "$ROOT/.cache"
+  log="$ROOT/.cache/flash.log"
+  : >"$log"
+  t0=$(now_ms)
   if [ "$id" = "$LAUNCHER" ]; then
     release_flash_watch "$log" &
     watch_pid=$!
@@ -1864,9 +2141,9 @@ cmd_ts_flash() {
   set +e
   set +o pipefail
   if [ "${#wifi_args[@]}" -gt 0 ]; then
-    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}" "${wifi_args[@]}") 2>&1 | tee "$log"
+    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}" "${wifi_args[@]}") 2>&1 | tee "$log" | flash_filter
   else
-    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}") 2>&1 | tee "$log"
+    (cd "$FW_ROOT/$id" && mcconfig "${ESP_MC[@]}") 2>&1 | tee "$log" | flash_filter
   fi
   rc=${PIPESTATUS[0]}
   if [ -n "$watch_pid" ]; then
@@ -1881,12 +2158,12 @@ cmd_ts_flash() {
     fi
     rc=0
   fi
-  rm -f "$log"
   if [ "$rc" -ne 0 ]; then
+    verbose || tail -n 30 "$log" >&2
     # ${rc}: bash 3.2 treats $rc（ as a multi-byte var name
-    log_die "mcconfig 退出码 ${rc}"
+    log_die "mcconfig 退出码 ${rc}，完整日志 .cache/flash.log"
   fi
-  log_success "已烧录 $(fw_label "$id")。板子按 RESET。"
+  log_success "已烧录 $(fw_label "$id")，用时 $(fmt_ms $(($(now_ms) - t0)))。板子按 RESET。"
   if [ "$id" = "$LAUNCHER" ]; then
     log_info "上传固件可以不拔卡：USB 接着，等基座菜单出来，再选上传。"
   fi
@@ -1906,7 +2183,9 @@ cmd_burner() {
   mkdir -p "$ROOT/dist/burner" "$ROOT/dist/launcher"
   for id in "${ids[@]}"; do
     fw_exists "$id" || log_die "没有固件：${id}（可选：$(fw_ids | tr '\n' ' ')）"
-    ensure_fw_image "$id" auto
+  done
+  ensure_fw_images auto "${ids[@]}"
+  for id in "${ids[@]}"; do
     build="$MODDABLE/build/tmp/esp32/esp32s3_cdc/release/$id/xsProj-esp32s3/build"
     [ -f "$build/flash_args" ] || log_die "缺少 $build/flash_args，先编译：./do.sh burner $id"
     grep -q -- '--flash-size 8MB' "$build/flash_args" || log_die "$(fw_label "$id") 不是按 8MB 编的，重编：CADV_SD_BUILD=1 ./do.sh burner $id"

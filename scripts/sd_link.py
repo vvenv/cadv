@@ -4,10 +4,16 @@
 Frame, little endian, same as fw/base/link.c:
   u32 magic 'CADV' | u8 op | u8 status | u32 length | payload | u32 crc32
 crc32 is zlib's, covering the bytes from op through the payload.
+
+Protocol 3 (launcher reports it in PING): DATA frames are pipelined, WINDOW in
+flight, and OP_SUM gives size + crc32 of a card file, so `put` skips files that
+are already there. Older launchers get one frame at a time and no skip.
+CADV_SD_FORCE=1 uploads every file anyway.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import struct
 import sys
@@ -25,6 +31,7 @@ OP_DATA = 4
 OP_END = 5
 OP_ABORT = 6
 OP_RM = 7
+OP_SUM = 8
 
 ST_OK = 0
 ST_BUSY = 1
@@ -36,6 +43,8 @@ ST_NOFILE = 6
 ST_BAD = 7
 
 CHUNK = 4096
+# Frames in flight. The launcher's USB driver buffers 16 KB; keep under it.
+WINDOW = 3
 
 
 class LinkError(Exception):
@@ -116,23 +125,26 @@ def open_port(path: str):
         raise LinkError("没有 pyserial。ESP-IDF 的 Python 环境里有，或 pip install pyserial") from exc
     ser = serial.Serial(
         baudrate=115200,
-        timeout=0.05,
+        timeout=0.02,
         write_timeout=5,
         dsrdtr=False,
         rtscts=False,
         exclusive=True,
     )
-    # Leave DTR/RTS low before open. Asserting them resets the ESP32-S3.
-    ser.dtr = False
+    # USB Serial/JTAG resets the chip when RTS is high and DTR low. macOS
+    # raises both on open, so clearing DTR first passed through that state:
+    # every open rebooted the launcher and the first reply took ~2.8 s.
+    # Keep DTR high and drop RTS only: the reset state never appears.
+    ser.dtr = True
     ser.rts = False
     ser.port = path
     try:
         ser.open()
     except Exception as exc:
         raise LinkError(f"打不开串口 {path}：{exc}。可能被别的程序占用。") from exc
-    ser.dtr = False
+    ser.dtr = True
     ser.rts = False
-    time.sleep(0.05)
+    time.sleep(0.02)
     ser.reset_input_buffer()
     return ser
 
@@ -148,40 +160,62 @@ def write_all(ser, data: bytes) -> None:
     ser.flush()
 
 
-def read_reply(ser, expect_op: int, timeout: float):
-    buf = bytearray()
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        waiting = ser.in_waiting or 1
-        chunk = ser.read(waiting)
-        if chunk:
-            buf += chunk
-            while True:
-                parsed = try_parse(buf)
-                if parsed is None:
-                    break
+NO_ANSWER = "基座没有应答。卡留在板子上，先 ./do.sh flash，按 RESET，等菜单出来再上传。"
+
+
+class Link:
+    """Port plus the bytes read past the last reply (pipelined replies)."""
+
+    def __init__(self, ser):
+        self.ser = ser
+        self.buf = bytearray()
+        self.version = 1
+
+    def send(self, op: int, payload: bytes) -> None:
+        write_all(self.ser, pack_frame(op, 0, payload))
+
+    def reply(self, expect_op: int, timeout: float):
+        deadline = time.monotonic() + timeout
+        while True:
+            parsed = try_parse(self.buf)
+            while parsed is not None:
                 op, status, payload = parsed
                 if op == expect_op:
                     return status, payload
-        else:
-            time.sleep(0.005)
-    raise LinkError("基座没有应答。卡留在板子上，先 ./do.sh flash，按 RESET，等菜单出来再上传。")
+                parsed = try_parse(self.buf)
+            if time.monotonic() >= deadline:
+                raise LinkError(NO_ANSWER)
+            chunk = self.ser.read(self.ser.in_waiting or 1)
+            if chunk:
+                self.buf += chunk
+
+    def call(self, op: int, payload: bytes, timeout: float, name: str = "", rm: bool = False):
+        self.send(op, payload)
+        status, body = self.reply(op, timeout)
+        if status != ST_OK:
+            raise status_error(status, name, rm)
+        return body
+
+    def close(self) -> None:
+        self.ser.close()
 
 
-def transact(ser, op: int, payload: bytes, timeout: float, name: str = "", rm: bool = False):
-    write_all(ser, pack_frame(op, 0, payload))
-    status, body = read_reply(ser, op, timeout)
-    if status != ST_OK:
-        raise status_error(status, name, rm)
-    return body
+def connect(port: str) -> Link:
+    link = Link(open_port(port))
+    try:
+        link.version = ping(link)
+    except BaseException:
+        link.close()
+        raise
+    return link
 
 
-def ping(ser) -> int:
+def ping(link: Link) -> int:
     deadline = time.monotonic() + 8
-    last = LinkError("基座没有应答。卡留在板子上，先 ./do.sh flash，按 RESET，等菜单出来再上传。")
+    last = LinkError(NO_ANSWER)
     while time.monotonic() < deadline:
         try:
-            body = transact(ser, OP_PING, b"", 0.5)
+            body = link.call(OP_PING, b"", 0.5)
         except LinkError as exc:
             last = exc
             if "没有应答" not in str(exc):
@@ -211,51 +245,164 @@ def parse_list(payload: bytes):
     return items
 
 
-def show_progress(name: str, got: int, total: int, last: list[int]) -> None:
-    pct = (got * 100 // total) if total else 100
-    if pct == last[0] and got != total:
-        return
-    last[0] = pct
-    line = f"{name}  {pct}%"
-    if sys.stderr.isatty():
-        print("\r" + line, file=sys.stderr, end="", flush=True)
-    else:
-        print(line, file=sys.stderr, flush=True)
+def human(n: float) -> str:
+    if n < 1024:
+        return f"{int(n)} B"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.1f} KB"
+    return f"{n / 1024 / 1024:.1f} MB"
 
 
-def put_one(ser, src: str, dest: str) -> None:
-    if not os.path.isfile(src):
-        raise LinkError(f"没有这个文件：{src}")
-    size = os.path.getsize(src)
-    if size > 0xFFFFFFFF:
-        raise LinkError(f"文件太大：{dest}")
+def human_time(sec: float) -> str:
+    if sec < 60:
+        return f"{sec:.1f} s"
+    return f"{int(sec // 60)} 分 {int(sec % 60)} 秒"
+
+
+class Progress:
+    """One live line on a terminal; sparse plain lines when piped."""
+
+    BAR = 20
+
+    def __init__(self, files: int, total: int):
+        self.tty = sys.stderr.isatty()
+        self.files = files
+        self.total = total
+        self.done = 0
+        self.index = 0
+        self.name = ""
+        self.start = time.monotonic()
+        self.last_draw = 0.0
+
+    def begin(self, index: int, name: str) -> None:
+        self.index = index
+        self.name = name
+
+    def rate(self) -> float:
+        sec = time.monotonic() - self.start
+        return self.done / sec if sec > 0.2 else 0.0
+
+    def add(self, n: int) -> None:
+        self.done += n
+        # Piped output (logs, CI) gets only the per-file lines and the summary.
+        if not self.tty:
+            return
+        now = time.monotonic()
+        if now - self.last_draw < 0.08 and self.done < self.total:
+            return
+        self.last_draw = now
+        self.draw()
+
+    def draw(self) -> None:
+        frac = self.done / self.total if self.total else 1.0
+        fill = int(frac * self.BAR)
+        bar = "█" * fill + "░" * (self.BAR - fill)
+        rate = self.rate()
+        eta = ""
+        if rate > 0 and self.done < self.total:
+            eta = f"  剩 {human_time((self.total - self.done) / rate)}"
+        line = (f"  {bar} {frac * 100:5.1f}%  {human(self.done)}/{human(self.total)}"
+                f"  {human(rate)}/s{eta}  [{self.index}/{self.files}] {self.name}")
+        print("\r\033[K" + line, file=sys.stderr, end="", flush=True)
+
+    def clear(self) -> None:
+        if self.tty:
+            print("\r\033[K", file=sys.stderr, end="", flush=True)
+
+    def say(self, text: str) -> None:
+        self.clear()
+        print(text, file=sys.stderr, flush=True)
+        if self.tty and self.done < self.total:
+            self.draw()
+
+
+def put_one(link: Link, src: str, dest: str, size: int, prog: Progress) -> None:
     raw = dest.encode("utf-8")
-    if not name_ok(raw):
-        raise LinkError(f"文件名不能用：{dest}")
     payload = bytes([len(raw)]) + raw + struct.pack("<I", size)
+    window = WINDOW if link.version >= 3 else 1
     try:
-        transact(ser, OP_PUT, payload, 15, dest)
+        link.call(OP_PUT, payload, 15, dest)
         crc = 0
-        got = 0
-        last = [-1]
+        pending = 0
         with open(src, "rb") as fh:
             while True:
                 chunk = fh.read(CHUNK)
                 if not chunk:
                     break
-                transact(ser, OP_DATA, chunk, 15, dest)
+                link.send(OP_DATA, chunk)
+                pending += 1
                 crc = zlib.crc32(chunk, crc) & 0xFFFFFFFF
-                got += len(chunk)
-                show_progress(dest, got, size, last)
-        transact(ser, OP_END, struct.pack("<I", crc), 15, dest)
+                prog.add(len(chunk))
+                if pending >= window:
+                    status, _ = link.reply(OP_DATA, 15)
+                    pending -= 1
+                    if status != ST_OK:
+                        raise status_error(status, dest)
+        while pending:
+            status, _ = link.reply(OP_DATA, 15)
+            pending -= 1
+            if status != ST_OK:
+                raise status_error(status, dest)
+        link.call(OP_END, struct.pack("<I", crc), 15, dest)
     except LinkError:
         try:
-            transact(ser, OP_ABORT, b"", 2, dest)
+            # Drop replies still in flight, then tell the launcher to give up.
+            time.sleep(0.2)
+            link.ser.reset_input_buffer()
+            link.buf.clear()
+            link.call(OP_ABORT, b"", 2, dest)
         except LinkError:
             pass
         raise
-    if sys.stderr.isatty():
-        print(file=sys.stderr)
+
+
+def image_tail(path: str, size: int):
+    """Offset of the SHA-256 an ESP app image carries at its end, or 0.
+
+    Equal size and equal trailing digest mean equal images, so the launcher
+    reads 32 bytes instead of the whole file (~0.7 s per MB on the card).
+    """
+    if size < 64:
+        return 0
+    with open(path, "rb") as fh:
+        head = fh.read(24)
+        if len(head) < 24 or head[0] != 0xE9 or head[23] != 1:
+            return 0
+        h = hashlib.sha256(head)
+        left = size - 32 - len(head)
+        while left:
+            chunk = fh.read(min(left, 1 << 16))
+            if not chunk:
+                return 0
+            h.update(chunk)
+            left -= len(chunk)
+        if fh.read(32) != h.digest():
+            return 0
+    return size - 32
+
+
+def file_crc(path: str, offset: int = 0) -> int:
+    crc = 0
+    with open(path, "rb") as fh:
+        fh.seek(offset)
+        while True:
+            chunk = fh.read(1 << 16)
+            if not chunk:
+                return crc
+            crc = zlib.crc32(chunk, crc) & 0xFFFFFFFF
+
+
+def card_sum(link: Link, dest: str, offset: int = 0):
+    """(size, crc from offset) of cadv/<dest>, or None when it is not there."""
+    raw = dest.encode("utf-8")
+    extra = struct.pack("<I", offset) if offset else b""
+    link.send(OP_SUM, bytes([len(raw)]) + raw + extra)
+    status, body = link.reply(OP_SUM, 30)
+    if status == ST_NOFILE:
+        return None
+    if status != ST_OK or len(body) != 8:
+        raise status_error(status, dest)
+    return struct.unpack("<II", body)
 
 
 def name_ok(raw: bytes) -> bool:
@@ -275,56 +422,98 @@ def name_ok(raw: bytes) -> bool:
 
 
 def cmd_ping(port: str) -> None:
-    ser = open_port(port)
-    try:
-        ping(ser)
-    finally:
-        ser.close()
+    connect(port).close()
 
 
 def cmd_ls(port: str) -> None:
-    ser = open_port(port)
+    link = connect(port)
     try:
-        ping(ser)
-        body = transact(ser, OP_LIST, b"", 15, "cadv")
+        body = link.call(OP_LIST, b"", 15, "cadv")
         for size, name in parse_list(body):
             print(f"{size}\t{name}")
     finally:
-        ser.close()
+        link.close()
 
 
-def rm_one(ser, dest: str) -> None:
+def rm_one(link: Link, dest: str) -> None:
     raw = dest.encode("utf-8")
     if not name_ok(raw):
         raise LinkError(f"文件名不能用：{dest}")
     payload = bytes([len(raw)]) + raw
-    transact(ser, OP_RM, payload, 15, dest, True)
+    link.call(OP_RM, payload, 15, dest, True)
 
 
 def cmd_rm(port: str, names: list[str]) -> None:
     if not names:
         raise LinkError("没有要删除的文件")
-    ser = open_port(port)
+    link = connect(port)
     try:
-        ver = ping(ser)
-        if ver < 2:
+        if link.version < 2:
             raise LinkError("基座还不支持删除。先 ./do.sh flash，再删。")
         for name in names:
-            rm_one(ser, name)
+            rm_one(link, name)
     finally:
-        ser.close()
+        link.close()
 
 
 def cmd_put(port: str, pairs: list[tuple[str, str]]) -> None:
     if not pairs:
         raise LinkError("没有要上传的文件")
-    ser = open_port(port)
+    files = []
+    for src, dest in pairs:
+        if not os.path.isfile(src):
+            raise LinkError(f"没有这个文件：{src}")
+        size = os.path.getsize(src)
+        if size > 0xFFFFFFFF:
+            raise LinkError(f"文件太大：{dest}")
+        if not name_ok(dest.encode("utf-8")):
+            raise LinkError(f"文件名不能用：{dest}")
+        files.append((src, dest, size))
+    force = os.environ.get("CADV_SD_FORCE", "") not in ("", "0")
+    link = connect(port)
     try:
-        ping(ser)
-        for src, dest in pairs:
-            put_one(ser, src, dest)
+        if link.version < 3:
+            print(f"  基座协议 v{link.version}：逐块等应答，也不能跳过未变的文件。./do.sh flash 后上传更快",
+                  file=sys.stderr)
+        # Skip files whose size and crc already match. LIST first: SUM only
+        # where the size matches, since reading a card file costs time too.
+        skipped = []
+        todo = files
+        if link.version >= 3 and not force:
+            on_card = {name: size for size, name in parse_list(link.call(OP_LIST, b"", 15, "cadv"))}
+            todo = []
+            for src, dest, size in files:
+                if on_card.get(dest) == size:
+                    offset = image_tail(src, size)
+                    got = card_sum(link, dest, offset)
+                    if got is not None and got == (size, file_crc(src, offset)):
+                        skipped.append((src, dest, size))
+                        continue
+                todo.append((src, dest, size))
+        total = sum(f[2] for f in todo)
+        prog = Progress(len(todo), total)
+        for i, (src, dest, size) in enumerate(todo, 1):
+            prog.begin(i, dest)
+            t0 = time.monotonic()
+            put_one(link, src, dest, size, prog)
+            sec = time.monotonic() - t0
+            # Labels and icons are tiny; the summary counts them.
+            if size >= 16 * 1024:
+                rate = f"{human(size / sec)}/s" if sec > 0 else ""
+                prog.say(f"  ✓ {dest:<20} {human(size):>8}  {human_time(sec):>7}  {rate}")
+        prog.clear()
+        sec = time.monotonic() - prog.start
+        parts = []
+        if todo:
+            rate = f"，{human(total / sec)}/s" if sec > 0 else ""
+            parts.append(f"写入 {len(todo)} 个文件 {human(total)}，用时 {human_time(sec)}{rate}")
+        else:
+            parts.append("没有要写的文件")
+        if skipped:
+            parts.append(f"{len(skipped)} 个和卡上相同，已跳过（CADV_SD_FORCE=1 强制重传）")
+        print("  " + "；".join(parts), file=sys.stderr)
     finally:
-        ser.close()
+        link.close()
 
 
 def selftest() -> None:

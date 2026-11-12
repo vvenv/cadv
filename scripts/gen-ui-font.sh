@@ -66,6 +66,78 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Staleness is a fingerprint of the glyph sets and font files, not mtimes:
+# editing a .ts without new characters must not rebuild every image.
+KEY_FILE="$ROOT/.cache/ui-font.key"
+
+font_key() {
+  local ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"
+  ROOT="$ROOT" SCRIPT="${BASH_SOURCE[0]}" python3 - "$FONT_FILE" "$WORD_FONT" "$ipa_src" "${CHAR_SOURCES[@]}" <<'PY'
+import hashlib, os, sys
+root = os.environ["ROOT"]
+fonts, sources = sys.argv[1:4], sys.argv[4:]
+def chars(paths):
+    out = set()
+    for p in paths:
+        try:
+            out |= set(open(p, encoding="utf-8", errors="replace").read())
+        except OSError:
+            pass
+    return "".join(sorted(out))
+gloss = [p for p in sources if p.startswith(root + "/fw/words/") and p.endswith(".ts")
+         or os.path.dirname(p) == root + "/shared" and p.endswith(".ts")]
+gloss.append(root + "/fw/words/wordbank-chars.txt")
+h = hashlib.sha256()
+h.update(open(os.environ["SCRIPT"], "rb").read())
+for f in fonts:
+    try:
+        st = os.stat(f)
+        h.update(f"{f}\0{st.st_size}\0{int(st.st_mtime)}\0".encode())
+    except OSError:
+        h.update(f"{f}\0missing\0".encode())
+for part in (chars(sources), chars(gloss), chars([root + "/fw/words/phone-chars.txt"])):
+    h.update(part.encode("utf-8") + b"\0")
+print(h.hexdigest())
+PY
+}
+
+# Move a new output into shared/fonts/ only when its bytes changed, so the
+# image builds keyed on shared/ mtimes stay current.
+CHANGED=0
+install_out() {
+  local src="$1" dest="$OUT_DIR/$(basename "$1")"
+  if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+    rm -f "$src"
+  else
+    mv "$src" "$dest"
+    CHANGED=$((CHANGED + 1))
+  fi
+}
+
+# Delete old outputs of a family except the stems just generated.
+prune_family() {
+  local family="$1" f base keep
+  shift
+  for f in "$OUT_DIR/${family}-Regular-"*.* "$OUT_DIR/${family}-Bold-"*.*; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f")"
+    base="${base%.*}"
+    keep=0
+    for stem in "$@"; do
+      [ "$base" = "$stem" ] && keep=1
+    done
+    [ "$keep" -eq 1 ] || { rm -f "$f"; CHANGED=$((CHANGED + 1)); }
+  done
+}
+
+# fontbm warns for tab / newline in the char files. Hide that, keep the rest.
+run_fontbm() {
+  local out rc=0
+  out="$("$FONTBM" "$@" 2>&1)" || rc=$?
+  printf '%s\n' "$out" | grep -Ev '^warning: glyph (9|10|13) not found\.?$' | grep -v '^$' >&2 || true
+  return "$rc"
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || log_die "缺少命令：$1"
 }
@@ -212,16 +284,16 @@ main() {
   [ "$MONO" -eq 1 ] && args+=(--monochrome)
 
   log_info "fontbm size=${SIZE} → ${out_stem}"
-  "$FONTBM" "${args[@]}"
+  run_fontbm "${args[@]}"
 
   [ -f "$WORK_DIR/${out_stem}.fnt" ] && [ -f "$WORK_DIR/${out_stem}.png" ] \
     || log_die "fontbm 未生成 ${out_stem}.{fnt,png}"
 
   bmf_set_family "$WORK_DIR/${out_stem}.fnt" "$FAMILY"
 
-  find "$OUT_DIR" -maxdepth 1 -type f \( -name "${FAMILY}-Regular-*.*" -o -name "${FAMILY}-Bold-*.*" \) -delete
-  mv "$WORK_DIR/${out_stem}.fnt" "$OUT_DIR/"
-  mv "$WORK_DIR/${out_stem}.png" "$OUT_DIR/"
+  prune_family "$FAMILY" "$out_stem"
+  install_out "$WORK_DIR/${out_stem}.fnt"
+  install_out "$WORK_DIR/${out_stem}.png"
 
   nglyphs="$(FNT="$OUT_DIR/${out_stem}.fnt" perl -e '
     open my $fh, "<:raw", $ENV{FNT} or die $!;
@@ -241,11 +313,13 @@ main() {
   # headword and picks the largest that fits: 48px, then 32px, then 20px UI.
   local word_family="Word" word_size word_stem
   [ -f "$WORD_FONT" ] || log_die "填空字体不存在：${WORD_FONT}（可设置 WORD_FONT，默认 JetBrains Mono Bold）"
-  find "$OUT_DIR" -maxdepth 1 -type f \( -name "Word-Regular-*.*" -o -name "Word-Bold-*.*" \) -delete
+  local word_stems=()
+  for word_size in $WORD_SIZES; do word_stems+=("Word-Bold-${word_size}"); done
+  prune_family Word "${word_stems[@]}"
   for word_size in $WORD_SIZES; do
     word_stem="Word-Bold-${word_size}"
     log_info "fontbm size=${word_size} → ${word_stem} (puzzle)"
-    "$FONTBM" \
+    run_fontbm \
       --font-file "$WORD_FONT" \
       --font-size "$word_size" \
       --output "$WORK_DIR/$word_stem" \
@@ -257,8 +331,8 @@ main() {
     [ -f "$WORK_DIR/${word_stem}.fnt" ] && [ -f "$WORK_DIR/${word_stem}.png" ] \
       || log_die "fontbm 未生成 ${word_stem}.{fnt,png}"
     bmf_set_family "$WORK_DIR/${word_stem}.fnt" "$word_family"
-    mv "$WORK_DIR/${word_stem}.fnt" "$OUT_DIR/"
-    mv "$WORK_DIR/${word_stem}.png" "$OUT_DIR/"
+    install_out "$WORK_DIR/${word_stem}.fnt"
+    install_out "$WORK_DIR/${word_stem}.png"
     log_success "wrote ${word_stem} → shared/fonts/ (family=${word_family})"
   done
 
@@ -283,13 +357,13 @@ main() {
   done
   [ "$MONO" -eq 1 ] && gloss_args+=(--monochrome)
   log_info "fontbm size=${GLOSS_SIZE} → ${gloss_stem} (gloss)"
-  "$FONTBM" "${gloss_args[@]}"
+  run_fontbm "${gloss_args[@]}"
   [ -f "$WORK_DIR/${gloss_stem}.fnt" ] && [ -f "$WORK_DIR/${gloss_stem}.png" ] \
     || log_die "fontbm 未生成 ${gloss_stem}.{fnt,png}"
   bmf_set_family "$WORK_DIR/${gloss_stem}.fnt" "$gloss_family"
-  find "$OUT_DIR" -maxdepth 1 -type f \( -name "Gloss-Regular-*.*" -o -name "Gloss-Bold-*.*" \) -delete
-  mv "$WORK_DIR/${gloss_stem}.fnt" "$OUT_DIR/"
-  mv "$WORK_DIR/${gloss_stem}.png" "$OUT_DIR/"
+  prune_family Gloss "$gloss_stem"
+  install_out "$WORK_DIR/${gloss_stem}.fnt"
+  install_out "$WORK_DIR/${gloss_stem}.png"
   log_success "wrote ${gloss_stem} → shared/fonts/ (family=${gloss_family})"
 
   # Phonetic faces. Family Ipa: dict uses "bold 20px Ipa", words "bold 28px Ipa"
@@ -320,7 +394,9 @@ PY
     [ -z "$miss" ] || log_die "Arial Bold 缺少音标字形：$miss"
   fi
   local ipa_size
-  find "$OUT_DIR" -maxdepth 1 -type f \( -name "Ipa-Regular-*.*" -o -name "Ipa-Bold-*.*" \) -delete
+  local ipa_stems=()
+  for ipa_size in $IPA_SIZES; do ipa_stems+=("Ipa-Bold-${ipa_size}"); done
+  prune_family Ipa "${ipa_stems[@]}"
   for ipa_size in $IPA_SIZES; do
     ipa_stem="Ipa-Bold-${ipa_size}"
     log_info "fontbm size=${ipa_size} → ${ipa_stem} (phonetic)"
@@ -335,50 +411,30 @@ PY
       --chars 32-126
     )
     [ -s "$phone_chars" ] && ipa_args+=(--chars-file "$phone_chars")
-    "$FONTBM" "${ipa_args[@]}"
+    run_fontbm "${ipa_args[@]}"
     [ -f "$WORK_DIR/${ipa_stem}.fnt" ] && [ -f "$WORK_DIR/${ipa_stem}.png" ] \
       || log_die "fontbm 未生成 ${ipa_stem}.{fnt,png}"
     bmf_set_family "$WORK_DIR/${ipa_stem}.fnt" "$ipa_family"
-    mv "$WORK_DIR/${ipa_stem}.fnt" "$OUT_DIR/"
-    mv "$WORK_DIR/${ipa_stem}.png" "$OUT_DIR/"
+    install_out "$WORK_DIR/${ipa_stem}.fnt"
+    install_out "$WORK_DIR/${ipa_stem}.png"
     log_success "wrote ${ipa_stem} → shared/fonts/ (family=${ipa_family})"
   done
 }
 
-# Exit 0 when UI, Word, Gloss, and Ipa are at least as new as their sources.
+# Exit 0 when every output exists and the fingerprint matches the last run.
 fonts_current() {
-  local ui="$OUT_DIR/${FAMILY}-Bold-${SIZE}.fnt"
-  local phone_chars="$ROOT/fw/words/phone-chars.txt"
-  local oldest src ipa_src word word_size ipa ipa_size
-  local gloss="$OUT_DIR/Gloss-Bold-${GLOSS_SIZE}.fnt"
-  [ -f "$ui" ] && [ -f "$gloss" ] || return 1
-  oldest="$ui"
-  [ "$gloss" -ot "$oldest" ] && oldest="$gloss"
-  for word_size in $WORD_SIZES; do
-    word="$OUT_DIR/Word-Bold-${word_size}.fnt"
-    [ -f "$word" ] || return 1
-    [ "$word" -ot "$oldest" ] && oldest="$word"
+  local stem
+  for stem in "${FAMILY}-Bold-${SIZE}" "Gloss-Bold-${GLOSS_SIZE}"; do
+    [ -f "$OUT_DIR/$stem.fnt" ] || return 1
   done
-  for ipa_size in $IPA_SIZES; do
-    ipa="$OUT_DIR/Ipa-Bold-${ipa_size}.fnt"
-    [ -f "$ipa" ] || return 1
-    [ "$ipa" -ot "$oldest" ] && oldest="$ipa"
+  for stem in $WORD_SIZES; do
+    [ -f "$OUT_DIR/Word-Bold-$stem.fnt" ] || return 1
   done
-  for src in "${BASH_SOURCE[0]}" "${CHAR_SOURCES[@]}" "$phone_chars"; do
-    [ -e "$src" ] || continue
-    [ "$src" -nt "$oldest" ] && return 1
+  for stem in $IPA_SIZES; do
+    [ -f "$OUT_DIR/Ipa-Bold-$stem.fnt" ] || return 1
   done
-  if [ -e "$FONT_FILE" ] && [ "$FONT_FILE" -nt "$oldest" ]; then
-    return 1
-  fi
-  if [ -e "$WORD_FONT" ] && [ "$WORD_FONT" -nt "$oldest" ]; then
-    return 1
-  fi
-  ipa_src="${IPA_FONT:-/System/Library/Fonts/Supplemental/Arial Bold.ttf}"
-  if [ -e "$ipa_src" ] && [ "$ipa_src" -nt "$oldest" ]; then
-    return 1
-  fi
-  return 0
+  [ -f "$KEY_FILE" ] || return 1
+  [ "$(font_key)" = "$(cat "$KEY_FILE")" ]
 }
 
 if [ "$STALE_CHECK" -eq 1 ]; then
@@ -389,4 +445,12 @@ if [ "$STALE_CHECK" -eq 1 ]; then
 fi
 
 WORK_DIR=""
+KEY="$(font_key)"
 main
+mkdir -p "$(dirname "$KEY_FILE")"
+printf '%s\n' "$KEY" >"$KEY_FILE"
+if [ "$CHANGED" -eq 0 ]; then
+  log_success "字体内容没变，shared/fonts/ 保持原样（固件不用重编）"
+else
+  log_success "shared/fonts/ 更新了 ${CHANGED} 个文件"
+fi

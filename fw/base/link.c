@@ -6,6 +6,10 @@
 	Frame, little endian:
 	  u32 magic 'CADV' | u8 op | u8 status | u32 length | payload | u32 crc32
 	crc32 is zlib's, over op through payload.
+
+	Protocol 3: the host keeps a few DATA frames in flight, so one poll
+	handles every frame already queued (within a small time budget), and
+	OP_SUM returns size + crc32 of a card file so unchanged files are skipped.
 */
 
 #include "xsmc.h"
@@ -16,12 +20,14 @@
 #include "freertos/projdefs.h"
 
 #include "driver/usb_serial_jtag.h"
+#include "esp_timer.h"
 
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -41,6 +47,12 @@
 #define OP_END 5
 #define OP_ABORT 6
 #define OP_RM 7
+#define OP_SUM 8
+
+#define LINK_VERSION 3
+/* One poll may run this long while frames are queued. */
+#define LINK_POLL_US 40000
+#define LINK_SUM_BUF 32768
 
 #define ST_OK 0
 #define ST_BUSY 1
@@ -67,17 +79,29 @@ static uint8_t gList[LINK_MAX_PAYLOAD];
 static char gUi[160];
 static const char *gUiOut;
 
+static uint32_t gCrcTable[256];
+
+static void crc32_init(void)
+{
+	uint32_t i;
+	int b;
+
+	if (gCrcTable[1])
+		return;
+	for (i = 0; i < 256; i++) {
+		uint32_t c = i;
+		for (b = 0; b < 8; b++)
+			c = (c >> 1) ^ (0xEDB88320u & -(c & 1u));
+		gCrcTable[i] = c;
+	}
+}
+
+/* zlib crc32. Table driven: the bit loop cost ~1 ms per 4 KB frame, twice. */
 static uint32_t crc32_update(uint32_t crc, const uint8_t *data, size_t len)
 {
 	crc = ~crc;
-	while (len--) {
-		int b;
-		crc ^= *data++;
-		for (b = 0; b < 8; b++) {
-			uint32_t mask = -(crc & 1u);
-			crc = (crc >> 1) ^ (0xEDB88320u & mask);
-		}
-	}
+	while (len--)
+		crc = (crc >> 8) ^ gCrcTable[(crc ^ *data++) & 0xff];
 	return ~crc;
 }
 
@@ -103,6 +127,7 @@ static void link_start(void)
 
 	if (gReady)
 		return;
+	crc32_init();
 	/* Debug builds install this driver for xsbug and consume every byte. */
 	if (usb_serial_jtag_is_driver_installed())
 		return;
@@ -332,8 +357,8 @@ static int walk(const char *dir, const char *rel, uint32_t *used, int depth, int
 
 static void on_ping(void)
 {
-	/* 2: OP_RM. Hosts still accept 1 and skip delete. */
-	uint8_t ver = 2;
+	/* 2: OP_RM. 3: pipelined DATA + OP_SUM. Hosts still accept 1 and skip delete. */
+	uint8_t ver = LINK_VERSION;
 	reply(OP_PING, ST_OK, &ver, 1);
 }
 
@@ -402,6 +427,88 @@ static void on_rm(const uint8_t *payload, uint32_t len)
 	reply(OP_RM, ST_OK, NULL, 0);
 	snprintf(gUi, sizeof(gUi), "done\t%s", gName);
 	gUiOut = gUi;
+}
+
+/* Request: u8 len | name | optional u32 offset. Reply: u32 size | u32 crc32
+   of cadv/<name> from offset to the end. ST_NOFILE when missing. App images
+   end with a SHA-256 of themselves, so the host asks for just those 32 bytes. */
+static void on_sum(const uint8_t *payload, uint32_t len)
+{
+	uint8_t name_len;
+	uint8_t out[8];
+	char path[192];
+	struct stat st;
+	uint32_t crc = 0;
+	uint32_t offset = 0;
+	uint8_t *buf;
+	size_t cap;
+	int fd, n;
+
+	if (gBusy || gFd >= 0) {
+		reply(OP_SUM, ST_BUSY, NULL, 0);
+		return;
+	}
+	if (!card_ok()) {
+		reply(OP_SUM, ST_NOCARD, NULL, 0);
+		return;
+	}
+	if (len < 1) {
+		reply(OP_SUM, ST_BADNAME, NULL, 0);
+		return;
+	}
+	name_len = payload[0];
+	if (((uint32_t)name_len + 1 != len && (uint32_t)name_len + 5 != len) || !name_ok(payload + 1, name_len)) {
+		reply(OP_SUM, ST_BADNAME, NULL, 0);
+		return;
+	}
+	if ((uint32_t)name_len + 5 == len)
+		offset = get_u32(payload + 1 + name_len);
+	n = snprintf(path, sizeof(path), "%s/cadv/%.*s", MODDEF_FILE_ROOT, (int)name_len, (const char *)payload + 1);
+	if (n <= 0 || n >= (int)sizeof(path)) {
+		reply(OP_SUM, ST_BADNAME, NULL, 0);
+		return;
+	}
+	if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+		reply(OP_SUM, ST_NOFILE, NULL, 0);
+		return;
+	}
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		reply(OP_SUM, ST_IO, NULL, 0);
+		return;
+	}
+	if (offset && (offset > (uint32_t)st.st_size || lseek(fd, (off_t)offset, SEEK_SET) < 0)) {
+		close(fd);
+		reply(OP_SUM, ST_IO, NULL, 0);
+		return;
+	}
+	/* Big reads let FATFS do multi-block card reads: 4 KB reads ran ~1.3 MB/s.
+	   gList (free here: OP_LIST builds it and replies in the same call) is the fallback. */
+	buf = malloc(LINK_SUM_BUF);
+	cap = buf ? LINK_SUM_BUF : sizeof(gList);
+	if (!buf)
+		buf = gList;
+	for (;;) {
+		ssize_t r = read(fd, buf, cap);
+		if (r < 0) {
+			if (errno == EINTR)
+				continue;
+			close(fd);
+			if (buf != gList)
+				free(buf);
+			reply(OP_SUM, ST_IO, NULL, 0);
+			return;
+		}
+		if (r == 0)
+			break;
+		crc = crc32_update(crc, buf, (size_t)r);
+	}
+	close(fd);
+	if (buf != gList)
+		free(buf);
+	put_u32(out, (uint32_t)st.st_size);
+	put_u32(out + 4, crc);
+	reply(OP_SUM, ST_OK, out, sizeof(out));
 }
 
 static void on_list(void)
@@ -578,26 +685,23 @@ static void handle(uint8_t op, uint8_t status, const uint8_t *payload, uint32_t 
 		case OP_END: on_end(payload, len); break;
 		case OP_ABORT: on_abort(); break;
 		case OP_RM: on_rm(payload, len); break;
+		case OP_SUM: on_sum(payload, len); break;
 		default:
 			reply(op, ST_BAD, NULL, 0);
 			break;
 	}
 }
 
-/* One frame per call so the screen can update between chunks. */
+/* Handle at most one frame. Reads only what fits in gRx: the host keeps
+   several frames in flight, and the rest waits in the driver's buffer. */
 static int pull_frame(void)
 {
-	uint8_t tmp[512];
-
 	if (!gReady)
 		return 0;
-	for (;;) {
-		int n = usb_serial_jtag_read_bytes(tmp, sizeof(tmp), 0);
+	while (gRxLen < sizeof(gRx)) {
+		int n = usb_serial_jtag_read_bytes(gRx + gRxLen, sizeof(gRx) - gRxLen, 0);
 		if (n <= 0)
 			break;
-		if (gRxLen + (size_t)n > sizeof(gRx))
-			gRxLen = 0;
-		memcpy(gRx + gRxLen, tmp, (size_t)n);
 		gRxLen += (size_t)n;
 	}
 	while (gRxLen >= 10) {
@@ -643,11 +747,22 @@ void xs_link_busy(xsMachine *the)
 		close_part(0);
 }
 
+/* Drain queued frames for up to LINK_POLL_US. Stops early on "done" or
+   "err" so the script sees them; "recv" only reports the latest progress. */
 void xs_link_poll(xsMachine *the)
 {
+	int64_t until;
+
 	gUiOut = NULL;
 	link_start();
-	if (!pull_frame() || !gUiOut)
+	until = esp_timer_get_time() + LINK_POLL_US;
+	while (pull_frame()) {
+		if (gUiOut && strncmp(gUiOut, "recv\t", 5) != 0)
+			break;
+		if (esp_timer_get_time() >= until)
+			break;
+	}
+	if (!gUiOut)
 		return;
 	xsmcSetString(xsResult, (char *)gUiOut);
 }
