@@ -49,6 +49,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # mcconfig compiles fw/**/*.ts with tsc from PATH; match the local version.
+      - run: npm install -g typescript@7.0.2
 
       - id: version
         shell: bash
