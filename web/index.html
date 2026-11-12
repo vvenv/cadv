@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CADV 网页烧录</title>
+<meta name="description" content="在浏览器里给 Cardputer-Adv 烧录 CADV 基座和小程序">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+<style>
+	:root {
+		--bg: #f7f6f2;
+		--card: #ffffff;
+		--ink: #1d1c1a;
+		--muted: #66625b;
+		--line: #e2ded5;
+		--accent: #1f7a2e;
+		--accent-ink: #ffffff;
+		--warn: #8a5a00;
+		color-scheme: light;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root {
+			--bg: #141413;
+			--card: #1d1d1b;
+			--ink: #ecebe6;
+			--muted: #a19d94;
+			--line: #34322e;
+			--accent: #4cc35d;
+			--accent-ink: #0b1a0d;
+			--warn: #e6b04a;
+			color-scheme: dark;
+		}
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		background: var(--bg);
+		color: var(--ink);
+		font: 17px/1.65 -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+	}
+	main { max-width: 720px; margin: 0 auto; padding: 40px 16px 64px; }
+	h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: 0.02em; }
+	h2 { font-size: 20px; margin: 40px 0 12px; }
+	.lede { color: var(--muted); margin: 0 0 28px; }
+	.card {
+		background: var(--card);
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		padding: 20px;
+	}
+	.primary { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+	.primary h2 { margin: 0; }
+	.primary p { margin: 4px 0 0; color: var(--muted); }
+	button {
+		font: inherit;
+		font-weight: 600;
+		border: 0;
+		border-radius: 8px;
+		padding: 10px 22px;
+		background: var(--accent);
+		color: var(--accent-ink);
+		cursor: pointer;
+	}
+	button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+	ol { padding-left: 22px; margin: 0; }
+	ol li { margin: 6px 0; }
+	kbd {
+		font: 600 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+		border: 1px solid var(--line);
+		border-bottom-width: 2px;
+		border-radius: 4px;
+		padding: 2px 6px;
+		background: var(--bg);
+	}
+	code { font: 15px ui-monospace, SFMono-Regular, Menlo, monospace; }
+	a { color: var(--accent); }
+	ul.apps { list-style: none; margin: 0; padding: 0; }
+	ul.apps li {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		grid-template-rows: auto auto;
+		column-gap: 12px;
+		align-items: center;
+		padding: 12px 0;
+		border-top: 1px solid var(--line);
+	}
+	ul.apps li:first-child { border-top: 0; }
+	ul.apps .name { font-weight: 600; }
+	ul.apps .meta { grid-row: 2; color: var(--muted); font-size: 14px; }
+	ul.apps esp-web-install-button { grid-row: 1 / span 2; grid-column: 2; }
+	ul.apps button { padding: 6px 16px; background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+	.note { color: var(--warn); }
+	.unsupported { display: none; }
+	esp-web-install-button [slot="unsupported"] { color: var(--warn); }
+	footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+	<h1>CADV 网页烧录</h1>
+	<p class="lede">给 M5Stack Cardputer-Adv 用的一组小程序。芯片里只放一个「基座」，程序放在 microSD 卡的 <code>cadv/</code> 里，开机选一个载入。版本 {{VERSION}}。</p>
+
+	<div class="card primary">
+		<div>
+			<h2>基座</h2>
+			<p>第一次用、或从旧版本升级，先烧这个。</p>
+		</div>
+		<esp-web-install-button manifest="fw/sd.json">
+			<button slot="activate">烧录基座</button>
+			<span slot="unsupported">这个浏览器不能烧录。请用电脑上的 Chrome 或 Edge。</span>
+			<span slot="not-allowed">要在 https 页面里打开。</span>
+		</esp-web-install-button>
+	</div>
+
+	<h2>步骤</h2>
+	<div class="card">
+		<ol>
+			<li>关掉 Cardputer-Adv 的电源开关，按住 <kbd>G0</kbd>，插上 USB 线，再松开 <kbd>G0</kbd>。</li>
+			<li>点「烧录基座」，在弹出的列表里选这块板子的串口。问要不要清空时，第一次装选清空；只是升级可以不清，设置会留着。</li>
+			<li>烧完按一下侧面的 <kbd>RESET</kbd>。</li>
+			<li>下载 <a href="{{SD_ZIP}}">{{SD_ZIP}}</a>，解压到 microSD 卡根目录（得到一个 <code>cadv</code> 文件夹），插回板子。</li>
+			<li>开机后用 <kbd>,</kbd> <kbd>/</kbd> <kbd>;</kbd> <kbd>.</kbd> 选程序，<kbd>Enter</kbd> 载入。在程序里按住 <kbd>Fn</kbd>+<kbd>BS</kbd> 回到基座。</li>
+		</ol>
+	</div>
+
+	<h2>单独烧一个程序</h2>
+	<p>不想要基座、只用一个程序时用这里。会盖掉芯片里原来的东西；想回到基座，再烧一次上面的基座。</p>
+	<div class="card">
+		<ul class="apps">
+{{APPS}}
+		</ul>
+	</div>
+
+	<footer>
+		源码和说明：<a href="https://github.com/vvenv/cadv">github.com/vvenv/cadv</a>。烧录用的是 <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>，只在 Chrome / Edge 等支持 Web Serial 的电脑浏览器里可用。
+	</footer>
+</main>
+</body>
+</html>

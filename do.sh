@@ -25,6 +25,7 @@
 #   ./do.sh burner [id…]            # 合并成一个整片镜像（0x0 起烧，给 M5Burner / 网页烧录）→ dist/burner/
 #                                   # 不写 id 是基座；同时把单独镜像放到 dist/launcher/（给 M5Launcher）
 #                                   # CADV_VERSION=1.0.0 指定版本号，默认 git describe
+#   ./do.sh shot [id…]              # 模拟器截图：fw/<id>/cover.png（1280×720 封面），dist/shots/<id>.png
 #   ./do.sh clean                   # 清临时日志
 #   ./do.sh sd                      # 列出卡上的 cadv/
 #   菜单「列出 cadv」可多选删除：空格勾选，a 全选，回车后再确认。Esc、← 或 BS 不删。
@@ -1660,13 +1661,22 @@ cmd_ts_check() {
 }
 
 # macOS `open -a mcsim` after AppleScript quit often returns -600 (procNotFound).
+# mcsim lists every device .js in build/simulators. Ours lives in the repo.
+link_sim_device() {
+  local dst="$MODDABLE/build/simulators/cardputer_adv.js"
+  [ -L "$dst" ] && [ "$(readlink "$dst")" = "$ROOT/shared/sim/cardputer_adv.js" ] && return 0
+  ln -sfn "$ROOT/shared/sim/cardputer_adv.js" "$dst"
+}
+
 launch_mcsim() {
   local id="$1"
   local sim="$MODDABLE/build/bin/mac/release/mcsim.app"
+  link_sim_device
   local so="$MODDABLE/build/bin/mac/mc/debug/$id/mc.so"
   [ -d "$sim" ] || log_die "找不到 mcsim：$sim"
   [ -f "$so" ] || log_die "找不到镜像：$so"
-  killall -9 mcsim 2>/dev/null || true
+  # The process is Contents/MacOS/main, so killall mcsim never matched it.
+  pkill -9 -f "mcsim.app/Contents/MacOS/" 2>/dev/null || true
   sleep 0.25
   if open -a "$sim" "$so" 2>/dev/null; then
     return 0
@@ -1728,7 +1738,7 @@ esp_mc() {
   fi
 }
 
-# Compile the ESP32 image and stop before esptool. Same bin flash writes at 0x10000.
+# Compile the ESP32 image and stop before esptool. Same bin flash writes at ota_0 (0x20000).
 build_fw_image() {
   local id="$1" want=0
   if fw_needs_bank "$id"; then
@@ -1906,6 +1916,23 @@ cmd_burner() {
   done
 }
 
+# Screenshot an app in the desktop simulator (Cardputer-Adv device, 240×135):
+# fw/<id>/cover.png is the 1280×720 M5Burner cover, dist/shots/<id>.png the
+# bare screen. The first screen after launch is what gets captured.
+cmd_shot() {
+  local ids=("$@") id
+  [ "${#ids[@]}" -gt 0 ] || ids=(sd)
+  mkdir -p "$ROOT/dist/shots"
+  for id in "${ids[@]}"; do
+    fw_exists "$id" || log_die "没有固件：${id}"
+    cmd_ts_sim "$id" >/dev/null
+    sleep "${CADV_SHOT_WAIT:-4}"
+    swift "$ROOT/scripts/sim-shot.swift" "$ROOT/dist/shots/$id" >/dev/null || log_die "截图失败：$id（终端要有「屏幕录制」权限）"
+    mv "$ROOT/dist/shots/$id-cover.png" "$FW_ROOT/$id/cover.png"
+    log_success "$(fw_label "$id")：fw/$id/cover.png（1280×720），dist/shots/$id.png（240×135）"
+  done
+}
+
 run() {
   local cmd="$1"
   shift || true
@@ -1920,6 +1947,7 @@ run() {
     gen-words) cmd_gen_words ;;
     port) cmd_port "$@" ;;
     burner) cmd_burner "$@" ;;
+    shot) cmd_shot "$@" ;;
     clean) cmd_clean ;;
     -h | --help | help) usage ;;
     *)

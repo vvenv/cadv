@@ -49,6 +49,7 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 | 只传词库 | `./do.sh sd bank` |
 | 检查工具链 | `./do.sh ts-check` |
 | 打发布用的整片镜像（M5Burner / M5Launcher） | `./do.sh burner [id]` |
+| 模拟器截图，做 M5Burner 封面 | `./do.sh shot [id]` |
 | 帮助 | `./do.sh help` |
 
 板子上：从任意已载入的程序回到基座，按住 **Fn+BS**。各程序共用几套习惯：
@@ -91,6 +92,7 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 | `fw/db` | 分贝 | 麦克风测声级，带走势图（未校准，可手调） |
 | `fw/game` | 游戏 | 贪吃蛇、2048、方块 |
 | `fw/noise` | 助眠 | 白噪音、粉红、褐噪音、雨声、海浪，带定时 |
+| `fw/timer` | 计时 | 倒计时；立起开始、放平暂停 |
 
 每个目录里通常有自己的 `README.md`。
 
@@ -101,7 +103,9 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 | `do.sh` | 选程序、模拟、烧录、往卡上拷文件 |
 | `fw/<id>/` | 一个程序：`label` 是菜单名，`icon` 是基座里的图标，`manifest.json` 是入口 |
 | `shared/` | 屏幕、键盘、喇叭、公共字体 |
-| `scripts/` | 词库、字体生成 |
+| `scripts/` | 词库、字体生成；发布：`burner_publish.py`（M5Burner）、`make_site.py`（网页烧录页 + 卡上文件包）、`sim-shot.swift`（截图） |
+| `shared/sim/` | 模拟器里的 Cardputer-Adv 外壳（240×135），`do.sh sim` 自动用 |
+| `web/` | 网页烧录页模板，`.github/workflows/release.yml` 打 `v*` tag 时发到 GitHub Pages |
 | `third_party/` | 本机 SDK 等（gitignore，不进仓库） |
 
 ## 再加一个程序

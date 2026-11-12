@@ -8,6 +8,7 @@
 import Modules from "modules";
 import type { Directory, File } from "embedded:storage/files";
 import { parseIcon, type Icon } from "icons";
+import { builtForSmallFlash } from "slot";
 
 export const CARD_DIR = "cadv";
 
@@ -17,6 +18,8 @@ export type SdEntry = {
 	/** Parsed cadv/<id>.icon; null draws the fallback chip. */
 	icon: Icon | null;
 	size: number;
+	/** Built for the old 4MB table (see slot.ts); the launcher will not load it. */
+	old: boolean;
 	error: string;
 };
 
@@ -102,6 +105,22 @@ function asciiToString(buf: ArrayBuffer): string {
 }
 
 const ICON_MAX = 2048;
+
+/** First 4 bytes of the image: enough for builtForSmallFlash. */
+function readOld(dir: Directory, path: string): boolean {
+	let file: File | null = null;
+	try {
+		file = dir.openFile({ path, mode: "r" });
+		const head = file.read(4, 0);
+		file.close();
+		file = null;
+		return builtForSmallFlash(head);
+	}
+	catch {
+		try { file?.close(); } catch { /* */ }
+		return false;
+	}
+}
 
 function readIcon(dir: Directory, id: string): Icon | null {
 	const path = id + ".icon";
@@ -195,11 +214,12 @@ export function loadCatalog(): SdCatalog {
 				label: readLabel(home, id),
 				icon: readIcon(home, id),
 				size: typeof st.size === "number" ? st.size : 0,
+				old: readOld(home, path),
 				error: "",
 			});
 		}
 		catch (e) {
-			entries.push({ path, label: id, icon: null, size: 0, error: errorText(e) });
+			entries.push({ path, label: id, icon: null, size: 0, old: false, error: errorText(e) });
 		}
 	}
 	trace(`sd ${CARD_DIR} ${entries.length} images\n`);

@@ -2,10 +2,22 @@
 	"device": "2093000000000000012",
 	"sourceUrl": "https://github.com/vvenv/cadv",
 	"firmwares": {
+		"sd": {
+			"firmwareId": null,
+			"name": "CADV - home screen + apps on SD (Cardputer ADV)",
+			"categories": [
+				"1985000000000000103",
+				"2190000000000000012"
+			],
+			"description": "fw/sd/burner.md"
+		},
 		"words": {
 			"firmwareId": null,
 			"name": "Words - English spelling (Cardputer ADV)",
-			"categories": ["2190000000000000012", "2190000000000000009"],
+			"categories": [
+				"2190000000000000012",
+				"2190000000000000009"
+			],
 			"description": "fw/words/burner.md"
 		}
 	}

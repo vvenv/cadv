@@ -11,7 +11,7 @@ With "firmwareId" set, the listing's name, categories and devices are read
 back from M5Burner and a new version is added, the same way M5Launcher's CI
 does it. With "firmwareId" null, the first upload creates the listing from
 the config and the markdown "description" file; put the id it prints back
-into burner.json.
+into burner.json. fw/<id>/cover.png (./do.sh shot <id>) goes up as the cover.
 
 A PUBLIC upload goes into M5Burner's review queue; there is no separate
 publish step. Credentials come from $M5BURNER_USER / $M5BURNER_PWD.
@@ -46,7 +46,7 @@ def call(method, path, token=None, body=None, files=None):
 			parts.append(
 				(
 					f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'
-					"Content-Type: application/octet-stream\r\n\r\n"
+					f"Content-Type: {'image/png' if filename.endswith('.png') else 'application/octet-stream'}\r\n\r\n"
 				).encode()
 				+ payload
 				+ b"\r\n"
@@ -146,13 +146,19 @@ def main():
 	form["versionDescription"] = markdown(args.notes or args.version)
 	form["visibility"] = "PRIVATE" if args.private else "PUBLIC"
 
+	cover = ROOT / "fw" / args.id / "cover.png"
 	print(f"{what}: {image.name} ({len(payload) / 1048576:.1f}MB) as {args.version}, {form['visibility']}")
+	print(f"  cover: {cover.relative_to(ROOT) if cover.is_file() else 'none (./do.sh shot ' + args.id + ')'}")
 	for k, v in form.items():
 		print(f"  {k}: {v if len(v) < 120 else v[:117] + '...'}")
 	if not args.yes:
 		print("dry run; add --yes to upload")
 		return
-	result = call("POST", "/firmwares", token, form, {"binFile": (image.name, payload)}) or {}
+	files = {"binFile": (image.name, payload)}
+	cover = ROOT / "fw" / args.id / "cover.png"
+	if cover.is_file():
+		files["coverFile"] = (cover.name, cover.read_bytes())
+	result = call("POST", "/firmwares", token, form, files) or {}
 	print(
 		f"uploaded: firmwareId={result.get('firmwareId')} versionId={result.get('versionId')} "
 		f"status={result.get('status')}"

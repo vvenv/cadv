@@ -30,6 +30,8 @@ export type HomeTile = {
 	icon: Icon | null;
 	/** Mirror too big for the flash slot. */
 	big?: boolean;
+	/** Built for the old 4MB flash table; must be rebuilt. */
+	old?: boolean;
 	/** Could not read this entry. */
 	bad?: boolean;
 };
@@ -84,6 +86,7 @@ function sameTiles(a: HomeTile[], b: HomeTile[]): boolean {
 			|| a[i].label !== b[i].label
 			|| a[i].icon !== b[i].icon
 			|| !!a[i].big !== !!b[i].big
+			|| !!a[i].old !== !!b[i].old
 			|| !!a[i].bad !== !!b[i].bad
 		)
 			return false;
@@ -198,8 +201,8 @@ export class HomeBehavior extends Behavior {
 			const iconCx = x + Math.floor(cellW / 2);
 			drawFwIcon(port, tile.icon, iconCx, iconCy, ICON, selected ? BG : accent);
 
-			if (tile.big) {
-				const badge = "超";
+			if (tile.big || tile.old) {
+				const badge = tile.big ? "超" : "旧";
 				const bw = port.measureString(badge, faceStyle).width;
 				drawText(port, badge, selected ? BG : RED, x + cellW - bw - 2, y - ROW_LEAD + 2, bw);
 			}

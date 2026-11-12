@@ -1,0 +1,117 @@
+# Build every image, then publish:
+#   - GitHub Pages: the web flasher (web/index.html) with merged images and the SD bundle
+#   - a GitHub release with the same files, on a v* tag
+#   - optionally M5Burner (scripts/burner_publish.py), when the repo variable
+#     BURNER_PUBLISH is "true" and M5BURNER_USER / M5BURNER_PWD secrets exist
+#
+# One-time setup: Settings → Pages → Source: GitHub Actions.
+# Keep MODDABLE_REF on the SDK release the local third_party/moddable came from.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  MODDABLE_REF: "10.1.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: espressif/idf:v6.1
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: cadv
+      - uses: actions/checkout@v4
+        with:
+          repository: vvenv/alice
+          path: alice
+      - uses: actions/checkout@v4
+        with:
+          repository: Moddable-OpenSource/moddable
+          ref: ${{ env.MODDABLE_REF }}
+          path: cadv/third_party/moddable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - id: version
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="dev-${GITHUB_SHA::7}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Host packages for the Moddable tools
+        run: apt-get update && apt-get install -y --no-install-recommends libgtk-3-dev
+
+      - name: Moddable tools
+        shell: bash
+        run: make -C cadv/third_party/moddable/build/makefiles/lin -j"$(nproc)"
+
+      - name: Word banks (from vvenv/alice)
+        working-directory: cadv
+        run: node scripts/gen-wordbank.mjs
+
+      - name: Build images
+        working-directory: cadv
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          export MODDABLE="$PWD/third_party/moddable"
+          export PATH="$MODDABLE/build/bin/lin/release:$PATH"
+          for d in fw/*/; do
+            [ -f "$d/manifest.json" ] || continue
+            echo "::group::$(basename "$d")"
+            (cd "$d" && mcconfig -m -p esp32/esp32s3_cdc -t build)
+            echo "::endgroup::"
+          done
+          python scripts/make_site.py --version "${{ steps.version.outputs.version }}"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: cadv/dist/site
+
+      - name: GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cadv/dist/site/fw/*.bin
+            cadv/dist/site/cadv-sd-*.zip
+
+      - name: M5Burner
+        if: github.ref_type == 'tag' && vars.BURNER_PUBLISH == 'true'
+        working-directory: cadv
+        shell: bash
+        env:
+          M5BURNER_USER: ${{ secrets.M5BURNER_USER }}
+          M5BURNER_PWD: ${{ secrets.M5BURNER_PWD }}
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          for id in $(python3 -c "import json;print(' '.join(k for k,e in json.load(open('scripts/burner.json'))['firmwares'].items() if e.get('firmwareId')))"); do
+            python3 scripts/burner_publish.py "$id" --version "$v" --bin "dist/site/fw/$id.bin" --yes
+          done
+
+  pages:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

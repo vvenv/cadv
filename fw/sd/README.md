@@ -28,7 +28,7 @@ crescent x y r bx by br # 圆减去另一个圆，月牙
 
 程序启动后要跑满约 3 秒才算「起来了」（`confirmBoot()`，每个 `main.ts` 都调一次；基座自己立刻确认）。在这之前重启或崩溃，bootloader 会自动退回基座，标题显示「上回没跑起来」。这靠 `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`，配在 `shared/manifest.json` 里，所以改完要 `./do.sh flash` 重烧一次基座（bootloader 跟着它一起烧）。新加的程序也要在 `main.ts` 里调用 `confirmBoot()`，否则它每次重启都会退回基座。
 
-Cardputer-Adv 有 8MB 闪存，分区表在 `shared/partitions.csv`：基座 ota_0 约 3.9MB，程序槽 ota_1 约 4MB。镜像更大就载不进去。卡上的份数不受这个限制。
+Cardputer-Adv 有 8MB 闪存，分区表在 `shared/partitions.csv`：otadata 在 0x10000，基座 ota_0 从 0x20000 起，程序槽 ota_1 从 0x410000 起，各 3.9MB（0x3F0000）。镜像更大就载不进去。卡上的份数不受这个限制。otadata 放在程序前面，是为了让 `./do.sh burner` 合出来的整片镜像只到程序末尾，不用填满 8MB。
 
 以前的分区表只用了 4MB。那时编的镜像头里写着 4MB，放进新的程序槽（4MB 以上）够不着 otadata，`confirmBoot()` 会失败、每次都被退回基座。所以基座看到这种镜像不载入，标题显示「旧镜像需重编」。换了分区表后重编一遍再拷：`CADV_SD_BUILD=1 ./do.sh sd fw`。
 
@@ -59,7 +59,7 @@ CADV_VERSION=1.0.0 ./do.sh burner          # 基座
 CADV_VERSION=1.0.0 ./do.sh burner words    # 单独一个程序
 ```
 
-`dist/burner/<id>-<版本>.bin` 是整片镜像（bootloader + 分区表 + otadata + 程序，8MB），从 0x0 烧，给 M5Burner、网页烧录或 `esptool write-flash 0x0`。`dist/launcher/<id>-<版本>.bin` 是单独的程序镜像，和卡上的 `cadv/<id>.bin` 一样，给 [M5Launcher](https://github.com/bmorcelli/Launcher) 从卡上安装。
+`dist/burner/<id>-<版本>.bin` 是整片镜像（bootloader + 分区表 + otadata + 程序，约 1–2MB），从 0x0 烧，给 M5Burner、网页烧录或 `esptool write-flash 0x0`。`dist/launcher/<id>-<版本>.bin` 是单独的程序镜像，和卡上的 `cadv/<id>.bin` 一样，给 [M5Launcher](https://github.com/bmorcelli/Launcher) 从卡上安装。
 
 在 M5Launcher 底下跑时没有基座：Launcher 在 `test` 分区，程序在它分的 ota 槽里。**Fn+BS** 看到 `test` 分区就直接重启，回到 Launcher 的开机画面。基座本身不能装进 Launcher（它要往 ota_1 写，Launcher 的分区表里那是别的程序）。
 
@@ -70,4 +70,17 @@ python3 scripts/burner_publish.py words --version 1.0.0
 M5BURNER_USER=… M5BURNER_PWD=… python3 scripts/burner_publish.py words --version 1.0.0 --yes
 ```
 
-第一次上传会新建条目，把打印出的 `firmwareId` 填回 `burner.json`；之后再传就是给这个条目加版本。PUBLIC 上传会进 M5Burner 的审核队列。
+`fw/<id>/cover.png` 是封面（1280×720），用 `./do.sh shot <id>` 从模拟器截。第一次上传会新建条目，把打印出的 `firmwareId` 填回 `burner.json`；之后再传就是给这个条目加版本。PUBLIC 上传会进 M5Burner 的审核队列。
+
+### 网页烧录和自动发布
+
+`.github/workflows/release.yml` 在推 `v*` tag 时：编所有程序 → `scripts/make_site.py` 合成整片镜像、ESP Web Tools 清单和卡上文件包 `cadv-sd-<版本>.zip` → 发到 GitHub Pages（`web/index.html` 是网页烧录页）和 GitHub Release。仓库变量 `BURNER_PUBLISH=true` 且有 `M5BURNER_USER` / `M5BURNER_PWD` 两个 secret 时，`burner.json` 里已有 `firmwareId` 的条目也会自动传新版本（新建条目仍然手动做第一次）。
+
+第一次要在仓库 Settings → Pages 把 Source 设成 GitHub Actions。CI 用的 Moddable 版本在 workflow 的 `MODDABLE_REF`，要和本机 `third_party/moddable` 一致。
+
+本机也能出同样的东西：先把要发的程序都编好，再
+
+```bash
+source "$IDF_PATH/export.sh"
+python3 scripts/make_site.py --version 1.0.0     # → dist/site/
+```

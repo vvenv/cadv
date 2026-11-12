@@ -1,5 +1,5 @@
-/** The app slot (ota_1) is about 3.9MB on the 8MB table. Larger images cannot be loaded. */
-export const SLOT_LIMIT = 0x3FE000;
+/** The app slot (ota_1) is 3.9MB (0x3F0000) on the 8MB table. Larger images cannot be loaded. */
+export const SLOT_LIMIT = 0x3F0000;
 
 export function fitsSlot(size: number): boolean {
 	return size > 0 && size <= SLOT_LIMIT;

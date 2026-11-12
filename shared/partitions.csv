@@ -1,7 +1,10 @@
 # Cardputer-Adv has 8MB of flash (ESP32-S3FN8).
-# mcconfig splits the factory line into ota_0 (base), ota_1 (app slot)
-# and otadata because shared/manifest.json sets ota.autosplit.
-# Name,   Type, SubType, Offset,  Size, Flags
-nvs,      data, nvs,     0x9000,  0x006000,
-phy_init, data, phy,     0xf000,  0x001000,
-factory,  app,  factory, 0x10000, 0x7F0000,
+# otadata sits before the apps so a merged release image (do.sh burner)
+# ends where the base ends instead of padding out to the last 8KB of flash.
+# The app slots must start on 64KB boundaries, so 0x12000-0x1FFFF is unused.
+# Name,   Type, SubType, Offset,   Size, Flags
+nvs,      data, nvs,     0x9000,   0x006000,
+phy_init, data, phy,     0xf000,   0x001000,
+otadata,  data, ota,     0x10000,  0x002000,
+ota_0,    app,  ota_0,   0x20000,  0x3F0000,
+ota_1,    app,  ota_1,   0x410000, 0x3F0000,
