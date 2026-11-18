@@ -15,7 +15,9 @@ import PWM from "pins/pwm";
 import Preference from "preference";
 import Timer from "timer";
 import { batteryLow, batteryShort } from "battery";
+import { deckPower } from "deck";
 import { Lamp } from "lamp";
+import { panelShow } from "panel";
 
 /**
 	App status. "off" falls back to amber when the cell is low and the rail is on.
@@ -131,6 +133,7 @@ export class Power {
 			this.#apply();
 		}
 		this.#note = "亮度 " + (n + 1);
+		deckPower(this.#mv, this.#level + 1);
 		return this.#note;
 	}
 
@@ -174,6 +177,7 @@ export class Power {
 
 	#apply() {
 		const duty = this.#duty();
+		panelShow(duty > 0);
 		const on = !this.#pwm || duty > 0;
 		if (this.#pwm) {
 			try {
@@ -255,11 +259,13 @@ export class Power {
 				return;
 			const pinMv = Math.round((sum / n) * ADC_FULL_MV / 4095);
 			this.#mv = pinMv * 2;
+			deckPower(this.#mv, this.#level + 1);
 		}
 		catch {
 			this.#adcDead = true;
 			this.#adc = undefined;
 			this.#mv = -1;
+			deckPower(this.#mv, this.#level + 1);
 		}
 	}
 }

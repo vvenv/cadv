@@ -275,11 +275,20 @@ function findTheme(id: string): ThemeDef {
 	return THEMES[0];
 }
 
+let themeWatch: (() => void) | undefined;
+
+/** Status strip on the built-in panel, when an external display is attached. */
+export function watchTheme(fn: () => void) {
+	themeWatch = fn;
+}
+
 export function applyTheme(id: ThemeId): void {
 	const def = findTheme(id);
 	currentId = def.id;
 	setPalette(def.palette);
 	themeGen += 1;
+	if (themeWatch)
+		themeWatch();
 }
 
 const PREF = "ui";

@@ -67,6 +67,7 @@ cp fw/clock/wifi.local.json.example fw/clock/wifi.local.json
 板子上：从任意已载入的程序回到基座，按住 **Fn+BS**。各程序共用几套习惯：
 
 - 背光四档：**Fn+[** 暗、**Fn+]** 亮；大约 30 秒不动会变暗或熄屏
+- 外接 ILI9341 时，程序画在外接屏上，板载屏显示当前程序、电量、运行时间、内存和亮度。接法见 [`fw/base/README.md`](fw/base/README.md)
 - 电量低于约 3.40V 时顶栏会提示低电
 - **Fn+T** 换配色主题，所有程序共用一套
 - 多数界面：`BS` / `Esc` / `←` 返回，`Enter` / 空格确认，`?`（Shift+/）或 **Fn+空格** 帮助，`-` `=` 音量
